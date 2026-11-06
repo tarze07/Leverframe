@@ -21,8 +21,12 @@ import { terminalTheme } from "./theme";
 import { TerminalSearch } from "./TerminalSearch";
 
 export interface TerminalPanelParams {
-  /** Program to start; default shell when omitted. Profiles (#4) will fill this in. */
+  /** Terminal profile; the default profile is used when neither this nor `program` is set. */
+  profileId?: string;
+  /** Explicit program (bypasses profiles). */
   program?: string;
+  /** Dock the panel lives in (for the running-terminals list). */
+  dock?: "main" | "panel";
   args?: string[];
   cwd?: string;
 }
@@ -89,7 +93,18 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     let pty: PtyHandle | null = null;
     let disposed = false;
     const program = params?.program;
-    const title = (p: string) => api.setTitle(programTitle(p));
+    const terminals = useTerminalStore.getState();
+    const setTitle = (t: string) => {
+      api.setTitle(t);
+      useTerminalStore.getState().update(api.id, { title: t });
+    };
+    terminals.upsert({
+      panelId: api.id,
+      dock: params?.dock ?? "panel",
+      title: api.title ?? "Terminal",
+      profileId: params?.profileId ?? null,
+      exited: false,
+    });
 
     const safeFit = () => {
       if (disposed || container.clientWidth === 0 || container.clientHeight === 0) return;
@@ -129,10 +144,10 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     const subscriptions = [
       term.onData((data) => void pty?.write(data).catch(() => undefined)),
       term.onResize(({ cols, rows }) => void pty?.resize(cols, rows).catch(() => undefined)),
-      term.onTitleChange((t) => t && api.setTitle(t)),
+      term.onTitleChange((t) => t && setTitle(t)),
     ];
 
-    const onFocus = () => useTerminalStore.getState().setActiveProgram(pty?.program ?? program ?? null);
+    const onFocus = () => useTerminalStore.getState().setActive(api.id);
     term.textarea?.addEventListener("focus", onFocus);
 
     let frame = 0;
@@ -152,11 +167,19 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     });
 
     spawnPty(
-      { program, args: params?.args, cwd: params?.cwd, cols: term.cols, rows: term.rows },
+      {
+        profileId: params?.profileId,
+        program,
+        args: params?.args,
+        cwd: params?.cwd,
+        cols: term.cols,
+        rows: term.rows,
+      },
       {
         onData: (bytes) => term.write(bytes),
         onExit: (code) => {
           if (disposed) return;
+          useTerminalStore.getState().update(api.id, { exited: true });
           if (code === 0) {
             api.close(); // normal `exit` closes the tab, like VS Code
           } else {
@@ -171,7 +194,8 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
           return;
         }
         pty = handle;
-        title(handle.program);
+        useTerminalStore.getState().update(api.id, { profileId: handle.profileId });
+        setTitle(handle.profileName ?? programTitle(handle.program));
         onFocus();
         // The size may have changed while the process was starting.
         void handle.resize(term.cols, term.rows).catch(() => undefined);
@@ -189,6 +213,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       subscriptions.forEach((s) => s.dispose());
       term.textarea?.removeEventListener("focus", onFocus);
       unregister();
+      useTerminalStore.getState().remove(api.id);
       void pty?.kill().catch(() => undefined);
       term.dispose();
       termRef.current = null;

@@ -10,6 +10,7 @@ import { safeStorage } from "./lib/storage";
 import { useAppearance } from "./lib/useAppearance";
 import { useKeybindings } from "./lib/useKeybindings";
 import { useUiStore } from "./store/ui";
+import { useProfilesStore } from "./store/profiles";
 
 type VisibilityKey = "sidebarVisible" | "bottomPanelVisible";
 
@@ -39,6 +40,9 @@ function useCollapsibleSync(ref: React.RefObject<PanelImperativeHandle | null>, 
 export default function App() {
   useAppearance();
   useKeybindings();
+  useEffect(() => {
+    void useProfilesStore.getState().load();
+  }, []);
 
   const sidebarRef = usePanelRef();
   const bottomRef = usePanelRef();

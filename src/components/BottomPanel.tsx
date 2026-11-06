@@ -3,6 +3,7 @@ import { isTauri } from "../lib/tauri";
 import { TerminalPanel } from "../features/terminal/TerminalPanel";
 import { DockArea } from "../workbench/DockArea";
 import { addTerminalPanel, closeActiveTerminal, openTerminal } from "../workbench/commands";
+import { ProfileMenu } from "../features/profiles/ProfileMenu";
 import { Placeholder } from "./Placeholder";
 
 const components = { terminal: TerminalPanel };
@@ -25,7 +26,8 @@ export function BottomPanel() {
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-lf-border px-4 text-[11px] font-semibold uppercase tracking-wider">
         <span className="border-b border-lf-accent pb-1 pt-1.5 text-lf-fg">Terminal</span>
         <div className="flex items-center gap-0.5">
-          <PanelButton icon="add" label="Nowy terminal (Ctrl+Shift+`)" onClick={() => openTerminal()} />
+          <PanelButton icon="add" label="Nowy terminal – profil domyślny (Ctrl+Shift+`)" onClick={() => openTerminal()} />
+          <ProfileMenu />
           <PanelButton icon="split-horizontal" label="Podziel terminal" onClick={() => openTerminal({ split: "right" })} />
           <PanelButton icon="trash" label="Zamknij aktywny terminal" onClick={() => closeActiveTerminal()} />
           <PanelButton icon="close" label="Ukryj panel (Ctrl+J)" onClick={() => setVisible(false)} />
@@ -36,7 +38,7 @@ export function BottomPanel() {
           id="panel"
           components={components}
           addDefaultPanels={(api) => {
-            if (isTauri() && useUiStore.getState().bottomPanelVisible) addTerminalPanel(api);
+            if (isTauri() && useUiStore.getState().bottomPanelVisible) addTerminalPanel(api, { dock: "panel" });
           }}
           onEmpty={() => setVisible(false)}
           watermark={EmptyPanel}

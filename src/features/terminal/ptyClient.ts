@@ -1,6 +1,8 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 export interface PtySpawnRequest {
+  /** Terminal profile id; takes precedence over `program`. */
+  profileId?: string;
   /** Program to run; omitted = default shell (PowerShell on Windows, login $SHELL elsewhere). */
   program?: string;
   args?: string[];
@@ -14,6 +16,8 @@ export interface PtyHandle {
   id: number;
   program: string;
   pid: number | null;
+  profileId: string | null;
+  profileName: string | null;
   write(data: string): Promise<void>;
   resize(cols: number, rows: number): Promise<void>;
   kill(): Promise<void>;
@@ -28,6 +32,8 @@ interface SpawnedPty {
   id: number;
   program: string;
   pid: number | null;
+  profileId: string | null;
+  profileName: string | null;
 }
 
 /** Raw channel payloads arrive as ArrayBuffer; tolerate a plain byte array too. */
@@ -35,7 +41,7 @@ export function toBytes(payload: ArrayBuffer | ArrayLike<number>): Uint8Array {
   return payload instanceof ArrayBuffer ? new Uint8Array(payload) : Uint8Array.from(payload);
 }
 
-/** Starts a process in a new pseudo-terminal in the Rust backend. */
+/** Starts a process (or terminal profile) in a new pseudo-terminal in the Rust backend. */
 export async function spawnPty(request: PtySpawnRequest, callbacks: PtyCallbacks): Promise<PtyHandle> {
   const onData = new Channel<ArrayBuffer>((payload) => callbacks.onData(toBytes(payload)));
   const onExit = new Channel<{ exitCode: number | null }>((msg) => callbacks.onExit(msg.exitCode));

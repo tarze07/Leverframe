@@ -15,12 +15,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(pty::PtyManager::new())
+        .setup(|app| {
+            let config_dir = app.path().app_config_dir()?;
+            app.manage(profiles::ProfileService::new(&config_dir));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             settings::app_info,
             pty::commands::pty_spawn,
             pty::commands::pty_write,
             pty::commands::pty_resize,
             pty::commands::pty_kill,
+            profiles::commands::profiles_list,
+            profiles::commands::profiles_refresh,
+            profiles::commands::profile_save,
+            profiles::commands::profile_delete,
+            profiles::commands::profile_set_default,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Leverframe")

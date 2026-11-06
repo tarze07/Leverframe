@@ -1,5 +1,6 @@
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
+import { useProfilesStore } from "../store/profiles";
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
@@ -15,14 +16,14 @@ export interface OpenTerminalOptions {
 }
 
 /** Adds a terminal panel to a dock. Returns the new panel id. */
-export function addTerminalPanel(api: DockviewApi, { split, params }: Omit<OpenTerminalOptions, "dock"> = {}): string {
+export function addTerminalPanel(api: DockviewApi, { dock = "panel", split, params }: OpenTerminalOptions = {}): string {
   const id = newPanelId("terminal");
   const reference = api.activePanel;
   api.addPanel({
     id,
     component: "terminal",
     title: "Terminal",
-    params: params ?? {},
+    params: { ...params, dock },
     // Keep the xterm DOM alive while the tab is hidden (no re-attach / re-fit glitches).
     renderer: "always",
     position: split && reference ? { referencePanel: reference.id, direction: split } : undefined,
@@ -31,10 +32,31 @@ export function addTerminalPanel(api: DockviewApi, { split, params }: Omit<OpenT
 }
 
 /** Opens a new terminal tab (bottom panel by default). Returns the panel id, or null if the dock is not ready. */
-export function openTerminal({ dock = "panel", ...rest }: OpenTerminalOptions = {}): string | null {
+export function openTerminal(options: OpenTerminalOptions = {}): string | null {
+  const dock = options.dock ?? "panel";
   if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
   const api = dockRegistry.get(dock);
-  return api ? addTerminalPanel(api, rest) : null;
+  return api ? addTerminalPanel(api, { ...options, dock }) : null;
+}
+
+/** Opens a terminal for a profile (default profile when `profileId` is omitted). */
+export function openProfile(profileId?: string, options: Omit<OpenTerminalOptions, "params"> = {}): string | null {
+  const title = useProfilesStore.getState().byId(profileId)?.name;
+  const id = openTerminal({ ...options, params: profileId ? { profileId } : {} });
+  if (id && title) dockRegistry.get(options.dock ?? "panel")?.getPanel(id)?.api.setTitle(title);
+  return id;
+}
+
+/** Brings a running terminal to front and focuses it. */
+export function revealTerminal(panelId: string, dock: DockId) {
+  if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
+  const panel = dockRegistry.get(dock)?.getPanel(panelId);
+  panel?.api.setActive();
+  requestAnimationFrame(() => terminalRegistry.get(panelId)?.focus());
+}
+
+export function closeTerminal(panelId: string, dock: DockId) {
+  dockRegistry.get(dock)?.getPanel(panelId)?.api.close();
 }
 
 export function terminalPanels(api: DockviewApi | undefined) {
