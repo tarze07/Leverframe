@@ -25,7 +25,7 @@ Poza zakresem pierwszej wersji: debugger, LSP, system rozszerzeń, git UI.
 | Backend | **Rust** (`tokio`) | Bezpieczna obsługa procesów, PTY, plików i SSH. |
 | PTY | **`portable-pty`** (z projektu WezTerm) | Jedno API: ConPTY na Windows, `openpty` na Linux/macOS. |
 | SSH | systemowy `ssh` uruchamiany w PTY (MVP), później opcjonalnie **`russh`** | Systemowy klient od razu obsługuje `~/.ssh/config`, agenta kluczy, ProxyJump. `russh` daje pełną kontrolę (np. SFTP do odczytu zdalnych sesji). |
-| Frontend | **React 18 + TypeScript + Vite** | Popularny, szybki w rozwoju; alternatywnie SolidJS dla jeszcze mniejszego narzutu. |
+| Frontend | **React 19 + TypeScript + Vite** | Popularny, szybki w rozwoju; alternatywnie SolidJS dla jeszcze mniejszego narzutu. |
 | Emulator terminala | **xterm.js** + addony `fit`, `webgl`, `search`, `web-links`, `unicode11` | Ten sam silnik co terminal w VS Code – dojrzały, szybki (renderer WebGL). |
 | Edytor | **Monaco Editor** (wygląd 1:1 z VS Code) lub **CodeMirror 6** (lżejszy, bliżej Zed) | Rekomendacja: Monaco na start – gotowe podświetlanie, minimapa, multi-cursor. |
 | Układ paneli | **dockview** lub **react-resizable-panels** | Dzielenie widoków, przeciąganie zakładek, zapisywanie layoutu. |

@@ -1,0 +1,129 @@
+@import "tailwindcss";
+@import "@vscode/codicons/dist/codicon.css";
+@import "dockview-react/dist/styles/dockview.css";
+
+/*
+ * Design tokens. Components use only these variables (via the Tailwind theme below),
+ * so a light theme is a matter of redefining them under [data-theme="light"].
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --lf-bg: #181a1f;            /* activity bar, title bar */
+  --lf-sidebar-bg: #1e2127;
+  --lf-editor-bg: #23272e;
+  --lf-panel-bg: #1e2127;
+  --lf-elevated: #2c313a;
+  --lf-hover: #2c313a;
+  --lf-border: #2f343d;
+  --lf-fg: #d7dae0;
+  --lf-fg-muted: #8b919c;
+  --lf-fg-subtle: #5c6370;
+  --lf-accent: #4d9cf8;
+  --lf-accent-fg: #ffffff;
+  --lf-statusbar-bg: #1e2127;
+  --lf-statusbar-fg: #9da5b4;
+  --lf-danger: #e5534b;
+  --lf-font-ui: system-ui, -apple-system, "Segoe UI", Ubuntu, Cantarell, sans-serif;
+  --lf-font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+  --lf-font-size-mono: 13px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --lf-bg: #e9eaed;
+  --lf-sidebar-bg: #f3f4f6;
+  --lf-editor-bg: #ffffff;
+  --lf-panel-bg: #f3f4f6;
+  --lf-elevated: #ffffff;
+  --lf-hover: #e2e4e8;
+  --lf-border: #d6d8dd;
+  --lf-fg: #24292f;
+  --lf-fg-muted: #57606a;
+  --lf-fg-subtle: #8c959f;
+  --lf-accent: #0969da;
+  --lf-statusbar-bg: #e9eaed;
+  --lf-statusbar-fg: #57606a;
+}
+
+@theme inline {
+  --color-lf-bg: var(--lf-bg);
+  --color-lf-sidebar: var(--lf-sidebar-bg);
+  --color-lf-editor: var(--lf-editor-bg);
+  --color-lf-panel: var(--lf-panel-bg);
+  --color-lf-elevated: var(--lf-elevated);
+  --color-lf-hover: var(--lf-hover);
+  --color-lf-border: var(--lf-border);
+  --color-lf-fg: var(--lf-fg);
+  --color-lf-muted: var(--lf-fg-muted);
+  --color-lf-subtle: var(--lf-fg-subtle);
+  --color-lf-accent: var(--lf-accent);
+  --color-lf-accent-fg: var(--lf-accent-fg);
+  --color-lf-statusbar: var(--lf-statusbar-bg);
+  --color-lf-statusbar-fg: var(--lf-statusbar-fg);
+  --color-lf-danger: var(--lf-danger);
+  --font-ui: var(--lf-font-ui);
+  --font-mono: var(--lf-font-mono);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--lf-bg);
+  color: var(--lf-fg);
+  font-family: var(--lf-font-ui);
+  font-size: 13px;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dockview mapped onto our tokens. */
+.dockview-theme-dark {
+  --dv-group-view-background-color: var(--lf-editor-bg);
+  --dv-tabs-and-actions-container-background-color: var(--lf-sidebar-bg);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--lf-editor-bg);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--lf-sidebar-bg);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--lf-editor-bg);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--lf-sidebar-bg);
+  --dv-activegroup-visiblepanel-tab-color: var(--lf-fg);
+  --dv-activegroup-hiddenpanel-tab-color: var(--lf-fg-muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--lf-fg-muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--lf-fg-subtle);
+  --dv-separator-border: var(--lf-border);
+  --dv-paneview-header-border-color: var(--lf-border);
+  --dv-tab-divider-color: var(--lf-border);
+  --dv-active-sash-color: var(--lf-accent);
+  --dv-tabs-and-actions-container-font-size: 13px;
+  --dv-tabs-and-actions-container-height: 35px;
+}
+
+/* Resize handles: thin line, accent on hover/drag. */
+.lf-separator {
+  background: var(--lf-border);
+  transition: background-color 120ms;
+}
+/* between side-by-side panels */
+.lf-separator-col {
+  width: 1px;
+}
+/* between stacked panels */
+.lf-separator-row {
+  height: 1px;
+}
+.lf-separator:hover,
+.lf-separator[data-separator="active"],
+.lf-separator[data-separator="focus"] {
+  background: var(--lf-accent);
+}
+
+/* Thin scrollbars like VS Code / Zed. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lf-elevated) transparent;
+}
