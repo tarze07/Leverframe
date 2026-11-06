@@ -8,7 +8,7 @@ describe("App layout", () => {
     render(<App />);
     expect(screen.getByRole("navigation", { name: "Activity bar" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "Terminale" })).toBeInTheDocument();
-    expect(screen.getByTestId("workbench-dock")).toBeInTheDocument();
+    expect(screen.getByTestId("dock-main")).toBeInTheDocument();
     expect(screen.getByText("przeglądarka (bez Tauri)")).toBeInTheDocument();
   });
 

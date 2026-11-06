@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { getAppInfo, type AppInfo } from "../lib/tauri";
 import { useUiStore } from "../store/ui";
+import { useTerminalStore } from "../store/terminal";
+import { programTitle } from "../features/terminal/ptyClient";
+import { toggleTerminalPanel } from "../workbench/commands";
 
 export function StatusBar() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const toggleBottomPanel = useUiStore((s) => s.toggleBottomPanel);
+  const activeProgram = useTerminalStore((s) => s.activeProgram);
 
   useEffect(() => {
     getAppInfo().then(setInfo).catch(() => setInfo(null));
@@ -14,7 +18,12 @@ export function StatusBar() {
   return (
     <footer className="flex h-6 shrink-0 items-center justify-between border-t border-lf-border bg-lf-statusbar px-2 text-xs text-lf-statusbar-fg">
       <div className="flex items-center gap-1">
-        <StatusItem icon="terminal" label="Brak aktywnego profilu" />
+        <StatusButton
+          icon="terminal"
+          title="Pokaż / ukryj terminal (Ctrl+`)"
+          label={activeProgram ? programTitle(activeProgram) : "Brak aktywnego terminala"}
+          onClick={toggleTerminalPanel}
+        />
       </div>
       <div className="flex items-center gap-1">
         <StatusItem
@@ -37,10 +46,17 @@ function StatusItem({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-function StatusButton({ icon, title, onClick }: { icon: string; title: string; onClick: () => void }) {
+function StatusButton(props: { icon: string; title: string; label?: string; onClick: () => void }) {
   return (
-    <button type="button" title={title} aria-label={title} onClick={onClick} className="rounded px-1.5 hover:bg-lf-hover hover:text-lf-fg">
-      <span className={`codicon codicon-${icon}`} style={{ fontSize: 14 }} aria-hidden />
+    <button
+      type="button"
+      title={props.title}
+      aria-label={props.label ? undefined : props.title}
+      onClick={props.onClick}
+      className="flex items-center gap-1 rounded px-1.5 hover:bg-lf-hover hover:text-lf-fg"
+    >
+      <span className={`codicon codicon-${props.icon}`} style={{ fontSize: 14 }} aria-hidden />
+      {props.label}
     </button>
   );
 }
