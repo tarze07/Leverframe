@@ -64,9 +64,9 @@ Poza zakresem pierwszej wersji: debugger, LSP, system rozszerzeń, git UI.
 ```
 
 Komunikacja:
-- `invoke("pty_spawn", { profileId, cwd, cols, rows })` → `ptyId`
+- `invoke("pty_spawn", { request: { program, args, cwd, cols, rows }, onData, onExit })` → `{ id, program, pid }`
 - `invoke("pty_write", { ptyId, data })`, `invoke("pty_resize", { ptyId, cols, rows })`, `invoke("pty_kill", { ptyId })`
-- zdarzenie `pty://<ptyId>/data` (strumień bajtów, buforowany co ~8 ms, aby nie zalewać WebView) i `pty://<ptyId>/exit`.
+- kanały Tauri (`Channel`) przekazywane w `pty_spawn`: `onData` – surowe bajty (ArrayBuffer, bez JSON/base64), buforowane co ~8 ms, aby nie zalewać WebView; `onExit` – kod wyjścia, wysyłany po dostarczeniu całego wyjścia. Kanały gwarantują kolejność wiadomości, w przeciwieństwie do zdarzeń globalnych.
 
 ## 4. Typy terminali (profile)
 
