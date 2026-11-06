@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Leverframe",
-  "version": "0.0.1",
+  "version": "0.1.0-alpha.1",
   "identifier": "io.github.tarze07.leverframe",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -28,7 +28,32 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "targets": [
+      "nsis",
+      "deb",
+      "appimage"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "tarze07",
+    "homepage": "https://github.com/tarze07/Leverframe",
+    "category": "DeveloperTool",
+    "shortDescription": "Terminal z edytorem dla agentów CLI",
+    "longDescription": "Leverframe to lekki terminal z edytorem w stylu VS Code / Zed: terminale lokalne, WSL, SSH i PowerShell w zakładkach i podziałach, z myślą o pracy z agentami CLI.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Polish",
+          "English"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
