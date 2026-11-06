@@ -2,42 +2,68 @@ name: Release
 
 # Pushing a tag such as v0.1.0-alpha.1 builds the installers and publishes a GitHub Release.
 # Versions with a suffix (-alpha.1, -beta.2, …) are published as pre-releases.
+# The workflow can also be started by hand for an existing tag (Actions → Release → Run workflow),
+# e.g. to rebuild and re-upload the installers of a release; an existing release is reused.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.1.0-alpha.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   create-release:
-    name: Create draft release
+    name: Create or reuse release
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.create.outputs.release_id }}
+      release_id: ${{ steps.release.outputs.release_id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Check version matches tag
-        run: node scripts/check-version.mjs "${GITHUB_REF_NAME}"
-      - name: Create draft release
-        id: create
+        run: node scripts/check-version.mjs "$TAG"
+      - name: Create draft release (or reuse the existing one)
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           node scripts/release-notes.mjs "$version" > notes.md
-          prerelease=""
-          case "$version" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" --draft $prerelease \
-            --title "Leverframe $version" --notes-file notes.md --verify-tag
-          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases" --jq ".[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | .id")
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+
+          # Published releases are found by tag; drafts are not returned by this endpoint.
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .id 2>/dev/null || true)
+          if [ -n "$id" ]; then
+            echo "Reusing existing release $id for $TAG"
+          else
+            # The id comes straight from the create response (listing right after creation can miss the draft).
+            id=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG" -f name="Leverframe $version" \
+              -F draft=true -F prerelease="$prerelease" -F body=@notes.md --jq .id)
+            echo "Created draft release $id for $TAG"
+          fi
+          if [ -z "$id" ]; then
+            echo "::error::Could not determine the release id for $TAG"
+            exit 1
+          fi
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
   build:
@@ -50,6 +76,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -76,7 +104,17 @@ jobs:
     needs: [create-release, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Publish draft
+      - name: Check that installers were uploaded, then publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: |
+          assets=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" --jq '.[].name')
+          echo "Assets:"; echo "$assets"
+          for pattern in '_x64-setup\.exe$' '_amd64\.deb$' '_amd64\.AppImage$'; do
+            if ! echo "$assets" | grep -Eq "$pattern"; then
+              echo "::error::Missing installer matching $pattern"
+              exit 1
+            fi
+          done
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=false --jq .html_url

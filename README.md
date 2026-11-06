@@ -64,6 +64,8 @@ Sam interfejs (bez backendu Rust) w przeglądarce: `npm run dev`, potem <http://
 
 Workflow `.github/workflows/release.yml` zbuduje instalatory na Windows i Linux i opublikuje wydanie. Wersje z sufiksem (`-alpha.1`, `-beta.2`) są oznaczane jako pre-release.
 
+Aby ponownie zbudować i dograć instalatory do istniejącego wydania, uruchom workflow ręcznie: **Actions → Release → Run workflow** i podaj tag (np. `v0.1.0-alpha.1`). Istniejące wydanie zostanie użyte ponownie. Wydanie jest publikowane dopiero wtedy, gdy ma wszystkie instalatory (`.exe`, `.deb`, `.AppImage`).
+
 ## Struktura
 
 ```
