@@ -3,6 +3,8 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 export interface PtySpawnRequest {
   /** Terminal profile id; takes precedence over `program`. */
   profileId?: string;
+  /** Agent to start (marks the session as an agent session). */
+  agentId?: string;
   /** Program to run; omitted = default shell (PowerShell on Windows, login $SHELL elsewhere). */
   program?: string;
   args?: string[];
@@ -18,6 +20,9 @@ export interface PtyHandle {
   pid: number | null;
   profileId: string | null;
   profileName: string | null;
+  agentId: string | null;
+  /** Command the UI types to start the agent. */
+  agentCommand: string | null;
   write(data: string): Promise<void>;
   resize(cols: number, rows: number): Promise<void>;
   kill(): Promise<void>;
@@ -34,6 +39,8 @@ interface SpawnedPty {
   pid: number | null;
   profileId: string | null;
   profileName: string | null;
+  agentId: string | null;
+  agentCommand: string | null;
 }
 
 /** Raw channel payloads arrive as ArrayBuffer; tolerate a plain byte array too. */

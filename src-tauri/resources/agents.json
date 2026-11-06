@@ -1,0 +1,40 @@
+{
+  "$comment": "Built-in agent definitions. Override or extend them in <config dir>/agents.json (same format; entries are merged by id, \"disabled\": true hides one).",
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "description": "Agent programistyczny Anthropic",
+      "commands": ["claude"],
+      "docsUrl": "https://code.claude.com/docs/en/setup",
+      "install": [
+        { "platform": "unix", "command": "curl -fsSL https://claude.ai/install.sh | bash" },
+        { "platform": "windows", "command": "irm https://claude.ai/install.ps1 | iex" }
+      ]
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "description": "Agent programistyczny OpenAI",
+      "commands": ["codex"],
+      "docsUrl": "https://developers.openai.com/codex/cli",
+      "install": [{ "platform": "any", "command": "npm i -g @openai/codex" }]
+    },
+    {
+      "id": "agy",
+      "name": "Agy",
+      "description": "Antigravity CLI (Google)",
+      "commands": ["agy"],
+      "docsUrl": "https://antigravity.google",
+      "install": []
+    },
+    {
+      "id": "kilo",
+      "name": "Kilo Code",
+      "description": "Kilo Code CLI",
+      "commands": ["kilo", "kilocode"],
+      "docsUrl": "https://github.com/Kilo-Org/kilocode",
+      "install": [{ "platform": "any", "command": "npm install -g @kilocode/cli" }]
+    }
+  ]
+}

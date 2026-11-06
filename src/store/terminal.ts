@@ -5,6 +5,7 @@ export interface RunningTerminal {
   dock: "main" | "panel";
   title: string;
   profileId: string | null;
+  agentId?: string | null;
   /** Process finished but the tab is still open (non-zero exit). */
   exited: boolean;
 }

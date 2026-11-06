@@ -3,6 +3,7 @@ import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
 import { useProfilesStore } from "../../store/profiles";
 import { useTerminalStore, type RunningTerminal } from "../../store/terminal";
+import { useAgentsStore } from "../../store/agents";
 import { closeTerminal, openProfile, revealTerminal } from "../../workbench/commands";
 import { groupProfiles, KIND_LABELS, profileIcon, type Profile, type ProfileKind } from "./profilesClient";
 import { SshProfileForm } from "./SshProfileForm";
@@ -148,6 +149,7 @@ function ProfileRow(props: {
 
 function RunningRow({ terminal: t, profile }: { terminal: RunningTerminal; profile?: Profile }) {
   const active = useTerminalStore((s) => s.activePanelId === t.panelId);
+  const agent = useAgentsStore((s) => s.agentById(t.agentId));
   return (
     <li className={`group relative flex items-center hover:bg-lf-hover ${active ? "bg-lf-hover" : ""}`}>
       <button
@@ -162,7 +164,12 @@ function RunningRow({ terminal: t, profile }: { terminal: RunningTerminal; profi
           aria-hidden
         />
         <span className={`truncate text-[13px] ${t.exited ? "text-lf-subtle line-through" : "text-lf-fg"}`}>{t.title}</span>
-        {profile && profile.name !== t.title && <span className="truncate text-xs text-lf-subtle">{profile.name}</span>}
+        {agent && (
+          <span className="shrink-0 rounded bg-lf-elevated px-1 text-[10px] uppercase text-lf-accent" title="Sesja agenta">
+            {agent.name}
+          </span>
+        )}
+        {profile && !t.title.includes(profile.name) && <span className="truncate text-xs text-lf-subtle">{profile.name}</span>}
       </button>
       <div className="absolute right-1 hidden items-center bg-lf-hover group-focus-within:flex group-hover:flex">
         <RowAction icon="close" label="Zamknij terminal" onClick={() => closeTerminal(t.panelId, t.dock)} />

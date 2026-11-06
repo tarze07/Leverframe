@@ -2,6 +2,15 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
+## [Niewydane]
+
+### Dodane
+- **Panel „Agenci”**: Claude Code, Codex, Agy i Kilo Code. Dla wybranego profilu terminala (lokalny, WSL, SSH, PowerShell) aplikacja sprawdza, czy agent jest zainstalowany i w jakiej wersji, i uruchamia go jednym kliknięciem w nowym terminalu.
+- **Folder projektu**: katalog roboczy dla agentów (lokalnie i w WSL).
+- **Definicje agentów w pliku `agents.json`**: można zmieniać wbudowanych agentów i dodawać własnych.
+- **Podpowiedzi instalacji**: oficjalne komendy do skopiowania; aplikacja niczego nie instaluje sama.
+- **Bezpieczne uruchamianie**: komenda agenta jest wpisywana dopiero, gdy powłoka jest gotowa, i nigdy w odpowiedzi na pytanie o hasło (np. przy logowaniu SSH).
+
 ## [0.1.0-alpha.1] – 2026-11-06
 
 Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://github.com/tarze07/Leverframe/blob/main/docs/PLAN.md).

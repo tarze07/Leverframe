@@ -14,18 +14,26 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyManager::new())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             app.manage(profiles::ProfileService::new(&config_dir));
+            app.manage(agents::AgentService::new(&config_dir));
+            app.manage(settings::SettingsStore::new(&config_dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             settings::app_info,
+            settings::settings_project_dir,
+            settings::settings_set_project_dir,
             pty::commands::pty_spawn,
             pty::commands::pty_write,
             pty::commands::pty_resize,
             pty::commands::pty_kill,
+            pty::commands::pty_list,
+            agents::commands::agents_list,
+            agents::commands::agents_detect,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,
