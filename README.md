@@ -3,7 +3,19 @@
 Prosty terminal z edytorem (styl Zed / VS Code) obsługujący Linux shell, WSL, SSH i PowerShell,
 z szybkim uruchamianiem agentów CLI (Claude Code, Codex, Agy, Kilo Code) i przeglądarką ich sesji.
 
-Plan projektu i propozycja technologii: [docs/PLAN.md](docs/PLAN.md).
+Plan projektu i propozycja technologii: [docs/PLAN.md](docs/PLAN.md). Historia zmian: [CHANGELOG.md](CHANGELOG.md).
+
+## Instalacja
+
+Instalatory są w zakładce [Releases](https://github.com/tarze07/Leverframe/releases):
+
+| System | Plik |
+|---|---|
+| Windows 10/11 | `Leverframe_<wersja>_x64-setup.exe` |
+| Debian / Ubuntu | `Leverframe_<wersja>_amd64.deb` (`sudo apt install ./plik.deb`) |
+| Inne dystrybucje Linuksa | `Leverframe_<wersja>_amd64.AppImage` (`chmod +x`, potem uruchom) |
+
+Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżenie: wybierz **Więcej informacji → Uruchom mimo to**.
 
 ## Stos
 
@@ -39,6 +51,18 @@ Sam interfejs (bez backendu Rust) w przeglądarce: `npm run dev`, potem <http://
 | `npm run typecheck` | Sprawdzenie typów TypeScript |
 | `npm test` | Testy frontendu (Vitest) |
 | `cargo test` (w `src-tauri/`) | Testy backendu |
+
+## Wydanie nowej wersji
+
+1. Ustaw tę samą wersję w `package.json`, `src-tauri/Cargo.toml` i `src-tauri/tauri.conf.json` (sprawdza to `node scripts/check-version.mjs`, także w CI).
+2. Dopisz sekcję `## [wersja]` w `CHANGELOG.md` – jej treść trafi do opisu wydania.
+3. Po scaleniu do `main` utwórz i wypchnij tag `v<wersja>`:
+
+   ```bash
+   git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
+   ```
+
+Workflow `.github/workflows/release.yml` zbuduje instalatory na Windows i Linux i opublikuje wydanie. Wersje z sufiksem (`-alpha.1`, `-beta.2`) są oznaczane jako pre-release.
 
 ## Struktura
 
