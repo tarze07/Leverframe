@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { getAppInfo, type AppInfo } from "../lib/tauri";
 import { useUiStore } from "../store/ui";
-import { useTerminalStore } from "../store/terminal";
-import { programTitle } from "../features/terminal/ptyClient";
+import { selectActiveTerminal, useTerminalStore } from "../store/terminal";
+import { useProfilesStore } from "../store/profiles";
 import { toggleTerminalPanel } from "../workbench/commands";
 
 export function StatusBar() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const toggleBottomPanel = useUiStore((s) => s.toggleBottomPanel);
-  const activeProgram = useTerminalStore((s) => s.activeProgram);
+  const active = useTerminalStore(selectActiveTerminal);
+  const profileName = useProfilesStore((s) => s.byId(active?.profileId)?.name);
 
   useEffect(() => {
     getAppInfo().then(setInfo).catch(() => setInfo(null));
@@ -21,7 +22,7 @@ export function StatusBar() {
         <StatusButton
           icon="terminal"
           title="Pokaż / ukryj terminal (Ctrl+`)"
-          label={activeProgram ? programTitle(activeProgram) : "Brak aktywnego terminala"}
+          label={active ? (profileName ?? active.title) : "Brak aktywnego terminala"}
           onClick={toggleTerminalPanel}
         />
       </div>

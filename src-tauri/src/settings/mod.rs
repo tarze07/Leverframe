@@ -1,6 +1,10 @@
-//! SettingsService: application info now; `settings.json` / `profiles.json` / layout in stage 7 (#9).
+//! SettingsService: application info and `settings.json` (default profile now; more in stage 7, #9).
+
+mod store;
 
 use serde::Serialize;
+
+pub use store::{write_atomic, SettingsStore};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AppInfo {
