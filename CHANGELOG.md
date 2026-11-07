@@ -10,6 +10,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 - **Definicje agentów w pliku `agents.json`**: można zmieniać wbudowanych agentów i dodawać własnych.
 - **Podpowiedzi instalacji**: oficjalne komendy do skopiowania; aplikacja niczego nie instaluje sama.
 - **Bezpieczne uruchamianie**: komenda agenta jest wpisywana dopiero, gdy powłoka jest gotowa, i nigdy w odpowiedzi na pytanie o hasło (np. przy logowaniu SSH).
+- **Nagrywanie sesji agentów** (asciicast v2) z metadanymi (agent, profil, folder, czas, kod wyjścia) w bazie SQLite. Nagrywanie można wyłączyć, a historię wyczyścić.
+- **Panel „Sesje”**: lista nagranych sesji, wyszukiwanie pełnotekstowe w wyjściu (także bez polskich znaków), filtry: agent, profil, projekt, data.
+- **Odtwarzacz nagrań**: odtwarzanie i pauza, przewijanie, prędkość 0,5–8×, pomijanie przerw, wyszukiwanie w nagraniu.
 
 ## [0.1.0-alpha.1] – 2026-11-06
 

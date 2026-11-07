@@ -2,6 +2,7 @@ import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { useProfilesStore } from "../store/profiles";
 import { useAgentsStore } from "../store/agents";
+import type { SessionRecord } from "../features/sessions/sessionsClient";
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
@@ -60,6 +61,27 @@ export function openAgent(agentId: string, options: { profileId?: string | null;
   if (id && agent) {
     dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(profile ? `${agent.name} · ${profile.name}` : agent.name);
   }
+  return id;
+}
+
+/** Opens (or focuses) the player for a recorded session in the editor area. */
+export function openSessionPlayer(session: SessionRecord, query?: string) {
+  const api = dockRegistry.get("main");
+  if (!api) return null;
+  const id = `session-${session.id}`;
+  const existing = api.getPanel(id);
+  if (existing && !query) {
+    existing.api.setActive();
+    return id;
+  }
+  existing?.api.close();
+  const when = new Date(session.startedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+  api.addPanel({
+    id,
+    component: "session",
+    title: `${session.agentName ?? "Sesja"} · ${when}`,
+    params: { sessionId: session.id, query: query?.trim() || undefined },
+  });
   return id;
 }
 

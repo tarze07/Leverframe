@@ -43,6 +43,10 @@ impl SettingsStore {
             .unwrap_or_default()
     }
 
+    pub fn get_value(&self, key: &str) -> Option<Value> {
+        self.load().remove(key)
+    }
+
     pub fn get_string(&self, key: &str) -> Option<String> {
         self.load()
             .get(key)
