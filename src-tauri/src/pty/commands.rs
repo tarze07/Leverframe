@@ -13,6 +13,7 @@ use super::manager::{
 };
 use crate::agents::AgentService;
 use crate::profiles::{Profile, ProfileKind, ProfileService};
+use crate::sessions::{Recorder, RecordingRequest, SessionService};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +32,24 @@ impl PtyEvents for ChannelEvents {
     }
     fn exit(&self, code: Option<u32>) {
         let _ = self.exit.send(PtyExit { exit_code: code });
+    }
+}
+
+/// Sends output to the UI and to the session recording.
+struct RecordedEvents {
+    inner: ChannelEvents,
+    recorder: Arc<Recorder>,
+    sessions: SessionService,
+}
+
+impl PtyEvents for RecordedEvents {
+    fn data(&self, bytes: Vec<u8>) {
+        self.recorder.data(&bytes);
+        self.inner.data(bytes);
+    }
+    fn exit(&self, code: Option<u32>) {
+        self.sessions.finished(&self.recorder, code);
+        self.inner.exit(code);
     }
 }
 
@@ -164,6 +183,7 @@ pub fn pty_spawn(
     manager: State<'_, PtyManager>,
     profiles: State<'_, ProfileService>,
     agents: State<'_, AgentService>,
+    sessions: State<'_, SessionService>,
     request: PtySpawnRequest,
     on_data: Channel<InvokeResponseBody>,
     on_exit: Channel<PtyExit>,
@@ -174,13 +194,45 @@ pub fn pty_spawn(
         agent_command,
     } = resolve_request(request, &profiles, &agents)?;
     let agent_id = opts.meta.agent_id.clone();
-    let pty = manager.spawn(
-        opts,
-        Arc::new(ChannelEvents {
-            data: on_data,
-            exit: on_exit,
+    let channels = ChannelEvents {
+        data: on_data,
+        exit: on_exit,
+    };
+    // Agent sessions are recorded (unless disabled in settings); a failing recording never blocks the terminal.
+    let recorder = sessions
+        .start(&RecordingRequest {
+            agent_id: agent_id.clone(),
+            agent_name: agent_id
+                .as_deref()
+                .and_then(|id| agents.find(id))
+                .map(|a| a.name),
+            profile_id: profile.as_ref().map(|p| p.id.clone()),
+            profile_name: profile.as_ref().map(|p| p.name.clone()),
+            cwd: opts.meta.cwd.clone(),
+            cols: opts.cols,
+            rows: opts.rows,
+        })
+        .unwrap_or(None);
+    let events: Arc<dyn PtyEvents> = match &recorder {
+        Some(r) => Arc::new(RecordedEvents {
+            inner: channels,
+            recorder: r.clone(),
+            sessions: (*sessions).clone(),
         }),
-    )?;
+        None => Arc::new(channels),
+    };
+    let pty = match manager.spawn(opts, events) {
+        Ok(pty) => pty,
+        Err(e) => {
+            if let Some(r) = &recorder {
+                sessions.discard(r);
+            }
+            return Err(e);
+        }
+    };
+    if let Some(r) = recorder {
+        sessions.attach(pty.id, r);
+    }
     Ok(PtySpawnResponse {
         pty,
         profile_id: profile.as_ref().map(|p| p.id.clone()),
@@ -204,11 +256,14 @@ pub fn pty_write(manager: State<'_, PtyManager>, id: PtyId, data: String) -> Res
 #[tauri::command]
 pub fn pty_resize(
     manager: State<'_, PtyManager>,
+    sessions: State<'_, SessionService>,
     id: PtyId,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    manager.resize(id, cols, rows)
+    manager.resize(id, cols, rows)?;
+    sessions.resize(id, cols, rows);
+    Ok(())
 }
 
 #[tauri::command]
