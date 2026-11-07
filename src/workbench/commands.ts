@@ -3,6 +3,7 @@ import { useUiStore } from "../store/ui";
 import { useProfilesStore } from "../store/profiles";
 import { useAgentsStore } from "../store/agents";
 import type { SessionRecord } from "../features/sessions/sessionsClient";
+import { LOG_AGENT_NAMES, type LogSummary } from "../features/sessions/agentLogsClient";
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
@@ -81,6 +82,47 @@ export function openSessionPlayer(session: SessionRecord, query?: string) {
     component: "session",
     title: `${session.agentName ?? "Sesja"} · ${when}`,
     params: { sessionId: session.id, query: query?.trim() || undefined },
+  });
+  return id;
+}
+
+/** Terminal profile matching a log source: the WSL distribution, or the default local profile. */
+export function profileForSource(source: string): string | undefined {
+  const { profiles, defaultProfileId } = useProfilesStore.getState();
+  if (source.startsWith("wsl:")) return profiles.some((p) => p.id === source) ? source : undefined;
+  const def = profiles.find((p) => p.id === defaultProfileId);
+  if (def && (def.kind === "local" || def.kind === "powershell")) return def.id;
+  return profiles.find((p) => p.kind === "local" || p.kind === "powershell")?.id;
+}
+
+/**
+ * Opens a terminal for a log source in `cwd` and types `command`. With `submit: false` the
+ * command is only typed, so the user can review it before pressing Enter.
+ */
+export function openCommandInTerminal(options: { command: string; source: string; cwd?: string | null; submit?: boolean; title?: string }) {
+  const profileId = profileForSource(options.source);
+  const id = openTerminal({
+    params: { profileId, cwd: options.cwd ?? undefined, initialCommand: options.command, submitInitial: options.submit ?? false },
+  });
+  if (id && options.title) dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(options.title);
+  return id;
+}
+
+/** Opens the timeline of an agent's own log in the editor area. */
+export function openAgentLog(summary: LogSummary) {
+  const api = dockRegistry.get("main");
+  if (!api) return null;
+  const id = `agentlog-${summary.source}-${summary.nativeId}`;
+  const existing = api.getPanel(id);
+  if (existing) {
+    existing.api.setActive();
+    return id;
+  }
+  api.addPanel({
+    id,
+    component: "agentLog",
+    title: `${LOG_AGENT_NAMES[summary.agent]} · ${summary.title ?? summary.nativeId.slice(0, 8)}`,
+    params: { source: summary.source, path: summary.path },
   });
   return id;
 }

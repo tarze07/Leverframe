@@ -13,6 +13,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 - **Nagrywanie sesji agentów** (asciicast v2) z metadanymi (agent, profil, folder, czas, kod wyjścia) w bazie SQLite. Nagrywanie można wyłączyć, a historię wyczyścić.
 - **Panel „Sesje”**: lista nagranych sesji, wyszukiwanie pełnotekstowe w wyjściu (także bez polskich znaków), filtry: agent, profil, projekt, data.
 - **Odtwarzacz nagrań**: odtwarzanie i pauza, przewijanie, prędkość 0,5–8×, pomijanie przerw, wyszukiwanie w nagraniu.
+- **Rozmowy agentów**: odczyt własnych logów Claude Code (`~/.claude/projects`) i Codex (`~/.codex/sessions`, także starszy format) – lokalnie i z dystrybucji WSL; lista odświeża się sama po zmianie plików.
+- **Oś czasu rozmowy**: wiadomości, polecenia z wynikiem i kodem wyjścia, zmienione pliki, opcjonalnie rozumowanie; akcje: kopiuj polecenie, wpisz je w nowym terminalu (bez uruchamiania), wznów sesję (`claude --resume`, `codex resume`).
 
 ## [0.1.0-alpha.1] – 2026-11-06
 

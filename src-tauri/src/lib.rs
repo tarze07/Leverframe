@@ -7,7 +7,7 @@ pub mod pty;
 pub mod sessions;
 pub mod settings;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +23,17 @@ pub fn run() {
             app.manage(settings::SettingsStore::new(&config_dir));
             let data_dir = app.path().app_data_dir()?;
             app.manage(sessions::SessionService::open(&data_dir, &config_dir)?);
+            let logs = std::sync::Arc::new(sessions::logs::AgentLogService::new());
+            let handle = app.handle().clone();
+            let watcher = sessions::logs::watch(
+                logs.local_roots(),
+                std::time::Duration::from_millis(500),
+                move || {
+                    let _ = handle.emit("agent-logs-changed", ());
+                },
+            );
+            app.manage(watcher);
+            app.manage(logs);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -43,6 +54,8 @@ pub fn run() {
             sessions::commands::sessions_delete,
             sessions::commands::sessions_clear,
             sessions::commands::sessions_set_recording,
+            sessions::logs::commands::agent_logs_list,
+            sessions::logs::commands::agent_log_read,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,

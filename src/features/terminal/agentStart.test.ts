@@ -55,6 +55,14 @@ describe("createAgentStarter", () => {
     expect(write).toHaveBeenCalledWith("kilo\r");
   });
 
+  it("can type without pressing Enter", () => {
+    const write = vi.fn();
+    const s = createAgentStarter({ command: "rm -rf build", write, submit: false });
+    s.onOutput("$ ");
+    vi.advanceTimersByTime(400);
+    expect(write).toHaveBeenCalledWith("rm -rf build");
+  });
+
   it("does nothing after dispose", () => {
     const write = vi.fn();
     const s = createAgentStarter({ command: "agy", write });

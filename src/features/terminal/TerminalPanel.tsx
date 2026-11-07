@@ -27,6 +27,10 @@ export interface TerminalPanelParams {
   profileId?: string;
   /** Agent to start in the terminal; its command is typed once the shell is ready. */
   agentId?: string;
+  /** Command typed once the shell is ready (resume a session, re-run a command). */
+  initialCommand?: string;
+  /** Press Enter after `initialCommand` (default false: the user reviews and runs it). */
+  submitInitial?: boolean;
   /** Explicit program (bypasses profiles). */
   program?: string;
   /** Dock the panel lives in (for the running-terminals list). */
@@ -212,13 +216,15 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
         const agentName = useAgentsStore.getState().agentById(handle.agentId)?.name;
         const base = handle.profileName ?? programTitle(handle.program);
         setTitle(agentName ? `${agentName} · ${base}` : base);
-        if (handle.agentCommand) {
+        const startCommand = handle.agentCommand ?? params?.initialCommand;
+        if (startCommand) {
           starter = createAgentStarter({
-            command: handle.agentCommand,
+            command: startCommand,
+            submit: handle.agentCommand ? true : (params?.submitInitial ?? false),
             write: (data) => void handle.write(data).catch(() => undefined),
             onBlocked: () =>
               term.write(
-                `\r\n\x1b[90m[Leverframe: ${handle.agentCommand} zostanie uruchomiony po zalogowaniu]\x1b[0m\r\n`,
+                `\r\n\x1b[90m[Leverframe: ${startCommand} zostanie wpisane po zalogowaniu]\x1b[0m\r\n`,
               ),
           });
           // Output that arrived before the handle resolved.

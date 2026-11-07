@@ -29,9 +29,18 @@ export interface AgentStarterOptions {
   /** Type even without any output after this long (some shells print nothing). */
   fallbackMs?: number;
   onBlocked?: () => void;
+  /** Press Enter after typing (default). `false` leaves the command for the user to review. */
+  submit?: boolean;
 }
 
-export function createAgentStarter({ command, write, quietMs = 400, fallbackMs = 4000, onBlocked }: AgentStarterOptions): AgentStarter {
+export function createAgentStarter({
+  command,
+  write,
+  quietMs = 400,
+  fallbackMs = 4000,
+  onBlocked,
+  submit = true,
+}: AgentStarterOptions): AgentStarter {
   let tail = "";
   let sent = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -45,7 +54,7 @@ export function createAgentStarter({ command, write, quietMs = 400, fallbackMs =
       return; // wait for more output (the user answers the prompt)
     }
     sent = true;
-    write(`${command}\r`);
+    write(submit ? `${command}\r` : command);
   };
 
   const schedule = (ms: number) => {
