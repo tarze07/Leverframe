@@ -1,6 +1,7 @@
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { useProfilesStore } from "../store/profiles";
+import { useAgentsStore } from "../store/agents";
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
@@ -44,6 +45,21 @@ export function openProfile(profileId?: string, options: Omit<OpenTerminalOption
   const title = useProfilesStore.getState().byId(profileId)?.name;
   const id = openTerminal({ ...options, params: profileId ? { profileId } : {} });
   if (id && title) dockRegistry.get(options.dock ?? "panel")?.getPanel(id)?.api.setTitle(title);
+  return id;
+}
+
+/** Opens a terminal in a profile (default when omitted) and starts an agent in it. */
+export function openAgent(agentId: string, options: { profileId?: string | null; cwd?: string | null; split?: "right" | "below" } = {}) {
+  const profileId = options.profileId ?? undefined;
+  const agent = useAgentsStore.getState().agentById(agentId);
+  const profile = useProfilesStore.getState().byId(profileId ?? useProfilesStore.getState().defaultProfileId);
+  const id = openTerminal({
+    split: options.split,
+    params: { profileId, agentId, cwd: options.cwd ?? undefined },
+  });
+  if (id && agent) {
+    dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(profile ? `${agent.name} · ${profile.name}` : agent.name);
+  }
   return id;
 }
 

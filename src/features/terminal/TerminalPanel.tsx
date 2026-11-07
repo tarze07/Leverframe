@@ -17,12 +17,16 @@ import { useUiStore } from "../../store/ui";
 import { programTitle, spawnPty, type PtyHandle } from "./ptyClient";
 import { terminalKeyAction } from "./keys";
 import { terminalRegistry } from "./registry";
+import { createAgentStarter, type AgentStarter } from "./agentStart";
+import { useAgentsStore } from "../../store/agents";
 import { terminalTheme } from "./theme";
 import { TerminalSearch } from "./TerminalSearch";
 
 export interface TerminalPanelParams {
   /** Terminal profile; the default profile is used when neither this nor `program` is set. */
   profileId?: string;
+  /** Agent to start in the terminal; its command is typed once the shell is ready. */
+  agentId?: string;
   /** Explicit program (bypasses profiles). */
   program?: string;
   /** Dock the panel lives in (for the running-terminals list). */
@@ -92,6 +96,9 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
 
     let pty: PtyHandle | null = null;
     let disposed = false;
+    let starter: AgentStarter | null = null;
+    let earlyOutput = "";
+    const decoder = new TextDecoder();
     const program = params?.program;
     const terminals = useTerminalStore.getState();
     const setTitle = (t: string) => {
@@ -103,6 +110,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       dock: params?.dock ?? "panel",
       title: api.title ?? "Terminal",
       profileId: params?.profileId ?? null,
+      agentId: params?.agentId ?? null,
       exited: false,
     });
 
@@ -169,6 +177,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     spawnPty(
       {
         profileId: params?.profileId,
+        agentId: params?.agentId,
         program,
         args: params?.args,
         cwd: params?.cwd,
@@ -176,7 +185,12 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
         rows: term.rows,
       },
       {
-        onData: (bytes) => term.write(bytes),
+        onData: (bytes) => {
+          term.write(bytes);
+          const text = decoder.decode(bytes, { stream: true });
+          if (starter) starter.onOutput(text);
+          else earlyOutput = (earlyOutput + text).slice(-500);
+        },
         onExit: (code) => {
           if (disposed) return;
           useTerminalStore.getState().update(api.id, { exited: true });
@@ -194,8 +208,22 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
           return;
         }
         pty = handle;
-        useTerminalStore.getState().update(api.id, { profileId: handle.profileId });
-        setTitle(handle.profileName ?? programTitle(handle.program));
+        useTerminalStore.getState().update(api.id, { profileId: handle.profileId, agentId: handle.agentId });
+        const agentName = useAgentsStore.getState().agentById(handle.agentId)?.name;
+        const base = handle.profileName ?? programTitle(handle.program);
+        setTitle(agentName ? `${agentName} · ${base}` : base);
+        if (handle.agentCommand) {
+          starter = createAgentStarter({
+            command: handle.agentCommand,
+            write: (data) => void handle.write(data).catch(() => undefined),
+            onBlocked: () =>
+              term.write(
+                `\r\n\x1b[90m[Leverframe: ${handle.agentCommand} zostanie uruchomiony po zalogowaniu]\x1b[0m\r\n`,
+              ),
+          });
+          // Output that arrived before the handle resolved.
+          starter.onOutput(earlyOutput);
+        }
         onFocus();
         // The size may have changed while the process was starting.
         void handle.resize(term.cols, term.rows).catch(() => undefined);
@@ -207,6 +235,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
 
     return () => {
       disposed = true;
+      starter?.dispose();
       cancelAnimationFrame(frame);
       observer.disconnect();
       activeSub.dispose();

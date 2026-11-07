@@ -28,6 +28,30 @@ pub struct SpawnOptions {
     pub env: Vec<(String, String)>,
     pub cols: u16,
     pub rows: u16,
+    /// Information about what runs in the terminal (kept for the sessions view, stage 4).
+    pub meta: SessionMeta,
+}
+
+/// What a terminal was started for. `agent_id` marks agent sessions (recorded in stage 4, #6).
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMeta {
+    pub profile_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub cwd: Option<String>,
+    /// Unix time in milliseconds; filled in by `spawn`.
+    pub started_at: u64,
+}
+
+/// A running terminal, as listed by `pty_list`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyInfo {
+    pub id: PtyId,
+    pub program: String,
+    pub pid: Option<u32>,
+    #[serde(flatten)]
+    pub meta: SessionMeta,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -40,6 +64,7 @@ pub struct SpawnedPty {
 }
 
 struct Session {
+    info: PtyInfo,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
@@ -117,6 +142,18 @@ impl PtyManager {
         self.sessions.lock().unwrap().insert(
             id,
             Session {
+                info: PtyInfo {
+                    id,
+                    program: program.clone(),
+                    pid,
+                    meta: SessionMeta {
+                        started_at: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0),
+                        ..opts.meta
+                    },
+                },
                 master: pair.master,
                 writer,
                 killer,
@@ -189,6 +226,19 @@ impl PtyManager {
         for session in sessions.values_mut() {
             let _ = session.killer.kill();
         }
+    }
+
+    /// Running terminals, oldest first.
+    pub fn list(&self) -> Vec<PtyInfo> {
+        let mut list: Vec<PtyInfo> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .map(|s| s.info.clone())
+            .collect();
+        list.sort_by_key(|i| i.id);
+        list
     }
 
     pub fn count(&self) -> usize {
@@ -314,6 +364,28 @@ mod tests {
         // Killing again / writing to a finished terminal.
         assert!(mgr.kill(pty.id).is_ok());
         assert!(mgr.write(pty.id, b"x").is_err());
+    }
+
+    #[test]
+    fn lists_running_terminals_with_metadata() {
+        let mgr = PtyManager::new();
+        let events = Arc::new(Collector::default());
+        let mut opts = sh("sleep 60");
+        opts.meta = SessionMeta {
+            profile_id: Some("local:sh".into()),
+            agent_id: Some("claude".into()),
+            cwd: Some("/tmp".into()),
+            started_at: 0,
+        };
+        let pty = mgr.spawn(opts, events.clone()).unwrap();
+        let list = mgr.list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, pty.id);
+        assert_eq!(list[0].meta.agent_id.as_deref(), Some("claude"));
+        assert!(list[0].meta.started_at > 0, "start time is filled in");
+        mgr.kill(pty.id).unwrap();
+        wait_until("exit", || events.exited().is_some());
+        assert!(mgr.list().is_empty());
     }
 
     #[test]
