@@ -124,7 +124,7 @@ Działanie:
 Okno/panel, w którym widać historię pracy agentów. Dwa uzupełniające się źródła danych:
 
 ### 6.1 Nagrywanie własne (działa dla każdego narzędzia)
-Każda sesja PTY uruchomiona jako „agent” jest zapisywana w formacie **asciicast v2** (`~/.leverframe/recordings/*.cast`) + metadane w SQLite (agent, profil, cwd, start/koniec, kod wyjścia). Pozwala to:
+Każda sesja PTY uruchomiona jako „agent” jest zapisywana w formacie **asciicast v2** (`<katalog danych aplikacji>/recordings/*.cast`, np. `~/.local/share/io.github.tarze07.leverframe/` na Linuksie, `%APPDATA%\io.github.tarze07.leverframe\` na Windows) + metadane w SQLite `sessions.db` (agent, profil, cwd, start/koniec, kod wyjścia). Pozwala to:
 - odtworzyć sesję (odtwarzacz na bazie xterm.js, przewijanie w czasie),
 - przeszukiwać tekst wyjścia (po usunięciu sekwencji ANSI, indeks FTS5).
 

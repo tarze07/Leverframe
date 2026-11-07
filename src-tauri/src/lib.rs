@@ -21,6 +21,8 @@ pub fn run() {
             app.manage(profiles::ProfileService::new(&config_dir));
             app.manage(agents::AgentService::new(&config_dir));
             app.manage(settings::SettingsStore::new(&config_dir));
+            let data_dir = app.path().app_data_dir()?;
+            app.manage(sessions::SessionService::open(&data_dir, &config_dir)?);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -34,6 +36,13 @@ pub fn run() {
             pty::commands::pty_list,
             agents::commands::agents_list,
             agents::commands::agents_detect,
+            sessions::commands::sessions_info,
+            sessions::commands::sessions_list,
+            sessions::commands::sessions_facets,
+            sessions::commands::sessions_read,
+            sessions::commands::sessions_delete,
+            sessions::commands::sessions_clear,
+            sessions::commands::sessions_set_recording,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,

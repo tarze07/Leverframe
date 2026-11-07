@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import type { SearchAddon } from "@xterm/addon-search";
 
 /** Small find widget in the top-right corner of a terminal (Ctrl+F). */
-export function TerminalSearch({ addon, onClose }: { addon: SearchAddon; onClose: () => void }) {
+export function TerminalSearch({ addon, onClose, initialQuery = "" }: { addon: SearchAddon; onClose: () => void; initialQuery?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, []);
+    if (initialQuery) addon.findPrevious(initialQuery); // last occurrence first
+  }, [addon, initialQuery]);
 
   const find = (backwards = false) => {
     if (!query) return;
