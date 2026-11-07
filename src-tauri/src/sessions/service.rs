@@ -217,8 +217,6 @@ impl SessionService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pty::{PtyEvents, PtyManager, SpawnOptions};
-    use std::time::{Duration, Instant};
 
     fn temp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("lf-sess-{name}-{}", std::process::id()));
@@ -258,84 +256,91 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    struct Wrapped {
-        recorder: Arc<Recorder>,
-        svc: Arc<SessionService>,
-        done: Mutex<bool>,
-    }
-    impl PtyEvents for Wrapped {
-        fn data(&self, bytes: Vec<u8>) {
-            self.recorder.data(&bytes);
-        }
-        fn exit(&self, code: Option<u32>) {
-            self.svc.finished(&self.recorder, code);
-            *self.done.lock().unwrap() = true;
-        }
-    }
-
+    /// Spawns a real shell in a PTY, so Unix only (like the PTY tests in `pty::manager`).
     #[cfg(unix)]
-    #[test]
-    fn records_a_real_terminal_session_end_to_end() {
-        let dir = temp("e2e");
-        let svc = Arc::new(SessionService::open(&dir, &dir).unwrap());
-        let recorder = svc.start(&agent_request()).unwrap().unwrap();
-        let events = Arc::new(Wrapped {
-            recorder: recorder.clone(),
-            svc: svc.clone(),
-            done: Mutex::new(false),
-        });
-        let mgr = PtyManager::new();
-        let pty = mgr
-            .spawn(
-                SpawnOptions {
-                    program: Some("/bin/sh".into()),
-                    args: vec![
-                        "-c".into(),
-                        "read x; printf '\\033[32mrefactor done: %s\\033[0m\\n' \"$x\"; exit 3"
-                            .into(),
-                    ],
-                    cols: 80,
-                    rows: 24,
-                    ..Default::default()
-                },
-                events.clone(),
-            )
-            .unwrap();
-        svc.attach(pty.id, recorder.clone());
-        svc.resize(pty.id, 100, 30);
-        mgr.write(pty.id, b"zazolc\n").unwrap();
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while !*events.done.lock().unwrap() {
-            assert!(Instant::now() < deadline, "timeout");
-            std::thread::sleep(Duration::from_millis(10));
+    mod pty_recording {
+        use super::*;
+        use crate::pty::{PtyEvents, PtyManager, SpawnOptions};
+        use std::time::{Duration, Instant};
+
+        struct Wrapped {
+            recorder: Arc<Recorder>,
+            svc: Arc<SessionService>,
+            done: Mutex<bool>,
+        }
+        impl PtyEvents for Wrapped {
+            fn data(&self, bytes: Vec<u8>) {
+                self.recorder.data(&bytes);
+            }
+            fn exit(&self, code: Option<u32>) {
+                self.svc.finished(&self.recorder, code);
+                *self.done.lock().unwrap() = true;
+            }
         }
 
-        let list = svc.list(&SessionFilter::default()).unwrap();
-        assert_eq!(list.len(), 1);
-        let rec = &list[0];
-        assert_eq!(rec.exit_code, Some(3));
-        assert!(rec.ended_at.is_some() && rec.bytes > 0);
+        #[test]
+        fn records_a_real_terminal_session_end_to_end() {
+            let dir = temp("e2e");
+            let svc = Arc::new(SessionService::open(&dir, &dir).unwrap());
+            let recorder = svc.start(&agent_request()).unwrap().unwrap();
+            let events = Arc::new(Wrapped {
+                recorder: recorder.clone(),
+                svc: svc.clone(),
+                done: Mutex::new(false),
+            });
+            let mgr = PtyManager::new();
+            let pty = mgr
+                .spawn(
+                    SpawnOptions {
+                        program: Some("/bin/sh".into()),
+                        args: vec![
+                            "-c".into(),
+                            "read x; printf '\\033[32mrefactor done: %s\\033[0m\\n' \"$x\"; exit 3"
+                                .into(),
+                        ],
+                        cols: 80,
+                        rows: 24,
+                        ..Default::default()
+                    },
+                    events.clone(),
+                )
+                .unwrap();
+            svc.attach(pty.id, recorder.clone());
+            svc.resize(pty.id, 100, 30);
+            mgr.write(pty.id, b"zazolc\n").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !*events.done.lock().unwrap() {
+                assert!(Instant::now() < deadline, "timeout");
+                std::thread::sleep(Duration::from_millis(10));
+            }
 
-        let cast = svc.read(rec.id).unwrap();
-        let mut lines = cast.lines();
-        let header: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
-        assert_eq!(header["title"], "Claude Code · sh");
-        assert!(cast.contains("\"r\",\"100x30\""));
-        assert!(cast.contains("refactor done: zazolc"));
+            let list = svc.list(&SessionFilter::default()).unwrap();
+            assert_eq!(list.len(), 1);
+            let rec = &list[0];
+            assert_eq!(rec.exit_code, Some(3));
+            assert!(rec.ended_at.is_some() && rec.bytes > 0);
 
-        let found = svc
-            .list(&SessionFilter {
-                query: Some("refactor zazolc".into()),
-                ..Default::default()
-            })
-            .unwrap();
-        assert_eq!(found.len(), 1, "output is searchable without escape codes");
-        assert!(svc.delete(rec.id).is_ok());
-        assert!(
-            !Path::new(&rec.cast_path).exists(),
-            "file removed with the session"
-        );
-        std::fs::remove_dir_all(dir).unwrap();
+            let cast = svc.read(rec.id).unwrap();
+            let mut lines = cast.lines();
+            let header: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+            assert_eq!(header["title"], "Claude Code · sh");
+            assert!(cast.contains("\"r\",\"100x30\""));
+            assert!(cast.contains("refactor done: zazolc"));
+
+            let found = svc
+                .list(&SessionFilter {
+                    query: Some("refactor zazolc".into()),
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(found.len(), 1, "output is searchable without escape codes");
+            assert!(svc.delete(rec.id).is_ok());
+            assert!(
+                !Path::new(&rec.cast_path).exists(),
+                "file removed with the session"
+            );
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[test]
