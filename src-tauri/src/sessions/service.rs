@@ -218,6 +218,13 @@ impl SessionService {
 mod tests {
     use super::*;
 
+    /// Best-effort cleanup. Windows refuses to delete files that are still open (the database,
+    /// a recording of a session that is still running), so callers drop those first and a
+    /// leftover temp file never fails a test.
+    fn cleanup(dir: &Path) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     fn temp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("lf-sess-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -253,7 +260,8 @@ mod tests {
         assert!(!svc.info().recording_enabled);
         svc.set_recording_enabled(true).unwrap();
         assert!(svc.start(&agent_request()).unwrap().is_some());
-        std::fs::remove_dir_all(dir).unwrap();
+        drop(svc);
+        cleanup(&dir);
     }
 
     /// Spawns a real shell in a PTY, so Unix only (like the PTY tests in `pty::manager`).
@@ -339,7 +347,8 @@ mod tests {
                 !Path::new(&rec.cast_path).exists(),
                 "file removed with the session"
             );
-            std::fs::remove_dir_all(dir).unwrap();
+            drop(svc);
+            cleanup(&dir);
         }
     }
 
@@ -356,7 +365,9 @@ mod tests {
         let left = svc.list(&SessionFilter::default()).unwrap();
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].id, running.session_id);
-        std::fs::remove_dir_all(dir).unwrap();
+        svc.finished(&running, Some(0)); // closes the recording file
+        drop(svc);
+        cleanup(&dir);
     }
 
     #[test]
@@ -372,6 +383,7 @@ mod tests {
         let list = svc.list(&SessionFilter::default()).unwrap();
         assert!(list[0].ended_at.is_some());
         assert_eq!(list[0].exit_code, None);
-        std::fs::remove_dir_all(dir).unwrap();
+        drop(svc);
+        cleanup(&dir); // the "crashed" recorder still holds its file open on purpose
     }
 }
