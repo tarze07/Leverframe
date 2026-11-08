@@ -1,9 +1,10 @@
 //! SessionService: recordings of agent sessions (asciicast v2) with metadata and a full-text index
-//! in SQLite (FTS5). Adapters for the agents' own logs follow in stage 5 (#7).
+//! in SQLite (FTS5), and adapters for the agents' own logs (`logs`).
 
 mod cast;
 pub mod commands;
 mod db;
+pub mod logs;
 mod recorder;
 mod service;
 mod text;

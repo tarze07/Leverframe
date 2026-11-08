@@ -1,0 +1,6 @@
+{"id":"6c1f0a52-aaaa-bbbb-cccc-000000000001","timestamp":"2025-06-01T10:00:00.000Z","instructions":null,"git":{"branch":"main"}}
+{"record_type":"state"}
+{"type":"message","role":"user","content":[{"type":"input_text","text":"List files"}]}
+{"type":"local_shell_call","call_id":"c1","status":"completed","action":{"type":"exec","command":["ls","-la"]}}
+{"type":"function_call_output","call_id":"c1","output":"{\"output\":\"total 0\",\"metadata\":{\"exit_code\":0}}"}
+{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}

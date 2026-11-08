@@ -23,6 +23,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 vte = "0.15.0"
+notify = "8"
 
 [profile.release]
 codegen-units = 1

@@ -5,6 +5,7 @@ import type { SessionRecord } from "./sessionsClient";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a), Channel: class {} }));
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 const openSessionPlayer = vi.fn();
 vi.mock("../../workbench/commands", () => ({ openSessionPlayer: (...a: unknown[]) => openSessionPlayer(...a) }));
 
@@ -42,13 +43,20 @@ function backend(list: (filter: Record<string, unknown>) => SessionRecord[]) {
         };
       case "sessions_clear":
         return 2;
+      case "agent_logs_list":
+        return [];
       default:
         return undefined;
     }
   });
 }
 
-describe("SessionsView", () => {
+function renderRecordings() {
+  render(<SessionsView />);
+  fireEvent.click(screen.getByRole("tab", { name: "Nagrania" }));
+}
+
+describe("SessionsView – recordings", () => {
   beforeEach(() => {
     invoke.mockReset();
     openSessionPlayer.mockReset();
@@ -62,7 +70,7 @@ describe("SessionsView", () => {
 
   it("lists sessions with agent, profile, duration and folder, and opens the player", async () => {
     backend(() => [rec(1), rec(2, { agentName: "Codex", exitCode: 1 }), rec(3, { endedAt: null })]);
-    render(<SessionsView />);
+    renderRecordings();
     const [first] = await screen.findAllByRole("listitem", { name: /^Claude Code/ });
     expect(within(first).getByText("5 min 0 s", { exact: false })).toBeInTheDocument();
     expect(within(first).getByText("· app")).toBeInTheDocument();
@@ -74,7 +82,7 @@ describe("SessionsView", () => {
 
   it("searches (debounced) and highlights matches in snippets", async () => {
     backend((f) => (f.query === "npm test" ? [rec(1, { snippet: "Running [[npm]] [[test]] now" })] : [rec(1), rec(2)]));
-    render(<SessionsView />);
+    renderRecordings();
     await screen.findAllByRole("listitem");
     fireEvent.change(screen.getByLabelText("Szukaj w sesjach"), { target: { value: "npm test" } });
     const mark = await screen.findByText("npm", { selector: "mark" });
@@ -86,7 +94,7 @@ describe("SessionsView", () => {
 
   it("passes filters to the backend", async () => {
     backend(() => []);
-    render(<SessionsView />);
+    renderRecordings();
     await screen.findByText(/Brak nagranych sesji/);
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "codex" } });
     fireEvent.change(screen.getByLabelText("Projekt"), { target: { value: "/home/me/app" } });
@@ -104,7 +112,7 @@ describe("SessionsView", () => {
 
   it("toggles recording, deletes a session and clears history after confirmation", async () => {
     backend(() => [rec(1)]);
-    render(<SessionsView />);
+    renderRecordings();
     await screen.findByRole("listitem");
     fireEvent.click(screen.getByLabelText("Nagrywaj sesje agentów"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("sessions_set_recording", { enabled: false }));

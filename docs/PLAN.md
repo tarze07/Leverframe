@@ -148,8 +148,8 @@ type SessionEntry =
 |---|---|---|
 | Claude Code | `~/.claude/projects/<zakodowana-ścieżka>/<session-id>.jsonl` | JSONL |
 | Codex | `~/.codex/sessions/RRRR/MM/DD/rollout-*.jsonl` | JSONL |
-| Agy | katalog konfiguracyjny narzędzia – do ustalenia | do ustalenia |
-| Kilo Code CLI | katalog konfiguracyjny narzędzia – do ustalenia | do ustalenia |
+| Agy | nieudokumentowany – brak adaptera, dostępne nagrania z 6.1 | – |
+| Kilo Code CLI | nieudokumentowany – brak adaptera, dostępne nagrania z 6.1 | – |
 
 Formaty logów nie są publicznym, stabilnym API, więc każdy adapter jest osobnym modułem z testami na próbkach plików i tolerancyjnym parserem (nieznane pola ignorowane). Jeśli adaptera brak lub parsowanie się nie uda, zostaje nagranie z 6.1.
 

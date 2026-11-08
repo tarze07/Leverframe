@@ -1,6 +1,7 @@
 import { WelcomePanel } from "../features/editor/WelcomePanel";
 import { TerminalPanel } from "../features/terminal/TerminalPanel";
 import { SessionPlayer } from "../features/sessions/SessionPlayer";
+import { AgentLogPanel } from "../features/sessions/AgentLogPanel";
 import { DockArea } from "../workbench/DockArea";
 
 /** Panel components available in the central area. Editors (#8) register here. */
@@ -8,6 +9,7 @@ const components = {
   welcome: WelcomePanel,
   terminal: TerminalPanel,
   session: SessionPlayer,
+  agentLog: AgentLogPanel,
 };
 
 /** Central editor/terminal area: tabs, splits, drag & drop, persisted layout. */

@@ -6,19 +6,49 @@ import { useTerminalStore } from "../../store/terminal";
 import { openSessionPlayer } from "../../workbench/commands";
 import { folderName } from "../agents/agentsClient";
 import { formatDuration, snippetParts, type DateRange, type SessionRecord } from "./sessionsClient";
+import { AgentLogsList } from "./AgentLogsList";
+import { RANGES, selectClass } from "./filters";
 
-const RANGES: { value: DateRange; label: string }[] = [
-  { value: "all", label: "Cały czas" },
-  { value: "today", label: "Dzisiaj" },
-  { value: "7d", label: "Ostatnie 7 dni" },
-  { value: "30d", label: "Ostatnie 30 dni" },
-];
+type Tab = "logs" | "recordings";
 
-const selectClass =
-  "min-w-0 flex-1 rounded border border-lf-border bg-lf-editor px-1 py-0.5 text-[11px] text-lf-fg outline-none focus:border-lf-accent";
-
-/** Sidebar view: recorded agent sessions with full-text search and filters. */
+/** Sidebar view: the agents' own conversation logs and terminal recordings. */
 export function SessionsView() {
+  const [tab, setTab] = useState<Tab>("logs");
+  if (!isTauri()) {
+    return (
+      <Placeholder icon="history" title="Sesje agentów">
+        Historia sesji jest dostępna w aplikacji desktopowej (<code className="font-mono">npm run tauri dev</code>).
+      </Placeholder>
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <div role="tablist" aria-label="Rodzaj sesji" className="mx-3 mb-2 flex rounded border border-lf-border p-0.5 text-xs">
+        {(
+          [
+            ["logs", "Rozmowy"],
+            ["recordings", "Nagrania"],
+          ] as [Tab, string][]
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`flex-1 rounded px-2 py-0.5 ${tab === id ? "bg-lf-elevated text-lf-fg" : "text-lf-muted hover:text-lf-fg"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "logs" ? <AgentLogsList /> : <RecordingsList />}
+    </div>
+  );
+}
+
+/** Recorded agent sessions with full-text search and filters. */
+function RecordingsList() {
   const { filters, sessions, facets, status, error, recordingEnabled, setFilters, resetFilters, refresh, loadInfo, setRecording, clear } =
     useSessionsStore();
   // Refresh when a terminal finishes or starts (a recording may have been added or closed).
@@ -40,14 +70,6 @@ export function SessionsView() {
   useEffect(() => {
     void refresh();
   }, [filters, runningKey, refresh]);
-
-  if (!isTauri()) {
-    return (
-      <Placeholder icon="history" title="Sesje agentów">
-        Historia sesji jest dostępna w aplikacji desktopowej (<code className="font-mono">npm run tauri dev</code>).
-      </Placeholder>
-    );
-  }
 
   const hasFilters = filters.agentId || filters.profileId || filters.cwd || filters.range !== "all" || filters.query;
 
