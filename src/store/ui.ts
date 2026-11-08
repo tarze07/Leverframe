@@ -13,6 +13,9 @@ export interface UiState {
   bottomPanelVisible: boolean;
   fontMono: string;
   fontSize: number;
+  /** Quick open (Ctrl+P) dialog visible – not persisted. */
+  quickOpen: boolean;
+  setQuickOpen: (open: boolean) => void;
   /** Activity bar click: switch view, or toggle the sidebar when the view is already active (VS Code behaviour). */
   selectView: (view: ViewId) => void;
   setSidebarVisible: (visible: boolean) => void;
@@ -31,6 +34,8 @@ export const useUiStore = create<UiState>()(
       bottomPanelVisible: true,
       fontMono: DEFAULT_FONT_MONO,
       fontSize: DEFAULT_FONT_SIZE,
+      quickOpen: false,
+      setQuickOpen: (quickOpen) => set({ quickOpen }),
       selectView: (view) => {
         const { activeView, sidebarVisible } = get();
         if (view === activeView) set({ sidebarVisible: !sidebarVisible });

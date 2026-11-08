@@ -33,7 +33,7 @@ export function terminalKeyAction(e: KeyLike, hasSelection: boolean, windows = i
     if (key === "v") return "paste";
     return null;
   }
-  if (key === "b" || key === "j") return "app";
+  if (key === "b" || key === "j" || key === "p") return "app";
   if (key === "f") return "find";
   // Windows Terminal convention: Ctrl+C copies when text is selected, Ctrl+V pastes.
   if (windows && key === "c" && hasSelection) return "copy";

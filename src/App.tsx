@@ -11,6 +11,7 @@ import { useAppearance } from "./lib/useAppearance";
 import { useKeybindings } from "./lib/useKeybindings";
 import { useUiStore } from "./store/ui";
 import { useProfilesStore } from "./store/profiles";
+import { QuickOpen } from "./features/editor/QuickOpen";
 
 type VisibilityKey = "sidebarVisible" | "bottomPanelVisible";
 
@@ -94,6 +95,7 @@ export default function App() {
         </Group>
       </div>
       <StatusBar />
+      <QuickOpen />
     </div>
   );
 }

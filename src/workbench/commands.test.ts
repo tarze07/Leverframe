@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { dockRegistry } from "./docks";
-import { openTerminal, terminalPanels, toggleTerminalPanel } from "./commands";
+import { logFilePath, openTerminal, terminalPanels, toggleTerminalPanel } from "./commands";
 
 interface FakePanel {
   id: string;
@@ -76,5 +76,19 @@ describe("workbench commands", () => {
 
     toggleTerminalPanel(); // already has a terminal: no new one
     expect(terminalPanels(dock)).toHaveLength(1);
+  });
+});
+
+describe("logFilePath", () => {
+  it("resolves relative paths against the conversation folder", () => {
+    expect(logFilePath("src/a.ts", "/home/me/app", "local", false)).toBe("/home/me/app/src/a.ts");
+    expect(logFilePath("/abs/b.ts", "/home/me/app", "local", false)).toBe("/abs/b.ts");
+    expect(logFilePath("src/a.ts", "C:\\work\\app", "local", true)).toBe("C:\\work\\app\\src\\a.ts");
+  });
+
+  it("maps WSL files to \\\\wsl.localhost on Windows", () => {
+    expect(logFilePath("/home/me/app/a.ts", null, "wsl:Ubuntu", true)).toBe("\\\\wsl.localhost\\Ubuntu\\home\\me\\app\\a.ts");
+    expect(logFilePath("src/a.ts", "/home/me/app", "wsl:Ubuntu", true)).toBe("\\\\wsl.localhost\\Ubuntu\\home\\me\\app\\src\\a.ts");
+    expect(logFilePath("/home/me/a.ts", null, "wsl:Ubuntu", false)).toBe("/home/me/a.ts");
   });
 });

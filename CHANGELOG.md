@@ -15,6 +15,10 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 - **Odtwarzacz nagrań**: odtwarzanie i pauza, przewijanie, prędkość 0,5–8×, pomijanie przerw, wyszukiwanie w nagraniu.
 - **Rozmowy agentów**: odczyt własnych logów Claude Code (`~/.claude/projects`) i Codex (`~/.codex/sessions`, także starszy format) – lokalnie i z dystrybucji WSL; lista odświeża się sama po zmianie plików.
 - **Oś czasu rozmowy**: wiadomości, polecenia z wynikiem i kodem wyjścia, zmienione pliki, opcjonalnie rozumowanie; akcje: kopiuj polecenie, wpisz je w nowym terminalu (bez uruchamiania), wznów sesję (`claude --resume`, `codex resume`).
+- **Edytor plików (Monaco)** w zakładkach obok terminali: podświetlanie składni, wyszukiwanie (Ctrl+F), zapis (Ctrl+S), znacznik niezapisanych zmian, pytanie o zapis przy zamykaniu, wykrywanie zmian pliku na dysku (nadpisz / wczytaj ponownie). Edytor ładuje się dopiero przy pierwszym otwarciu pliku.
+- **Panel „Pliki”**: drzewo folderu projektu z pominięciem plików z `.gitignore`.
+- **Szybkie otwieranie (Ctrl+P)** z dopasowaniem rozmytym; pliki z WSL przez `\\wsl.localhost`.
+- **„Otwórz w edytorze”** dla plików zmienionych przez agenta (oś czasu rozmowy).
 
 ## [0.1.0-alpha.1] – 2026-11-06
 
