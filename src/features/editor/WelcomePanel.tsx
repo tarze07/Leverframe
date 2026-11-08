@@ -1,6 +1,8 @@
 import { openTerminal } from "../../workbench/commands";
 
 const SHORTCUTS: [string, string][] = [
+  ["Ctrl+P", "Szybkie otwieranie pliku"],
+  ["Ctrl+S", "Zapisz plik"],
   ["Ctrl+`", "Pokaż / ukryj terminal"],
   ["Ctrl+Shift+`", "Nowy terminal"],
   ["Ctrl+B", "Pokaż / ukryj panel boczny"],

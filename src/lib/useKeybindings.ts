@@ -22,6 +22,9 @@ export function useKeybindings() {
       } else if (key === "j") {
         e.preventDefault();
         useUiStore.getState().toggleBottomPanel();
+      } else if (key === "p") {
+        e.preventDefault();
+        useUiStore.getState().setQuickOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);

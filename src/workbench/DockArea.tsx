@@ -4,6 +4,7 @@ import {
   themeDark,
   type DockviewApi,
   type DockviewReadyEvent,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
   type IWatermarkPanelProps,
 } from "dockview-react";
@@ -13,6 +14,7 @@ import { dockRegistry, type DockId } from "./docks";
 export interface DockAreaProps {
   id: DockId;
   components: Record<string, React.FunctionComponent<IDockviewPanelProps>>;
+  tabComponents?: Record<string, React.FunctionComponent<IDockviewPanelHeaderProps>>;
   /** Called when there is no saved layout (or it could not be restored). */
   addDefaultPanels?: (api: DockviewApi) => void;
   /** Called after the last panel is closed. */
@@ -35,7 +37,7 @@ function restoreLayout(api: DockviewApi, key: string): boolean {
 }
 
 /** A tabbed, splittable dock (dockview) with persisted layout, registered under `id`. */
-export function DockArea({ id, components, addDefaultPanels, onEmpty, watermark }: DockAreaProps) {
+export function DockArea({ id, components, tabComponents, addDefaultPanels, onEmpty, watermark }: DockAreaProps) {
   const onReady = useCallback(
     ({ api }: DockviewReadyEvent) => {
       const key = layoutStorageKey(id);
@@ -55,7 +57,13 @@ export function DockArea({ id, components, addDefaultPanels, onEmpty, watermark 
 
   return (
     <div className="h-full w-full" data-testid={`dock-${id}`}>
-      <DockviewReact components={components} onReady={onReady} theme={themeDark} watermarkComponent={watermark} />
+      <DockviewReact
+        components={components}
+        tabComponents={tabComponents}
+        onReady={onReady}
+        theme={themeDark}
+        watermarkComponent={watermark}
+      />
     </div>
   );
 }

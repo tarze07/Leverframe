@@ -2,6 +2,9 @@ import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { useProfilesStore } from "../store/profiles";
 import { useAgentsStore } from "../store/agents";
+import { editorPanelId } from "../store/editor";
+import { baseName, joinPath } from "../features/editor/fsClient";
+import { isWindows } from "../features/terminal/keys";
 import type { SessionRecord } from "../features/sessions/sessionsClient";
 import { LOG_AGENT_NAMES, type LogSummary } from "../features/sessions/agentLogsClient";
 import { terminalRegistry } from "../features/terminal/registry";
@@ -125,6 +128,39 @@ export function openAgentLog(summary: LogSummary) {
     params: { source: summary.source, path: summary.path },
   });
   return id;
+}
+
+/** Opens a file in an editor tab (or focuses it if already open). */
+export function openFile(path: string, options: { line?: number } = {}) {
+  const api = dockRegistry.get("main");
+  if (!api) return null;
+  const id = editorPanelId(path);
+  const existing = api.getPanel(id);
+  if (existing) {
+    existing.api.setActive();
+    return id;
+  }
+  api.addPanel({
+    id,
+    component: "editor",
+    tabComponent: "editor",
+    title: baseName(path),
+    params: { path, line: options.line },
+  });
+  return id;
+}
+
+/**
+ * Local path of a file mentioned in an agent log: relative paths are resolved against the
+ * conversation folder; on Windows, files of a WSL source are reached via `\\wsl.localhost\<distro>`.
+ */
+export function logFilePath(file: string, cwd: string | null, source: string, windows = isWindows()): string {
+  const isAbsolute = file.startsWith("/") || /^[A-Za-z]:[\\/]/.test(file) || file.startsWith("\\\\");
+  const full = isAbsolute || !cwd ? file : joinPath(cwd, file);
+  if (windows && source.startsWith("wsl:") && full.startsWith("/")) {
+    return `\\\\wsl.localhost\\${source.slice(4)}${full.replaceAll("/", "\\")}`;
+  }
+  return full;
 }
 
 /** Brings a running terminal to front and focuses it. */

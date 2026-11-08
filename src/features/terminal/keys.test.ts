@@ -22,6 +22,7 @@ describe("terminalKeyAction", () => {
   it("lets app shortcuts bubble out of the terminal", () => {
     expect(terminalKeyAction(key("b", { ctrl: true }), false, false)).toBe("app");
     expect(terminalKeyAction(key("j", { ctrl: true }), false, false)).toBe("app");
+    expect(terminalKeyAction(key("p", { ctrl: true }), false, false)).toBe("app");
     expect(terminalKeyAction(key("`", { ctrl: true }, "Backquote"), false, false)).toBe("app");
     expect(terminalKeyAction(key("~", { ctrl: true, shift: true }, "Backquote"), false, false)).toBe("app");
   });

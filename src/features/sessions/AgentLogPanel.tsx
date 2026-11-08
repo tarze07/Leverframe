@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { openCommandInTerminal } from "../../workbench/commands";
+import { logFilePath, openCommandInTerminal, openFile } from "../../workbench/commands";
 import { plural } from "../../lib/plural";
 import {
   agentLogsClient,
@@ -110,7 +110,16 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
                 <span className="truncate" title={f}>
                   {f}
                 </span>
-                <button type="button" title="Kopiuj ścieżkę" aria-label={`Kopiuj ścieżkę ${f}`} onClick={() => copy(f)} className="hidden text-lf-muted hover:text-lf-fg group-hover:inline">
+                <button
+                  type="button"
+                  title="Otwórz w edytorze"
+                  aria-label={`Otwórz ${f} w edytorze`}
+                  onClick={() => openFile(logFilePath(f, s.cwd, s.source))}
+                  className="hidden text-lf-muted hover:text-lf-fg group-focus-within:inline group-hover:inline"
+                >
+                  <span className="codicon codicon-go-to-file" aria-hidden />
+                </button>
+                <button type="button" title="Kopiuj ścieżkę" aria-label={`Kopiuj ścieżkę ${f}`} onClick={() => copy(f)} className="hidden text-lf-muted hover:text-lf-fg group-focus-within:inline group-hover:inline">
                   <span className="codicon codicon-copy" aria-hidden />
                 </button>
               </li>
