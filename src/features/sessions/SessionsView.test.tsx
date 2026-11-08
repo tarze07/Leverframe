@@ -110,6 +110,17 @@ describe("SessionsView – recordings", () => {
     expect(useSessionsStore.getState().filters.agentId).toBe("");
   });
 
+  it("keeps refreshing while a session is running", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    backend(() => [rec(1, { endedAt: null })]);
+    renderRecordings();
+    await screen.findByText("trwa");
+    const before = invoke.mock.calls.filter((c) => c[0] === "sessions_list").length;
+    await act(async () => void vi.advanceTimersByTime(3100));
+    expect(invoke.mock.calls.filter((c) => c[0] === "sessions_list").length).toBeGreaterThan(before);
+    vi.useRealTimers();
+  });
+
   it("toggles recording, deletes a session and clears history after confirmation", async () => {
     backend(() => [rec(1)]);
     renderRecordings();

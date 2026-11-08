@@ -111,7 +111,10 @@ jobs:
         run: |
           assets=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" --jq '.[].name')
           echo "Assets:"; echo "$assets"
-          for pattern in '_x64-setup\.exe$' '_amd64\.deb$' '_amd64\.AppImage$'; do
+          # .msi and .rpm only exist for versions without a suffix (they reject e.g. "-alpha.1").
+          patterns='_x64-setup\.exe$ _amd64\.deb$ _amd64\.AppImage$'
+          case "${TAG#v}" in *-*) ;; *) patterns="$patterns _x64_en-US\.msi$ \.x86_64\.rpm$" ;; esac
+          for pattern in $patterns; do
             if ! echo "$assets" | grep -Eq "$pattern"; then
               echo "::error::Missing installer matching $pattern"
               exit 1

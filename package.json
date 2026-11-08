@@ -1,7 +1,7 @@
 {
   "name": "leverframe",
   "private": true,
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "e2e": "node --test --test-concurrency=1 e2e/app.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

@@ -71,6 +71,16 @@ function RecordingsList() {
     void refresh();
   }, [filters, runningKey, refresh]);
 
+  // While a session is running (listed, or an agent terminal is open), keep the list and search
+  // results up to date – its output becomes searchable within seconds.
+  const agentRunning = useTerminalStore((s) => s.running.some((r) => r.agentId && !r.exited));
+  const hasRunning = agentRunning || sessions.some((s) => s.endedAt === null);
+  useEffect(() => {
+    if (!hasRunning) return;
+    const t = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(t);
+  }, [hasRunning, refresh]);
+
   const hasFilters = filters.agentId || filters.profileId || filters.cwd || filters.range !== "all" || filters.query;
 
   return (

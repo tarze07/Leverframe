@@ -11,11 +11,44 @@ Instalatory są w zakładce [Releases](https://github.com/tarze07/Leverframe/rel
 
 | System | Plik |
 |---|---|
-| Windows 10/11 | `Leverframe_<wersja>_x64-setup.exe` |
+| Windows 10/11 | `Leverframe_<wersja>_x64-setup.exe` lub `Leverframe_<wersja>_x64_en-US.msi` |
 | Debian / Ubuntu | `Leverframe_<wersja>_amd64.deb` (`sudo apt install ./plik.deb`) |
+| Fedora / openSUSE | `Leverframe-<wersja>-1.x86_64.rpm` (`sudo dnf install ./plik.rpm`) |
 | Inne dystrybucje Linuksa | `Leverframe_<wersja>_amd64.AppImage` (`chmod +x`, potem uruchom) |
 
 Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżenie: wybierz **Więcej informacji → Uruchom mimo to**.
+
+## Skróty klawiszowe
+
+| Skrót | Działanie |
+|---|---|
+| Ctrl+Shift+P | Paleta poleceń |
+| Ctrl+P | Szybkie otwieranie pliku |
+| Ctrl+` / Ctrl+Shift+` | Pokaż/ukryj terminal / nowy terminal |
+| Ctrl+B / Ctrl+J | Panel boczny / panel dolny |
+| Ctrl+Shift+E | Panel „Pliki” |
+| Ctrl+S, Ctrl+F | Zapis i wyszukiwanie w edytorze |
+| Ctrl+F, Ctrl+Shift+C / V | Wyszukiwanie, kopiowanie i wklejanie w terminalu |
+
+## Ustawienia
+
+Plik `settings.json` (paleta poleceń → „Otwórz settings.json”) – zmiany działają po zapisaniu:
+
+```json
+{
+  "theme": "system",
+  "fontFamily": "JetBrains Mono, monospace",
+  "fontSize": 14,
+  "keybindings": { "palette.open": "Ctrl+K", "view.files": null },
+  "recordSessions": true
+}
+```
+
+`theme`: `dark` / `light` / `system`. W `keybindings` identyfikatory poleceń (np. `palette.open`, `files.quickOpen`, `terminal.new`, `view.toggleSidebar`) przypisuje się do skrótów; `null` wyłącza skrót domyślny. Własnych agentów CLI dodaje się w `agents.json` w tym samym folderze.
+
+## Bezpieczeństwo
+
+Leverframe nie zapisuje haseł ani kluczy, więc nie korzysta z systemowego pęku kluczy: połączenia SSH używają kluczy i agenta SSH systemu (hasło wpisuje się w terminalu), a agenci CLI przechowują swoje dane logowania sami. Nagrania sesji agentów zawierają wszystko, co pojawiło się w terminalu – nagrywanie można wyłączyć w panelu „Sesje” lub w `settings.json`.
 
 ## Stos
 
@@ -50,6 +83,7 @@ Sam interfejs (bez backendu Rust) w przeglądarce: `npm run dev`, potem <http://
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Sprawdzenie typów TypeScript |
 | `npm test` | Testy frontendu (Vitest) |
+| `npm run e2e` | Testy E2E na prawdziwym oknie aplikacji (Linux, wymaga `tauri-driver`, `WebKitWebDriver` i Xvfb) |
 | `cargo test` (w `src-tauri/`) | Testy backendu |
 
 ## Wydanie nowej wersji

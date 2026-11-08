@@ -64,12 +64,35 @@ impl SessionService {
             .map_err(|e| format!("Nie można utworzyć {}: {e}", dir.display()))?;
         let db = SessionDb::open(&data_dir.join("sessions.db"))?;
         db.close_interrupted(file_mtime_ms)?;
-        Ok(Self {
+        let svc = Self {
             dir,
             db: Arc::new(db),
             settings: SettingsStore::new(config_dir),
             active: Arc::new(Mutex::new(HashMap::new())),
-        })
+        };
+        svc.spawn_text_flusher();
+        Ok(svc)
+    }
+
+    /// Every couple of seconds, indexes text of running recordings that has been waiting.
+    /// The thread ends when the service is dropped.
+    fn spawn_text_flusher(&self) {
+        let active = Arc::downgrade(&self.active);
+        std::thread::Builder::new()
+            .name("session-text-flush".into())
+            .spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let Some(active) = active.upgrade() else {
+                    return;
+                };
+                let recorders: Vec<Arc<Recorder>> =
+                    active.lock().unwrap().values().cloned().collect();
+                drop(active);
+                for r in recorders {
+                    r.flush_pending();
+                }
+            })
+            .ok();
     }
 
     pub fn info(&self) -> SessionsInfo {
@@ -350,6 +373,31 @@ mod tests {
             drop(svc);
             cleanup(&dir);
         }
+    }
+
+    #[test]
+    fn running_sessions_become_searchable_without_finishing() {
+        let dir = temp("live");
+        let svc = SessionService::open(&dir, &dir).unwrap();
+        let r = svc.start(&agent_request()).unwrap().unwrap();
+        svc.attach(7, r.clone());
+        // One burst of output, then silence: the background flush must still index it.
+        r.data(b"\x1b[32mlive refactor\x1b[0m\r\n");
+        std::thread::sleep(std::time::Duration::from_millis(3000));
+        let found = svc
+            .list(&SessionFilter {
+                query: Some("refactor".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            found.len(),
+            1,
+            "indexed after the flush interval, while still running"
+        );
+        svc.finished(&r, Some(0));
+        drop(svc);
+        cleanup(&dir);
     }
 
     #[test]
