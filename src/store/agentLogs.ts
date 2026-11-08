@@ -45,12 +45,15 @@ export const useAgentLogsStore = create<AgentLogsStore>()((set, get) => ({
     if (!isTauri()) return () => undefined;
     let stop: (() => void) | undefined;
     let cancelled = false;
-    void listen("agent-logs-changed", () => {
+    listen("agent-logs-changed", () => {
       if (get().source === "local") void get().refresh();
-    }).then((unlisten) => {
-      if (cancelled) unlisten();
-      else stop = unlisten;
-    });
+    })
+      .then((unlisten) => {
+        if (cancelled) unlisten();
+        else stop = unlisten;
+      })
+      // Without live updates the list still works (manual refresh).
+      .catch(() => undefined);
     return () => {
       cancelled = true;
       stop?.();

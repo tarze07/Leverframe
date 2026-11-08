@@ -5,6 +5,7 @@ import type { SessionRecord } from "./sessionsClient";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a), Channel: class {} }));
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 const openSessionPlayer = vi.fn();
 vi.mock("../../workbench/commands", () => ({ openSessionPlayer: (...a: unknown[]) => openSessionPlayer(...a) }));
 
