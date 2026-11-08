@@ -62,7 +62,10 @@ describe("AgentLogsList", () => {
     openAgentLog.mockReset();
     useAgentLogsStore.setState({ source: "local", logs: [], status: "idle", error: null });
     useProfilesStore.setState({
-      profiles: [{ id: "wsl:Ubuntu", name: "Ubuntu", kind: "wsl", command: "wsl.exe", args: [], source: "detected" }],
+      profiles: [
+        { id: "wsl:Ubuntu", name: "Ubuntu", kind: "wsl", command: "wsl.exe", args: [], source: "detected" },
+        { id: "user-1", name: "prod", kind: "ssh", command: "ssh", args: [], source: "user", ssh: { host: "prod" } },
+      ],
       defaultProfileId: null,
       status: "ready",
       error: null,
@@ -100,6 +103,20 @@ describe("AgentLogsList", () => {
     await waitFor(() => expect(listeners["agent-logs-changed"]).toBeDefined());
     await act(async () => listeners["agent-logs-changed"]());
     expect(invoke.mock.calls.length).toBe(calls + 1);
+  });
+});
+
+describe("AgentLogsList – SSH", () => {
+  it("lists logs of an SSH host on demand", async () => {
+    invoke.mockReset();
+    invoke.mockImplementation(async (cmd: string, args?: { source: string }) =>
+      cmd === "agent_logs_list" && args?.source === "ssh:user-1" ? [summary({ title: "Na serwerze", source: "ssh:user-1", path: "/r" })] : [],
+    );
+    useAgentLogsStore.setState({ source: "local", logs: [], status: "idle", error: null });
+    render(<AgentLogsList />);
+    fireEvent.change(await screen.findByLabelText("Źródło"), { target: { value: "ssh:user-1" } });
+    expect(await screen.findByText("Na serwerze")).toBeInTheDocument();
+    expect(screen.getByText(/wymaga logowania kluczem/)).toBeInTheDocument();
   });
 });
 

@@ -110,6 +110,7 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
                 <span className="truncate" title={f}>
                   {f}
                 </span>
+                {!s.source.startsWith("ssh:") && (
                 <button
                   type="button"
                   title="Otwórz w edytorze"
@@ -119,6 +120,7 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
                 >
                   <span className="codicon codicon-go-to-file" aria-hidden />
                 </button>
+                )}
                 <button type="button" title="Kopiuj ścieżkę" aria-label={`Kopiuj ścieżkę ${f}`} onClick={() => copy(f)} className="hidden text-lf-muted hover:text-lf-fg group-focus-within:inline group-hover:inline">
                   <span className="codicon codicon-copy" aria-hidden />
                 </button>

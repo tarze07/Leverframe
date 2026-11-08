@@ -44,6 +44,8 @@
   --lf-accent: #0969da;
   --lf-statusbar-bg: #e9eaed;
   --lf-statusbar-fg: #57606a;
+  --lf-accent-fg: #ffffff;
+  --lf-danger: #cf222e;
 }
 
 @theme inline {
@@ -83,8 +85,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dockview mapped onto our tokens. */
-.dockview-theme-dark {
+/* Dockview mapped onto our tokens (the light/dark values come from [data-theme]). */
+.dockview-theme-dark,
+.dockview-theme-light {
   --dv-group-view-background-color: var(--lf-editor-bg);
   --dv-tabs-and-actions-container-background-color: var(--lf-sidebar-bg);
   --dv-activegroup-visiblepanel-tab-background-color: var(--lf-editor-bg);

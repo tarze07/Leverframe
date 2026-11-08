@@ -13,6 +13,14 @@ export interface UiState {
   bottomPanelVisible: boolean;
   fontMono: string;
   fontSize: number;
+  /** Theme from settings.json and the one in effect ("system" resolved via the OS). */
+  theme: "dark" | "light" | "system";
+  resolvedTheme: "dark" | "light";
+  setTheme: (theme: "dark" | "light" | "system") => void;
+  setResolvedTheme: (theme: "dark" | "light") => void;
+  /** Command palette (Ctrl+Shift+P) visible – not persisted. */
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
   /** Quick open (Ctrl+P) dialog visible – not persisted. */
   quickOpen: boolean;
   setQuickOpen: (open: boolean) => void;
@@ -35,6 +43,12 @@ export const useUiStore = create<UiState>()(
       fontMono: DEFAULT_FONT_MONO,
       fontSize: DEFAULT_FONT_SIZE,
       quickOpen: false,
+      theme: "dark",
+      resolvedTheme: "dark",
+      setTheme: (theme) => set({ theme }),
+      setResolvedTheme: (resolvedTheme) => set({ resolvedTheme }),
+      paletteOpen: false,
+      setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       setQuickOpen: (quickOpen) => set({ quickOpen }),
       selectView: (view) => {
         const { activeView, sidebarVisible } = get();

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { dockRegistry } from "./docks";
-import { logFilePath, openTerminal, terminalPanels, toggleTerminalPanel } from "./commands";
+import { logFilePath, openTerminal, shellQuote, terminalPanels, toggleTerminalPanel } from "./commands";
 
 interface FakePanel {
   id: string;
@@ -90,5 +90,12 @@ describe("logFilePath", () => {
     expect(logFilePath("/home/me/app/a.ts", null, "wsl:Ubuntu", true)).toBe("\\\\wsl.localhost\\Ubuntu\\home\\me\\app\\a.ts");
     expect(logFilePath("src/a.ts", "/home/me/app", "wsl:Ubuntu", true)).toBe("\\\\wsl.localhost\\Ubuntu\\home\\me\\app\\src\\a.ts");
     expect(logFilePath("/home/me/a.ts", null, "wsl:Ubuntu", false)).toBe("/home/me/a.ts");
+  });
+});
+
+describe("shellQuote", () => {
+  it("quotes for POSIX shells", () => {
+    expect(shellQuote("/home/me/my app")).toBe("'/home/me/my app'");
+    expect(shellQuote("it's")).toBe("'it'\\''s'");
   });
 });

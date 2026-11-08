@@ -22,6 +22,8 @@ export function AgentLogsList() {
   }, [refresh, watch]);
 
   const wslSources = profiles.filter((p) => p.kind === "wsl");
+  const sshSources = profiles.filter((p) => p.kind === "ssh");
+  const remote = source.startsWith("ssh:");
 
   const visible = useMemo(() => {
     const q = text.trim().toLowerCase();
@@ -57,6 +59,11 @@ export function AgentLogsList() {
               WSL: {p.name}
             </option>
           ))}
+          {sshSources.map((p) => (
+            <option key={p.id} value={`ssh:${p.id}`}>
+              SSH: {p.name}
+            </option>
+          ))}
         </select>
         <select aria-label="Agent" value={agent} onChange={(e) => setAgent(e.target.value as "" | LogAgent)} className={selectClass}>
           <option value="">Wszyscy agenci</option>
@@ -80,6 +87,11 @@ export function AgentLogsList() {
           Odśwież
         </button>
       </div>
+      {remote && (
+        <p className="text-[11px] leading-relaxed text-lf-subtle">
+          Host SSH jest sprawdzany na żądanie (przycisk „Odśwież”) i wymaga logowania kluczem.
+        </p>
+      )}
       {error && <p className="text-[11px] text-lf-danger">{error}</p>}
       <ul className="flex flex-col gap-1" aria-label="Rozmowy">
         {visible.map((l) => (

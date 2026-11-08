@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import {
   DockviewReact,
   themeDark,
+  themeLight,
   type DockviewApi,
   type DockviewReadyEvent,
   type IDockviewPanelHeaderProps,
@@ -10,6 +11,7 @@ import {
 } from "dockview-react";
 import { safeStorage } from "../lib/storage";
 import { dockRegistry, type DockId } from "./docks";
+import { useUiStore } from "../store/ui";
 
 export interface DockAreaProps {
   id: DockId;
@@ -54,6 +56,7 @@ export function DockArea({ id, components, tabComponents, addDefaultPanels, onEm
   );
 
   useEffect(() => () => dockRegistry.set(id, null), [id]);
+  const resolvedTheme = useUiStore((s) => s.resolvedTheme);
 
   return (
     <div className="h-full w-full" data-testid={`dock-${id}`}>
@@ -61,7 +64,7 @@ export function DockArea({ id, components, tabComponents, addDefaultPanels, onEm
         components={components}
         tabComponents={tabComponents}
         onReady={onReady}
-        theme={themeDark}
+        theme={resolvedTheme === "light" ? themeLight : themeDark}
         watermarkComponent={watermark}
       />
     </div>

@@ -21,22 +21,33 @@ export const isWindows = (): boolean => typeof navigator !== "undefined" && /Win
  * - `copy` / `paste` / `find`: handled by the terminal component,
  * - `null`: normal input for the shell.
  */
-export function terminalKeyAction(e: KeyLike, hasSelection: boolean, windows = isWindows()): TerminalKeyAction {
+export function terminalKeyAction(
+  e: KeyLike,
+  hasSelection: boolean,
+  windows = isWindows(),
+  appShortcut: (e: KeyLike) => boolean = defaultAppShortcut,
+): TerminalKeyAction {
   if (e.type !== "keydown" || e.altKey) return null;
   const mod = e.ctrlKey || e.metaKey;
   if (!mod) return null;
+  if (appShortcut(e)) return "app";
   const key = e.key.toLowerCase();
 
-  if (e.code === "Backquote") return "app";
   if (e.shiftKey) {
     if (key === "c") return "copy";
     if (key === "v") return "paste";
     return null;
   }
-  if (key === "b" || key === "j" || key === "p") return "app";
   if (key === "f") return "find";
   // Windows Terminal convention: Ctrl+C copies when text is selected, Ctrl+V pastes.
   if (windows && key === "c" && hasSelection) return "copy";
   if (windows && key === "v") return "paste";
   return null;
+}
+
+/** Built-in app shortcuts, used when no keybinding map is supplied (tests, early startup). */
+function defaultAppShortcut(e: KeyLike): boolean {
+  if (e.code === "Backquote") return true;
+  const key = e.key.toLowerCase();
+  return !e.shiftKey ? key === "b" || key === "j" || key === "p" : key === "p" || key === "e";
 }

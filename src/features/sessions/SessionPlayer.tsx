@@ -35,6 +35,7 @@ export function SessionPlayer({ params }: IDockviewPanelProps<SessionPlayerParam
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [skipIdle, setSkipIdle] = useState(true);
+  const resolvedTheme = useUiStore((s) => s.resolvedTheme);
 
   const sync = useCallback(() => {
     const p = playerRef.current;
@@ -74,7 +75,7 @@ export function SessionPlayer({ params }: IDockviewPanelProps<SessionPlayerParam
       fontFamily: fontMono,
       fontSize,
       scrollback: 20_000,
-      theme: terminalTheme(),
+      theme: terminalTheme(useUiStore.getState().resolvedTheme),
     });
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
@@ -117,6 +118,11 @@ export function SessionPlayer({ params }: IDockviewPanelProps<SessionPlayerParam
       playerRef.current = null;
     };
   }, [params.sessionId, params.query, build, sync]);
+
+  // Follow the light / dark theme.
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = terminalTheme(resolvedTheme);
+  }, [resolvedTheme]);
 
   // Playback clock.
   useEffect(() => {
