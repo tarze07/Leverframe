@@ -59,6 +59,28 @@ jobs:
         working-directory: src-tauri
       - name: Build application
         run: npm run tauri -- build --no-bundle
+      - name: Package portable ZIP (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh packaging/windows/make-portable.ps1
+      - name: Check the portable executable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # The C runtime must be linked statically (no "VC++ Redistributable" needed on the user's PC).
+          $exe = "src-tauri/target/release/leverframe.exe"
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          $deps = & $dumpbin.FullName /dependents $exe | Out-String
+          Write-Output $deps
+          if ($deps -match "(?i)vcruntime|msvcp") { throw "Leverframe.exe depends on the VC++ runtime DLLs" }
+      - name: Upload portable ZIP (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Leverframe-windows-portable
+          path: dist-portable/*.zip
+          if-no-files-found: error
 
   e2e:
     name: E2E (Linux, real app window)

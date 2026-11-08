@@ -12,3 +12,6 @@ src-tauri/gen/schemas/
 .DS_Store
 .idea/
 *.swp
+
+# Windows portable ZIP (packaging/windows/make-portable.ps1)
+dist-portable/

@@ -27,6 +27,7 @@ Pierwsza pełna wersja: wszystkie etapy [planu projektu](https://github.com/tarz
 - **Konfigurowalne skróty klawiszowe** (`keybindings` w `settings.json`), działające na każdym układzie klawiatury.
 - **Rozmowy agentów z hostów SSH** (Claude Code, Codex), odświeżane na żądanie; wznawianie sesji na hoście.
 - **Instalatory**: Windows `.exe` i `.msi`, Linux `.deb`, `.rpm` i `.AppImage`.
+- **Wersja przenośna dla Windows** (`_x64-portable.zip`): rozpakuj i uruchom, bez instalatora i bez pakietu Visual C++ (biblioteka C wkompilowana w program).
 - **Testy E2E** na prawdziwym oknie aplikacji w CI (Linux).
 
 ### Bezpieczeństwo

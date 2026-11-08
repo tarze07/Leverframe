@@ -12,9 +12,12 @@ Instalatory są w zakładce [Releases](https://github.com/tarze07/Leverframe/rel
 | System | Plik |
 |---|---|
 | Windows 10/11 | `Leverframe_<wersja>_x64-setup.exe` lub `Leverframe_<wersja>_x64_en-US.msi` |
+| Windows bez instalacji | `Leverframe_<wersja>_x64-portable.zip` – rozpakuj i uruchom `Leverframe.exe` |
 | Debian / Ubuntu | `Leverframe_<wersja>_amd64.deb` (`sudo apt install ./plik.deb`) |
 | Fedora / openSUSE | `Leverframe-<wersja>-1.x86_64.rpm` (`sudo dnf install ./plik.rpm`) |
 | Inne dystrybucje Linuksa | `Leverframe_<wersja>_amd64.AppImage` (`chmod +x`, potem uruchom) |
+
+Wersja przenośna (ZIP) niczego nie instaluje – wymaga tylko WebView2, które jest w Windows 11 i aktualnych Windows 10; szczegóły w pliku `CZYTAJ-MNIE.txt` w archiwum. Ustawienia trzyma w profilu użytkownika, więc wersja przenośna i instalowana dzielą je ze sobą.
 
 Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżenie: wybierz **Więcej informacji → Uruchom mimo to**.
 
