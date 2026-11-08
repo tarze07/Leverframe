@@ -235,5 +235,5 @@ leverframe/
 - **Zmienne formaty logów agentów** – adaptery izolowane, testy na próbkach, fallback do nagrywania.
 - **ConPTY na Windows** – wymaga Windows 10 1809+; kodowanie wyjścia `wsl.exe -l` (UTF-16LE).
 - **Wydajność strumienia PTY → WebView** – buforowanie i wysyłanie paczkami, renderer WebGL.
-- **Bezpieczeństwo** – brak przechowywania haseł SSH w plikach (tylko agent kluczy / systemowy keychain przez `keyring`), nagrania sesji mogą zawierać sekrety → opcja wyłączenia nagrywania i czyszczenia historii.
+- **Bezpieczeństwo** – aplikacja nie przechowuje żadnych sekretów (SSH przez klucze / agenta systemu, hasła wpisywane w terminalu), więc systemowy keychain (`keyring`) okazał się zbędny; zostaje jako zasada na przyszłość: dane wrażliwe tylko w keychainie. Nagrania sesji mogą zawierać sekrety → opcja wyłączenia nagrywania i czyszczenia historii.
 - **Do decyzji**: Monaco vs CodeMirror 6; czy macOS jest platformą docelową; czy SSH od razu przez `russh`, czy na start systemowy `ssh`.

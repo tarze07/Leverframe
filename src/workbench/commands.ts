@@ -89,10 +89,19 @@ export function openSessionPlayer(session: SessionRecord, query?: string) {
   return id;
 }
 
+/** POSIX single-quoting: `it's` → `'it'\''s'`. */
+export function shellQuote(s: string): string {
+  return `'${s.replaceAll("'", `'\\''`)}'`;
+}
+
 /** Terminal profile matching a log source: the WSL distribution, or the default local profile. */
 export function profileForSource(source: string): string | undefined {
   const { profiles, defaultProfileId } = useProfilesStore.getState();
   if (source.startsWith("wsl:")) return profiles.some((p) => p.id === source) ? source : undefined;
+  if (source.startsWith("ssh:")) {
+    const id = source.slice(4);
+    return profiles.some((p) => p.id === id) ? id : undefined;
+  }
   const def = profiles.find((p) => p.id === defaultProfileId);
   if (def && (def.kind === "local" || def.kind === "powershell")) return def.id;
   return profiles.find((p) => p.kind === "local" || p.kind === "powershell")?.id;
@@ -104,8 +113,11 @@ export function profileForSource(source: string): string | undefined {
  */
 export function openCommandInTerminal(options: { command: string; source: string; cwd?: string | null; submit?: boolean; title?: string }) {
   const profileId = profileForSource(options.source);
+  // On an SSH host the folder is remote: change into it as part of the command.
+  const remote = options.source.startsWith("ssh:");
+  const command = remote && options.cwd ? `cd ${shellQuote(options.cwd)} && ${options.command}` : options.command;
   const id = openTerminal({
-    params: { profileId, cwd: options.cwd ?? undefined, initialCommand: options.command, submitInitial: options.submit ?? false },
+    params: { profileId, cwd: remote ? undefined : (options.cwd ?? undefined), initialCommand: command, submitInitial: options.submit ?? false },
   });
   if (id && options.title) dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(options.title);
   return id;

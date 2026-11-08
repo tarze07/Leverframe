@@ -12,11 +12,14 @@ use super::text::TextExtractor;
 const TEXT_CHUNK: usize = 16 * 1024;
 /// Limit of indexed text per session; the recording itself is not limited.
 const TEXT_LIMIT: usize = 8 * 1024 * 1024;
+/// Pending text is also indexed after this long, so running sessions are searchable.
+const TEXT_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
 struct TextState {
     extractor: TextExtractor,
     pending: String,
     indexed: usize,
+    last_flush: std::time::Instant,
 }
 
 /// Records one terminal session: asciicast file + searchable text in the database.
@@ -37,6 +40,7 @@ impl Recorder {
                 extractor: TextExtractor::default(),
                 pending: String::new(),
                 indexed: 0,
+                last_flush: std::time::Instant::now(),
             }),
             db,
             bytes: AtomicI64::new(0),
@@ -54,7 +58,9 @@ impl Recorder {
         }
         let text = t.extractor.feed(bytes);
         t.pending.push_str(&text);
-        if t.pending.len() >= TEXT_CHUNK {
+        if t.pending.len() >= TEXT_CHUNK
+            || (!t.pending.is_empty() && t.last_flush.elapsed() >= TEXT_FLUSH_INTERVAL)
+        {
             self.flush_text(&mut t);
         }
     }
@@ -62,7 +68,20 @@ impl Recorder {
     fn flush_text(&self, t: &mut TextState) {
         let chunk = std::mem::take(&mut t.pending);
         t.indexed += chunk.len();
+        t.last_flush = std::time::Instant::now();
         let _ = self.db.append_text(self.session_id, &chunk);
+    }
+
+    /// Indexes text that has waited at least the flush interval (called periodically, so output
+    /// followed by silence becomes searchable too).
+    pub fn flush_pending(&self) {
+        let mut t = self.text.lock().unwrap();
+        if !t.pending.is_empty()
+            && t.indexed < TEXT_LIMIT
+            && t.last_flush.elapsed() >= TEXT_FLUSH_INTERVAL
+        {
+            self.flush_text(&mut t);
+        }
     }
 
     pub fn resize(&self, cols: u16, rows: u16) {

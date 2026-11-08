@@ -11,7 +11,9 @@ import { useAppearance } from "./lib/useAppearance";
 import { useKeybindings } from "./lib/useKeybindings";
 import { useUiStore } from "./store/ui";
 import { useProfilesStore } from "./store/profiles";
+import { useSettingsStore } from "./store/settings";
 import { QuickOpen } from "./features/editor/QuickOpen";
+import { CommandPalette } from "./workbench/CommandPalette";
 
 type VisibilityKey = "sidebarVisible" | "bottomPanelVisible";
 
@@ -43,6 +45,7 @@ export default function App() {
   useKeybindings();
   useEffect(() => {
     void useProfilesStore.getState().load();
+    void useSettingsStore.getState().load();
   }, []);
 
   const sidebarRef = usePanelRef();
@@ -96,6 +99,7 @@ export default function App() {
       </div>
       <StatusBar />
       <QuickOpen />
+      <CommandPalette />
     </div>
   );
 }

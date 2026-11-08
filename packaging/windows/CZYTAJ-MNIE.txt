@@ -1,0 +1,29 @@
+Leverframe – wersja przenośna (bez instalatora)
+================================================
+
+Uruchomienie
+  1. Rozpakuj archiwum do dowolnego folderu (np. C:\Narzedzia\Leverframe).
+  2. Uruchom Leverframe.exe.
+
+Nic nie jest instalowane ani wpisywane do rejestru. Aby usunąć program, skasuj folder.
+
+Pierwsze uruchomienie
+  Plik nie jest podpisany cyfrowo, więc Windows SmartScreen może pokazać ostrzeżenie:
+  wybierz „Więcej informacji” → „Uruchom mimo to”. Jeśli plik pobrany z internetu jest
+  zablokowany: prawy przycisk na Leverframe.exe → Właściwości → zaznacz „Odblokuj”.
+
+Wymagania
+  - Windows 10 lub 11, 64-bitowy.
+  - Microsoft Edge WebView2 Runtime – jest w Windows 11 i w aktualnych Windows 10.
+    Jeśli program się nie uruchamia (np. Windows 10 LTSC / Windows Server), zainstaluj
+    „Evergreen Bootstrapper” ze strony:
+    https://developer.microsoft.com/microsoft-edge/webview2/
+
+Gdzie są dane
+  Ustawienia, profile i nagrania sesji są zapisywane w profilu użytkownika, tak jak w wersji
+  instalowanej:
+    %APPDATA%\io.github.tarze07.leverframe        (settings.json, profiles.json, agents.json)
+    %LOCALAPPDATA%\io.github.tarze07.leverframe   (nagrania sesji i ich baza)
+  Dzięki temu nowa wersja rozpakowana w inne miejsce widzi wcześniejsze ustawienia.
+
+Więcej: https://github.com/tarze07/Leverframe

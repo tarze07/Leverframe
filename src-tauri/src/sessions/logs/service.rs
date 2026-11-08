@@ -171,6 +171,8 @@ pub struct AgentLogService {
     wsl_homes: Mutex<HashMap<String, PathBuf>>,
     /// Home directory used for `local` instead of the real one (tests).
     home_override: Option<PathBuf>,
+    /// Logs on SSH hosts (`ssh:<profile id>` sources).
+    pub ssh: super::ssh::SshLogs,
 }
 
 impl AgentLogService {

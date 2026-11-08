@@ -98,6 +98,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
+      - name: Package and upload the portable ZIP (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pwsh packaging/windows/make-portable.ps1
+          gh release upload "$env:TAG" (Get-ChildItem dist-portable/*.zip).FullName --clobber --repo "$env:GITHUB_REPOSITORY"
 
   publish:
     name: Publish release
@@ -111,7 +119,10 @@ jobs:
         run: |
           assets=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" --jq '.[].name')
           echo "Assets:"; echo "$assets"
-          for pattern in '_x64-setup\.exe$' '_amd64\.deb$' '_amd64\.AppImage$'; do
+          # .msi and .rpm only exist for versions without a suffix (they reject e.g. "-alpha.1").
+          patterns='_x64-setup\.exe$ _x64-portable\.zip$ _amd64\.deb$ _amd64\.AppImage$'
+          case "${TAG#v}" in *-*) ;; *) patterns="$patterns _x64_en-US\.msi$ \.x86_64\.rpm$" ;; esac
+          for pattern in $patterns; do
             if ! echo "$assets" | grep -Eq "$pattern"; then
               echo "::error::Missing installer matching $pattern"
               exit 1

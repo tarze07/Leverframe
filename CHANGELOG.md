@@ -2,7 +2,9 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
-## [Niewydane]
+## [0.1.0] – 2026-11-08
+
+Pierwsza pełna wersja: wszystkie etapy [planu projektu](https://github.com/tarze07/Leverframe/blob/main/docs/PLAN.md).
 
 ### Dodane
 - **Panel „Agenci”**: Claude Code, Codex, Agy i Kilo Code. Dla wybranego profilu terminala (lokalny, WSL, SSH, PowerShell) aplikacja sprawdza, czy agent jest zainstalowany i w jakiej wersji, i uruchamia go jednym kliknięciem w nowym terminalu.
@@ -19,6 +21,23 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 - **Panel „Pliki”**: drzewo folderu projektu z pominięciem plików z `.gitignore`.
 - **Szybkie otwieranie (Ctrl+P)** z dopasowaniem rozmytym; pliki z WSL przez `\\wsl.localhost`.
 - **„Otwórz w edytorze”** dla plików zmienionych przez agenta (oś czasu rozmowy).
+- **Ustawienia w `settings.json`**: motyw, czcionka, skróty klawiszowe; plik można edytować w edytorze aplikacji (zmiany działają po zapisaniu). Błąd składni w pliku jest pokazywany z numerem wiersza i nie zostanie nadpisany.
+- **Jasny motyw** (także „jak w systemie”) – w interfejsie, terminalach, edytorze i odtwarzaczu.
+- **Paleta poleceń (Ctrl+Shift+P)** z poleceniami terminali, profili, agentów, sesji, plików i ustawień.
+- **Konfigurowalne skróty klawiszowe** (`keybindings` w `settings.json`), działające na każdym układzie klawiatury.
+- **Rozmowy agentów z hostów SSH** (Claude Code, Codex), odświeżane na żądanie; wznawianie sesji na hoście.
+- **Instalatory**: Windows `.exe` i `.msi`, Linux `.deb`, `.rpm` i `.AppImage`.
+- **Wersja przenośna dla Windows** (`_x64-portable.zip`): rozpakuj i uruchom, bez instalatora i bez pakietu Visual C++ (biblioteka C wkompilowana w program).
+- **Testy E2E** na prawdziwym oknie aplikacji w CI (Linux).
+
+### Bezpieczeństwo
+- Aplikacja nie przechowuje haseł ani kluczy: SSH korzysta z kluczy / agenta SSH systemu, agenci CLI trzymają swoje dane logowania sami. Nagrania sesji mogą zawierać to, co pojawiło się w terminalu – nagrywanie można wyłączyć, a historię wyczyścić.
+
+### Znane ograniczenia
+- Instalatory nie są podpisane cyfrowo (ostrzeżenie Windows SmartScreen: „Więcej informacji” → „Uruchom mimo to”).
+- Brak wersji na macOS i automatycznych aktualizacji.
+- Agy i Kilo Code: brak osi czasu z ich własnych logów (format nieudokumentowany) – ich sesje są dostępne jako nagrania.
+- Logi z hostów SSH wymagają logowania kluczem (bez hasła).
 
 ## [0.1.0-alpha.1] – 2026-11-06
 
@@ -43,4 +62,5 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.1.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0
 [0.1.0-alpha.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0-alpha.1

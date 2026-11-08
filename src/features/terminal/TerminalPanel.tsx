@@ -16,6 +16,7 @@ import { useTerminalStore } from "../../store/terminal";
 import { useUiStore } from "../../store/ui";
 import { programTitle, spawnPty, type PtyHandle } from "./ptyClient";
 import { terminalKeyAction } from "./keys";
+import { isAppShortcut } from "../../lib/useKeybindings";
 import { terminalRegistry } from "./registry";
 import { createAgentStarter, type AgentStarter } from "./agentStart";
 import { useAgentsStore } from "../../store/agents";
@@ -60,6 +61,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
   const [searchOpen, setSearchOpen] = useState(false);
   const fontMono = useUiStore((s) => s.fontMono);
   const fontSize = useUiStore((s) => s.fontSize);
+  const resolvedTheme = useUiStore((s) => s.resolvedTheme);
 
   // Create the terminal and its PTY once per panel.
   useEffect(() => {
@@ -72,7 +74,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       fontFamily: fontMono,
       fontSize,
       scrollback: 10_000,
-      theme: terminalTheme(),
+      theme: terminalTheme(useUiStore.getState().resolvedTheme),
     });
     termRef.current = term;
 
@@ -129,7 +131,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     safeFit();
 
     term.attachCustomKeyEventHandler((e) => {
-      const action = terminalKeyAction(e, term.hasSelection());
+      const action = terminalKeyAction(e, term.hasSelection(), undefined, isAppShortcut);
       switch (action) {
         case "app":
           return false; // bubbles to the global shortcuts
@@ -256,6 +258,11 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     // Panel identity and launch params are fixed for the panel's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Follow the light / dark theme.
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = terminalTheme(resolvedTheme);
+  }, [resolvedTheme]);
 
   // Apply font changes from settings.
   useEffect(() => {

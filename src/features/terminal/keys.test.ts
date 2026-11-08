@@ -39,6 +39,12 @@ describe("terminalKeyAction", () => {
     expect(terminalKeyAction(key("v", { ctrl: true }), false, true)).toBe("paste");
   });
 
+  it("follows the app's keybinding map when given", () => {
+    const appShortcut = (e: { key: string; ctrlKey: boolean; shiftKey: boolean }) => e.ctrlKey && !e.shiftKey && e.key === "k";
+    expect(terminalKeyAction(key("k", { ctrl: true }), false, false, appShortcut)).toBe("app");
+    expect(terminalKeyAction(key("b", { ctrl: true }), false, false, appShortcut)).toBeNull(); // Ctrl+B to the shell again
+  });
+
   it("ignores keyup and Alt combinations", () => {
     expect(terminalKeyAction({ ...key("b", { ctrl: true }), type: "keyup" }, false, false)).toBeNull();
     expect(terminalKeyAction(key("b", { ctrl: true, alt: true }), false, false)).toBeNull();

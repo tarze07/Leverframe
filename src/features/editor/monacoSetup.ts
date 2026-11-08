@@ -37,11 +37,8 @@ window.MonacoEnvironment = {
   },
 };
 
-const css = (name: string, fallback: string) =>
-  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-
 let themed = false;
-/** Dark theme derived from the app's design tokens. */
+/** Light and dark themes matching the app's design tokens. */
 export function ensureTheme() {
   if (themed) return;
   themed = true;
@@ -50,15 +47,35 @@ export function ensureTheme() {
     inherit: true,
     rules: [],
     colors: {
-      "editor.background": css("--lf-editor-bg", "#23272e"),
-      "editor.foreground": css("--lf-fg", "#d7dae0"),
-      "editorLineNumber.foreground": css("--lf-fg-subtle", "#5c6370"),
-      "editorCursor.foreground": css("--lf-accent", "#4d9cf8"),
+      "editor.background": "#23272e",
+      "editor.foreground": "#d7dae0",
+      "editorLineNumber.foreground": "#5c6370",
+      "editorCursor.foreground": "#4d9cf8",
       "editor.selectionBackground": "#3e4451",
-      "editorWidget.background": css("--lf-elevated", "#2c313a"),
-      "editorWidget.border": css("--lf-border", "#2f343d"),
+      "editorWidget.background": "#2c313a",
+      "editorWidget.border": "#2f343d",
     },
   });
+  monaco.editor.defineTheme("leverframe-light", {
+    base: "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.foreground": "#24292f",
+      "editorLineNumber.foreground": "#8c959f",
+      "editorCursor.foreground": "#0969da",
+      "editor.selectionBackground": "#c8d7f5",
+      "editorWidget.background": "#f3f4f6",
+      "editorWidget.border": "#d6d8dd",
+    },
+  });
+}
+
+/** Switches all editors (Monaco themes are global). */
+export function applyEditorTheme(mode: "dark" | "light") {
+  ensureTheme();
+  monaco.editor.setTheme(mode === "light" ? "leverframe-light" : "leverframe-dark");
 }
 
 /** Monaco language id for a file path (by extension / file name). */

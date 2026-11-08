@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { useEditorStore } from "../../store/editor";
+import { useSettingsStore } from "../../store/settings";
 import { useUiStore } from "../../store/ui";
 import { baseName, errorMessage, fsClient, isConflict } from "./fsClient";
-import { ensureTheme, languageForPath, monaco } from "./monacoSetup";
+import { applyEditorTheme, ensureTheme, languageForPath, monaco } from "./monacoSetup";
 import type { EditorParams } from "./EditorPanel";
 
 type Banner = { kind: "conflict" | "error"; message: string } | null;
@@ -25,7 +26,7 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
     ensureTheme();
     const { fontMono, fontSize } = useUiStore.getState();
     const editor = monaco.editor.create(container, {
-      theme: "leverframe-dark",
+      theme: useUiStore.getState().resolvedTheme === "light" ? "leverframe-light" : "leverframe-dark",
       automaticLayout: true,
       fontFamily: fontMono,
       fontSize,
@@ -54,6 +55,8 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
         savedVersion.current = version;
         setBanner(null);
         markDirty();
+        // Editing settings.json in the editor applies the settings on save.
+        if (path === useSettingsStore.getState().path) void useSettingsStore.getState().load();
         return true;
       } catch (e) {
         setBanner({ kind: isConflict(e) ? "conflict" : "error", message: errorMessage(e) });
@@ -114,6 +117,9 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
   useEffect(() => {
     editorRef.current?.updateOptions({ fontFamily: fontMono, fontSize });
   }, [fontMono, fontSize]);
+
+  const resolvedTheme = useUiStore((s) => s.resolvedTheme);
+  useEffect(() => applyEditorTheme(resolvedTheme), [resolvedTheme]);
 
   if (loadError) {
     return <p className="m-4 rounded bg-lf-elevated p-3 text-xs text-lf-danger">{loadError}</p>;
