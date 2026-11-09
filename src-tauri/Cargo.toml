@@ -1,6 +1,6 @@
 [package]
 name = "leverframe"
-version = "0.1.0"
+version = "0.2.0"
 description = "Terminal z edytorem dla agentów CLI"
 edition = "2021"
 rust-version = "1.77.2"
