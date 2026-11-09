@@ -104,6 +104,8 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     let disposed = false;
     let starter: AgentStarter | null = null;
     let earlyOutput = "";
+    // Keystrokes typed while the process is still starting; sent once it runs.
+    let pendingInput = "";
     const decoder = new TextDecoder();
     const program = params?.program;
     const terminals = useTerminalStore.getState();
@@ -156,7 +158,10 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     });
 
     const subscriptions = [
-      term.onData((data) => void pty?.write(data).catch(() => undefined)),
+      term.onData((data) => {
+        if (pty) void pty.write(data).catch(() => undefined);
+        else pendingInput = (pendingInput + data).slice(-4096);
+      }),
       term.onResize(({ cols, rows }) => void pty?.resize(cols, rows).catch(() => undefined)),
       term.onTitleChange((t) => t && setTitle(t)),
     ];
@@ -214,6 +219,10 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
           return;
         }
         pty = handle;
+        if (pendingInput) {
+          void handle.write(pendingInput).catch(() => undefined);
+          pendingInput = "";
+        }
         useTerminalStore.getState().update(api.id, { profileId: handle.profileId, agentId: handle.agentId });
         const agentName = useAgentsStore.getState().agentById(handle.agentId)?.name;
         const base = handle.profileName ?? programTitle(handle.program);

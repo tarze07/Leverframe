@@ -89,21 +89,24 @@ describe("Leverframe", () => {
   it("moves the terminal panel beside the editor and maximizes it; the shell keeps running", async () => {
     const panel = 'section[aria-label="Panel terminala"]';
     const size = (sel) => `const r = document.querySelector('${sel}').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.x), Math.round(r.y)];`;
+    // Dockview keeps inactive terminals in the DOM, so the test marks the one it opens.
     const typeInPanel = async (text) => {
-      await app.exec(`[...document.querySelectorAll('${panel} .xterm-helper-textarea')].find(t => t.closest('.xterm').offsetParent).focus()`);
+      await app.waitFor("const t = document.querySelector('[data-e2e-target]'); t.focus(); return document.activeElement === t");
       await app.type(text);
     };
     const pidAfter = async (name) => {
       const file = join(env.home, name);
       await typeInPanel(`echo $$ > "$HOME/${name}"${KEY.enter}`);
-      for (let i = 0; i < 50 && !(existsSync(file) && readFileSync(file, "utf8").trim()); i++) await sleep(100);
+      for (let i = 0; i < 150 && !(existsSync(file) && readFileSync(file, "utf8").trim()); i++) await sleep(100);
       return readFileSync(file, "utf8").trim();
     };
 
-    const before = await app.exec("return document.querySelectorAll('.xterm').length");
+    await app.exec("document.querySelectorAll('.xterm-helper-textarea').forEach(t => { t.dataset.e2eOld = '1'; })");
     await app.chord(KEY.ctrl, KEY.shift, "`");
-    await app.waitFor(`return document.querySelectorAll('.xterm').length > ${before}`, 15_000);
-    await sleep(1000); // shell prompt
+    await app.waitFor(
+      `const t = document.querySelector('${panel} .xterm-helper-textarea:not([data-e2e-old])'); if (t) t.dataset.e2eTarget = '1'; return !!t`,
+      15_000,
+    );
     const pid = await pidAfter("pid-start.txt");
     assert.match(pid, /^\d+$/);
 
