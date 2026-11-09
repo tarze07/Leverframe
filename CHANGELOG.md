@@ -2,12 +2,17 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
-## [Unreleased]
+## [0.2.0] – 2026-11-09
+
+Układ okna i motywy ([#22](https://github.com/tarze07/Leverframe/issues/22)).
 
 ### Dodane
 - **Panel terminala obok edytora**: panel może być pod edytorem albo po jego prawej stronie (przycisk w nagłówku panelu, ustawienia, paleta poleceń); terminale działają dalej po przeniesieniu.
 - **Maksymalizacja**: panel terminala na cały obszar bez edytora (Ctrl+Shift+M lub przycisk w nagłówku panelu) i edytor na cały obszar bez terminala (przycisk na pasku zakładek edytora); ponowne kliknięcie przywraca układ.
 - **Odcienie motywów**: ciemne Północ, Grafit, Las, Śliwka, Wysoki kontrast i jasne Papier, Błękit, Mięta, Mgła, obok dotychczasowych. Motyw zmienia kolory interfejsu, terminala i edytora. W trybie „Jak w systemie” można wybrać, który motyw ciemny i który jasny ma być używany (`darkTheme`, `lightTheme` w `settings.json`).
+
+### Poprawione
+- Znaki wpisane w nowy terminal, zanim jego proces zdążył wystartować, nie giną – są wysyłane, gdy terminal ruszy.
 
 ## [0.1.0] – 2026-11-08
 
@@ -69,5 +74,6 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.2.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0
 [0.1.0-alpha.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0-alpha.1
