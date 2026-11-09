@@ -32,6 +32,10 @@ export const agentsClient = {
   detect: (profileId: string, force = false) => invoke<AgentStatus[]>("agents_detect", { profileId, force }),
   projectDir: () => invoke<string | null>("settings_project_dir"),
   setProjectDir: (path: string | null) => invoke<string | null>("settings_set_project_dir", { path }),
+  recentDirs: () => invoke<string[]>("settings_recent_project_dirs"),
+  remoteDirs: () => invoke<Record<string, string>>("settings_remote_dirs"),
+  setRemoteDir: (profileId: string, path: string | null) =>
+    invoke<string | null>("settings_set_remote_dir", { profileId, path }),
 };
 
 /** Last path segment, for compact display of the project folder. */

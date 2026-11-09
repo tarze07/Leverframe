@@ -15,11 +15,16 @@ interface AgentsStore {
   /** Profile chosen in the Agents panel; `null` = the default profile. */
   profileId: string | null;
   projectDir: string | null;
+  /** Recently used project folders (most recent first). */
+  recentDirs: string[];
+  /** Directory on the host for each SSH profile. */
+  remoteDirs: Record<string, string>;
   detection: Record<string, DetectState>;
   load: () => Promise<void>;
   setProfile: (profileId: string | null) => void;
   detect: (profileId: string, force?: boolean) => Promise<void>;
   setProjectDir: (path: string | null) => Promise<void>;
+  setRemoteDir: (profileId: string, path: string | null) => Promise<void>;
   agentById: (id: string | null | undefined) => Agent | undefined;
 }
 
@@ -32,13 +37,20 @@ export const useAgentsStore = create<AgentsStore>()((set, get) => ({
   loaded: false,
   profileId: null,
   projectDir: null,
+  recentDirs: [],
+  remoteDirs: {},
   detection: {},
   load: async () => {
     if (get().loaded || !isTauri()) return;
     set({ loaded: true });
     try {
-      const [state, projectDir] = await Promise.all([agentsClient.list(), agentsClient.projectDir()]);
-      set({ agents: state.agents, errors: state.errors, configPath: state.configPath, projectDir });
+      const [state, projectDir, recentDirs, remoteDirs] = await Promise.all([
+        agentsClient.list(),
+        agentsClient.projectDir(),
+        agentsClient.recentDirs().catch(() => []),
+        agentsClient.remoteDirs().catch(() => ({})),
+      ]);
+      set({ agents: state.agents, errors: state.errors, configPath: state.configPath, projectDir, recentDirs, remoteDirs });
     } catch (e) {
       set({ errors: [message(e)], loaded: false });
     }
@@ -58,6 +70,17 @@ export const useAgentsStore = create<AgentsStore>()((set, get) => ({
   setProjectDir: async (path) => {
     const projectDir = await agentsClient.setProjectDir(path);
     set({ projectDir });
+    const recentDirs = await agentsClient.recentDirs().catch(() => null);
+    if (recentDirs) set({ recentDirs });
+  },
+  setRemoteDir: async (profileId, path) => {
+    const dir = await agentsClient.setRemoteDir(profileId, path);
+    set((s) => {
+      const remoteDirs = { ...s.remoteDirs };
+      if (dir) remoteDirs[profileId] = dir;
+      else delete remoteDirs[profileId];
+      return { remoteDirs };
+    });
   },
   agentById: (id) => (id ? get().agents.find((a) => a.id === id) : undefined),
 }));

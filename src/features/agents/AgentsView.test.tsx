@@ -34,6 +34,12 @@ function mockBackend(detectResult: (profileId: string) => unknown) {
         return "/home/me/projects/app";
       case "settings_set_project_dir":
         return args?.path ?? null;
+      case "settings_recent_project_dirs":
+        return ["/home/me/projects/app", "/home/me/projects/api", "/srv/docs"];
+      case "settings_remote_dirs":
+        return { "user-1": "~/srv-app" };
+      case "settings_set_remote_dir":
+        return (args?.path as string | null) ?? null;
       case "profiles_list":
         return { profiles, defaultProfileId: "local:bash" };
       case "agents_detect":
@@ -48,7 +54,16 @@ describe("AgentsView", () => {
   beforeEach(() => {
     invoke.mockReset();
     openAgent.mockReset();
-    useAgentsStore.setState({ agents: [], errors: [], loaded: false, profileId: null, projectDir: null, detection: {} });
+    useAgentsStore.setState({
+      agents: [],
+      errors: [],
+      loaded: false,
+      profileId: null,
+      projectDir: null,
+      recentDirs: [],
+      remoteDirs: {},
+      detection: {},
+    });
     useProfilesStore.setState({ profiles: [], defaultProfileId: null, status: "idle", error: null });
   });
 
@@ -82,9 +97,42 @@ describe("AgentsView", () => {
     fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "user-1" } });
     expect(await screen.findByText("remote 1.0")).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledWith("agents_detect", { profileId: "user-1", force: false });
-    expect(screen.getByText(/Na hostach SSH/)).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Uruchom"));
     expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "user-1", cwd: null }));
+  });
+
+  it("keeps a directory on the server for each SSH profile", async () => {
+    mockBackend(() => []);
+    render(<AgentsView />);
+    await screen.findByText("app");
+    fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "user-1" } });
+    const input = await screen.findByLabelText("Katalog na serwerze prod");
+    expect(input).toHaveValue("~/srv-app");
+    expect(screen.queryByText("app")).not.toBeInTheDocument(); // the local folder does not apply
+    fireEvent.change(input, { target: { value: " ~/projekty/shop " } });
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("settings_set_remote_dir", { profileId: "user-1", path: "~/projekty/shop" }),
+    );
+    await waitFor(() => expect(useAgentsStore.getState().remoteDirs["user-1"]).toBe("~/projekty/shop"));
+    const cleared = screen.getByLabelText("Katalog na serwerze prod");
+    fireEvent.change(cleared, { target: { value: "" } });
+    fireEvent.keyDown(cleared, { key: "Enter" });
+    fireEvent.blur(cleared);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_remote_dir", { profileId: "user-1", path: null }));
+  });
+
+  it("switches to a recently used folder", async () => {
+    mockBackend(() => []);
+    render(<AgentsView />);
+    await screen.findByText("app");
+    fireEvent.click(await screen.findByLabelText("Ostatnio używane foldery"));
+    const list = screen.getByRole("list", { name: "Ostatnie foldery" });
+    expect(within(list).queryByText("app")).not.toBeInTheDocument(); // the current one is not repeated
+    fireEvent.click(within(list).getByText("api"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_project_dir", { path: "/home/me/projects/api" }));
+    expect(await screen.findByText("api")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Ostatnie foldery" })).not.toBeInTheDocument();
   });
 
   it("shows install commands for missing agents and copies them", async () => {

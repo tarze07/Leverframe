@@ -12,13 +12,14 @@ import { folderName, type Agent, type AgentStatus } from "./agentsClient";
 
 /** Sidebar view: AI coding agents, their availability in the chosen profile, and launching them. */
 export function AgentsView() {
-  const { agents, errors, configPath, profileId, projectDir, detection, load, setProfile, detect, setProjectDir } =
+  const { agents, errors, configPath, profileId, projectDir, recentDirs, remoteDirs, detection, load, setProfile, detect, setProjectDir } =
     useAgentsStore();
   const profiles = useProfilesStore((s) => s.profiles);
   const defaultProfileId = useProfilesStore((s) => s.defaultProfileId);
   const loadProfiles = useProfilesStore((s) => s.load);
   const selectId = useId();
   const [dirError, setDirError] = useState<string | null>(null);
+  const [showRecent, setShowRecent] = useState(false);
 
   const effectiveProfileId = profileId ?? defaultProfileId;
   const profile = profiles.find((p) => p.id === effectiveProfileId);
@@ -50,6 +51,17 @@ export function AgentsView() {
       setDirError(String(e));
     }
   };
+
+  const chooseRecent = async (dir: string) => {
+    setDirError(null);
+    setShowRecent(false);
+    try {
+      await setProjectDir(dir);
+    } catch (e) {
+      setDirError(String(e));
+    }
+  };
+  const otherRecent = recentDirs.filter((d) => d !== projectDir);
 
   const statusFor = (id: string): AgentStatus | undefined =>
     state?.status === "ready" ? state.results.find((r) => r.id === id) : undefined;
@@ -91,37 +103,73 @@ export function AgentsView() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-[11px] text-lf-muted">Folder projektu</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => void pickFolder()}
-            title={projectDir ?? "Wybierz folder, w którym agenci będą pracować"}
-            className="flex min-w-0 flex-1 items-center gap-1.5 rounded border border-lf-border bg-lf-editor px-1.5 py-1 text-left text-xs hover:border-lf-accent"
-          >
-            <span className="codicon codicon-folder text-lf-muted" aria-hidden />
-            <span className={`truncate ${projectDir ? "text-lf-fg" : "text-lf-subtle"}`}>
-              {projectDir ? folderName(projectDir) : "Folder domowy (wybierz…)"}
-            </span>
-          </button>
-          {projectDir && (
+      {profile?.kind === "ssh" ? (
+        // Remounts when the saved value arrives or changes, so the field shows it.
+        <RemoteDirField key={`${profile.id}:${remoteDirs[profile.id] ?? ""}`} profileId={profile.id} host={profile.name} />
+      ) : (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-lf-muted">Folder, w którym startuje agent</span>
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              title="Użyj folderu domowego"
-              aria-label="Wyczyść folder projektu"
-              onClick={() => void setProjectDir(null)}
-              className="rounded p-1 text-lf-muted hover:bg-lf-hover hover:text-lf-fg"
+              onClick={() => void pickFolder()}
+              title={projectDir ?? "Wybierz folder, w którym agenci będą pracować"}
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded border border-lf-border bg-lf-editor px-1.5 py-1 text-left text-xs hover:border-lf-accent"
             >
-              <span className="codicon codicon-close" aria-hidden />
+              <span className="codicon codicon-folder text-lf-muted" aria-hidden />
+              <span className={`truncate ${projectDir ? "text-lf-fg" : "text-lf-subtle"}`}>
+                {projectDir ? folderName(projectDir) : "Folder domowy (wybierz…)"}
+              </span>
             </button>
+            {otherRecent.length > 0 && (
+              <button
+                type="button"
+                title="Ostatnio używane foldery"
+                aria-label="Ostatnio używane foldery"
+                aria-expanded={showRecent}
+                onClick={() => setShowRecent((v) => !v)}
+                className={`rounded p-1 hover:bg-lf-hover hover:text-lf-fg ${showRecent ? "text-lf-fg" : "text-lf-muted"}`}
+              >
+                <span className="codicon codicon-history" aria-hidden />
+              </button>
+            )}
+            {projectDir && (
+              <button
+                type="button"
+                title="Użyj folderu domowego"
+                aria-label="Wyczyść folder projektu"
+                onClick={() => void setProjectDir(null)}
+                className="rounded p-1 text-lf-muted hover:bg-lf-hover hover:text-lf-fg"
+              >
+                <span className="codicon codicon-close" aria-hidden />
+              </button>
+            )}
+          </div>
+          {showRecent && otherRecent.length > 0 && (
+            <ul aria-label="Ostatnie foldery" className="flex flex-col rounded border border-lf-border bg-lf-editor py-0.5">
+              {otherRecent.map((dir) => (
+                <li key={dir}>
+                  <button
+                    type="button"
+                    title={dir}
+                    onClick={() => void chooseRecent(dir)}
+                    className="flex w-full min-w-0 items-baseline gap-2 px-1.5 py-0.5 text-left text-xs hover:bg-lf-hover"
+                  >
+                    <span className="shrink-0 text-lf-fg">{folderName(dir)}</span>
+                    <span className="truncate text-[11px] text-lf-subtle">{dir}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
+          {profile?.kind === "wsl" && (
+            <span className="text-[11px] text-lf-subtle">
+              Folder z dysku Windows albo z WSL (w oknie wyboru: Linux → dystrybucja).
+            </span>
+          )}
+          {dirError && <span className="text-[11px] text-lf-danger">{dirError}</span>}
         </div>
-        {profile?.kind === "ssh" && (
-          <span className="text-[11px] text-lf-subtle">Na hostach SSH agent startuje w katalogu domowym.</span>
-        )}
-        {dirError && <span className="text-[11px] text-lf-danger">{dirError}</span>}
-      </div>
+      )}
 
       {state?.status === "error" && (
         <p className="rounded border border-lf-border bg-lf-editor p-2 text-[11px] text-lf-danger">{state.error}</p>
@@ -157,6 +205,53 @@ export function AgentsView() {
           Własnych agentów dodasz w pliku <code className="break-all font-mono">{configPath}</code>.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Directory on an SSH host (typed: it cannot be browsed locally), saved per profile. */
+function RemoteDirField({ profileId, host }: { profileId: string; host: string }) {
+  const saved = useAgentsStore((s) => s.remoteDirs[profileId] ?? "");
+  const setRemoteDir = useAgentsStore((s) => s.setRemoteDir);
+  const [value, setValue] = useState(saved);
+  const [error, setError] = useState<string | null>(null);
+  const inputId = useId();
+
+  const save = async () => {
+    if (value.trim() === saved) return;
+    setError(null);
+    try {
+      await setRemoteDir(profileId, value.trim() || null);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={inputId} className="text-[11px] text-lf-muted">
+        Katalog na serwerze {host}
+      </label>
+      <input
+        id={inputId}
+        value={value}
+        placeholder="~ (katalog domowy)"
+        spellCheck={false}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setValue(saved);
+            setError(null);
+          }
+        }}
+        className="rounded border border-lf-border bg-lf-editor px-1.5 py-1 font-mono text-xs text-lf-fg outline-none focus:border-lf-accent"
+      />
+      <span className="text-[11px] text-lf-subtle">
+        Np. <code className="font-mono">~/projekty/app</code>. Przed uruchomieniem agenta wykonywane jest <code className="font-mono">cd</code>.
+      </span>
+      {error && <span className="text-[11px] text-lf-danger">{error}</span>}
     </div>
   );
 }
