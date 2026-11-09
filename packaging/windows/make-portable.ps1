@@ -1,5 +1,6 @@
 # Builds Leverframe_<version>_x64-portable.zip from an already built release executable.
 # Usage (repository root): pwsh packaging/windows/make-portable.ps1 [-Exe path] [-OutDir dir]
+# The readme is taken from next to this script; version and changelog from the current directory.
 param(
     [string]$Exe = "src-tauri/target/release/leverframe.exe",
     [string]$OutDir = "dist-portable"
@@ -14,7 +15,7 @@ if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Copy-Item $Exe (Join-Path $stage "Leverframe.exe")
-Copy-Item "packaging/windows/CZYTAJ-MNIE.txt" $stage
+Copy-Item (Join-Path $PSScriptRoot "CZYTAJ-MNIE.txt") $stage
 Copy-Item "CHANGELOG.md" $stage
 
 $zip = Join-Path $OutDir "$name.zip"

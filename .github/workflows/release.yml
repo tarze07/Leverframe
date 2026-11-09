@@ -31,10 +31,19 @@ jobs:
     outputs:
       release_id: ${{ steps.release.outputs.release_id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: refs/tags/${{ env.TAG }}
-      - uses: actions/setup-node@v4
+      # Release tools (scripts, portable readme, notes) come from the workflow's own revision, so a
+      # manual run for an older tag uses the current tools while building the tag's code.
+      - uses: actions/checkout@v5
+        with:
+          path: release-tools
+          sparse-checkout: |
+            scripts
+            packaging
+            CHANGELOG.md
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Check version matches tag
@@ -44,7 +53,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          id=$(bash scripts/ensure-release.sh)
+          id=$(bash release-tools/scripts/ensure-release.sh)
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
   build:
@@ -56,15 +65,24 @@ jobs:
         platform: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: refs/tags/${{ env.TAG }}
+      # Release tools (scripts, portable readme, notes) come from the workflow's own revision, so a
+      # manual run for an older tag uses the current tools while building the tag's code.
+      - uses: actions/checkout@v5
+        with:
+          path: release-tools
+          sparse-checkout: |
+            scripts
+            packaging
+            CHANGELOG.md
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -82,7 +100,7 @@ jobs:
       - name: Package the portable ZIP (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: pwsh packaging/windows/make-portable.ps1
+        run: pwsh release-tools/packaging/windows/make-portable.ps1
       - name: Upload the portable ZIP to the release (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -90,7 +108,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
         # By release id: a draft release cannot be found by its tag.
-        run: bash scripts/upload-release-asset.sh "$RELEASE_ID" dist-portable/*.zip
+        run: bash release-tools/scripts/upload-release-asset.sh "$RELEASE_ID" dist-portable/*.zip
 
   publish:
     name: Publish release

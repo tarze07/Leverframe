@@ -19,7 +19,7 @@ fi
 if numeric "$id"; then
   echo "Reusing release $id for $TAG" >&2
 else
-  node scripts/release-notes.mjs "$version" > notes.md
+  node "$(dirname "$0")/release-notes.mjs" "$version" > notes.md
   id=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
     -f tag_name="$TAG" -f name="Leverframe $version" \
     -F draft=true -F prerelease="$prerelease" -F body=@notes.md --jq .id)
