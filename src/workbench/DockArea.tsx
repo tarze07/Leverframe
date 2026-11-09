@@ -6,6 +6,7 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
   type IDockviewPanelHeaderProps,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
   type IWatermarkPanelProps,
 } from "dockview-react";
@@ -22,6 +23,8 @@ export interface DockAreaProps {
   /** Called after the last panel is closed. */
   onEmpty?: () => void;
   watermark?: React.FunctionComponent<IWatermarkPanelProps>;
+  /** Buttons at the right end of each group's tab bar. */
+  rightHeaderActions?: React.FunctionComponent<IDockviewHeaderActionsProps>;
 }
 
 export const layoutStorageKey = (id: DockId) => `leverframe.dock.${id}`;
@@ -39,7 +42,7 @@ function restoreLayout(api: DockviewApi, key: string): boolean {
 }
 
 /** A tabbed, splittable dock (dockview) with persisted layout, registered under `id`. */
-export function DockArea({ id, components, tabComponents, addDefaultPanels, onEmpty, watermark }: DockAreaProps) {
+export function DockArea({ id, components, tabComponents, addDefaultPanels, onEmpty, watermark, rightHeaderActions }: DockAreaProps) {
   const onReady = useCallback(
     ({ api }: DockviewReadyEvent) => {
       const key = layoutStorageKey(id);
@@ -66,6 +69,7 @@ export function DockArea({ id, components, tabComponents, addDefaultPanels, onEm
         onReady={onReady}
         theme={resolvedTheme === "light" ? themeLight : themeDark}
         watermarkComponent={watermark}
+        rightHeaderActionsComponent={rightHeaderActions}
       />
     </div>
   );

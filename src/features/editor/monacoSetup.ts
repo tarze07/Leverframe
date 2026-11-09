@@ -3,6 +3,7 @@
  * Language workers come from the npm package via Vite's `?worker` imports.
  */
 import * as monaco from "monaco-editor";
+import { resolveTheme, themeById, THEMES } from "../../theme/themes";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/language/json/json.worker?worker";
 import CssWorker from "monaco-editor/language/css/css.worker?worker";
@@ -38,44 +39,43 @@ window.MonacoEnvironment = {
 };
 
 let themed = false;
-/** Light and dark themes matching the app's design tokens. */
+/** One editor theme per app theme, built from its design tokens. */
 export function ensureTheme() {
   if (themed) return;
   themed = true;
-  monaco.editor.defineTheme("leverframe-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [],
-    colors: {
-      "editor.background": "#23272e",
-      "editor.foreground": "#d7dae0",
-      "editorLineNumber.foreground": "#5c6370",
-      "editorCursor.foreground": "#4d9cf8",
-      "editor.selectionBackground": "#3e4451",
-      "editorWidget.background": "#2c313a",
-      "editorWidget.border": "#2f343d",
-    },
-  });
-  monaco.editor.defineTheme("leverframe-light", {
-    base: "vs",
-    inherit: true,
-    rules: [],
-    colors: {
-      "editor.background": "#ffffff",
-      "editor.foreground": "#24292f",
-      "editorLineNumber.foreground": "#8c959f",
-      "editorCursor.foreground": "#0969da",
-      "editor.selectionBackground": "#c8d7f5",
-      "editorWidget.background": "#f3f4f6",
-      "editorWidget.border": "#d6d8dd",
-    },
-  });
+  for (const t of THEMES) {
+    const k = t.tokens;
+    monaco.editor.defineTheme(editorThemeName(t.id), {
+      base: t.kind === "light" ? "vs" : "vs-dark",
+      inherit: true,
+      rules: [],
+      colors: {
+        "editor.background": k.editor,
+        "editor.foreground": k.fg,
+        "editorLineNumber.foreground": k.subtle,
+        "editorLineNumber.activeForeground": k.muted,
+        "editorCursor.foreground": k.accent,
+        "editor.selectionBackground": k.selection,
+        "editor.lineHighlightBackground": k.hover + "80",
+        "editorWidget.background": k.elevated,
+        "editorWidget.border": k.border,
+        "minimap.background": k.editor,
+        "scrollbarSlider.background": k.elevated + "b0",
+      },
+    });
+  }
+}
+
+/** Monaco theme name for an app theme id (unknown ids get the default of their kind). */
+export function editorThemeName(themeId: string): string {
+  const t = themeById(themeId) ?? resolveTheme(themeId, "dark", "light", false);
+  return `leverframe-${t.id}`;
 }
 
 /** Switches all editors (Monaco themes are global). */
-export function applyEditorTheme(mode: "dark" | "light") {
+export function applyEditorTheme(themeId: string) {
   ensureTheme();
-  monaco.editor.setTheme(mode === "light" ? "leverframe-light" : "leverframe-dark");
+  monaco.editor.setTheme(editorThemeName(themeId));
 }
 
 /** Monaco language id for a file path (by extension / file name). */

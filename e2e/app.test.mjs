@@ -86,15 +86,69 @@ describe("Leverframe", () => {
     assert.match(readFileSync(join(env.project, "src", "payments.ts"), "utf8"), /\/\/ e2e$/);
   });
 
-  it("switches to the light theme from the command palette and saves it", async () => {
-    await app.chord(KEY.ctrl, KEY.shift, "p");
-    await app.waitFor("return !!document.querySelector('[cmdk-input]')");
-    await app.type("motyw jasny");
-    await sleep(200);
-    await app.keys([{ type: "keyDown", value: KEY.enter }, { type: "keyUp", value: KEY.enter }]);
-    await app.waitFor("return document.documentElement.dataset.theme === 'light'");
-    const settings = JSON.parse(readFileSync(join(env.config, "settings.json"), "utf8"));
-    assert.equal(settings.theme, "light");
+  it("moves the terminal panel beside the editor and maximizes it; the shell keeps running", async () => {
+    const panel = 'section[aria-label="Panel terminala"]';
+    const size = (sel) => `const r = document.querySelector('${sel}').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.x), Math.round(r.y)];`;
+    const typeInPanel = async (text) => {
+      await app.exec(`[...document.querySelectorAll('${panel} .xterm-helper-textarea')].find(t => t.closest('.xterm').offsetParent).focus()`);
+      await app.type(text);
+    };
+    const pidAfter = async (name) => {
+      const file = join(env.home, name);
+      await typeInPanel(`echo $$ > "$HOME/${name}"${KEY.enter}`);
+      for (let i = 0; i < 50 && !(existsSync(file) && readFileSync(file, "utf8").trim()); i++) await sleep(100);
+      return readFileSync(file, "utf8").trim();
+    };
+
+    const before = await app.exec("return document.querySelectorAll('.xterm').length");
+    await app.chord(KEY.ctrl, KEY.shift, "`");
+    await app.waitFor(`return document.querySelectorAll('.xterm').length > ${before}`, 15_000);
+    await sleep(1000); // shell prompt
+    const pid = await pidAfter("pid-start.txt");
+    assert.match(pid, /^\d+$/);
+
+    await app.click(`${panel} button`, "Przenieś panel obok edytora");
+    await app.waitFor(`const e = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(), p = document.querySelector('${panel}').getBoundingClientRect(); return p.x >= e.right - 2 && Math.abs(p.y - e.y) < 2`);
+
+    await app.chord(KEY.ctrl, KEY.shift, "m");
+    await app.waitFor(`return document.querySelector('[data-testid=dock-main]').getBoundingClientRect().width === 0`);
+    const [panelWidth] = await app.exec(size(panel));
+    assert.ok(panelWidth > 400, `panel fills the center (${panelWidth}px)`);
+    assert.equal(await pidAfter("pid-max.txt"), pid, "same shell after moving and maximizing");
+
+    await app.click(`${panel} button`, "Przywróć edytor");
+    await app.waitFor(`return document.querySelector('[data-testid=dock-main]').getBoundingClientRect().width > 100`);
+    await app.click(".dv-tabs-and-actions-container button", "Maksymalizuj edytor");
+    await app.waitFor(`return document.querySelector('${panel}').getBoundingClientRect().width === 0`);
+    await app.click(".dv-tabs-and-actions-container button", "Przywróć panel terminala");
+    await app.click(`${panel} button`, "Przenieś panel pod edytor");
+    await app.waitFor(`const e = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(), p = document.querySelector('${panel}').getBoundingClientRect(); return p.width > 0 && p.y >= e.bottom - 2`);
+    assert.equal(await pidAfter("pid-end.txt"), pid);
+  });
+
+  it("switches themes from the command palette and saves them", async () => {
+    const palette = async (query) => {
+      await app.chord(KEY.ctrl, KEY.shift, "p");
+      await app.waitFor("return !!document.querySelector('[cmdk-input]')");
+      await app.type(query);
+      await sleep(200);
+      await app.keys([{ type: "keyDown", value: KEY.enter }, { type: "keyUp", value: KEY.enter }]);
+    };
+    const readSettings = () => JSON.parse(readFileSync(join(env.config, "settings.json"), "utf8"));
+
+    await palette("Motyw: Papier");
+    await app.waitFor("return document.documentElement.dataset.themeId === 'light-paper'");
+    assert.equal(await app.exec("return getComputedStyle(document.documentElement).getPropertyValue('--lf-editor-bg').trim()"), "#fbf7ef");
+    for (let i = 0; i < 30 && readSettings().lightTheme !== "light-paper"; i++) await sleep(100);
+    let settings = readSettings();
+    assert.equal(settings.theme, "light-paper");
+    assert.equal(settings.lightTheme, "light-paper");
     assert.equal(settings.projectDir, env.project, "other settings are kept");
+
+    await palette("Przełącz motyw jasny");
+    await app.waitFor("return document.documentElement.dataset.theme === 'dark' && document.documentElement.dataset.themeId === 'dark'");
+    for (let i = 0; i < 30 && readSettings().theme !== "dark"; i++) await sleep(100);
+    settings = readSettings();
+    assert.equal(settings.theme, "dark");
   });
 });

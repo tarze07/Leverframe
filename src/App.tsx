@@ -15,16 +15,16 @@ import { useSettingsStore } from "./store/settings";
 import { QuickOpen } from "./features/editor/QuickOpen";
 import { CommandPalette } from "./workbench/CommandPalette";
 
-type VisibilityKey = "sidebarVisible" | "bottomPanelVisible";
-
 /**
- * Keeps a collapsible panel in sync with a visibility flag in the store, in both directions:
- * store change -> collapse/expand, user drag past the collapse threshold -> store update.
+ * Keeps a collapsible panel in sync with a visibility flag, in both directions:
+ * flag change -> collapse/expand, user drag past the collapse threshold -> `onUserChange`.
  * Returns the `onResize` handler for the panel.
  */
-function useCollapsibleSync(ref: React.RefObject<PanelImperativeHandle | null>, key: VisibilityKey) {
-  const visible = useUiStore((s) => s[key]);
-
+function useCollapsibleSync(
+  ref: React.RefObject<PanelImperativeHandle | null>,
+  visible: boolean,
+  onUserChange: (visible: boolean) => void,
+) {
   useEffect(() => {
     const panel = ref.current;
     if (!panel) return;
@@ -36,7 +36,7 @@ function useCollapsibleSync(ref: React.RefObject<PanelImperativeHandle | null>, 
     const panel = ref.current;
     if (!panel) return;
     const nowVisible = !panel.isCollapsed();
-    if (nowVisible !== useUiStore.getState()[key]) useUiStore.setState({ [key]: nowVisible });
+    if (nowVisible !== visible) onUserChange(nowVisible);
   };
 }
 
@@ -49,9 +49,19 @@ export default function App() {
   }, []);
 
   const sidebarRef = usePanelRef();
+  const workbenchRef = usePanelRef();
   const bottomRef = usePanelRef();
-  const onSidebarResize = useCollapsibleSync(sidebarRef, "sidebarVisible");
-  const onBottomResize = useCollapsibleSync(bottomRef, "bottomPanelVisible");
+  const sidebarVisible = useUiStore((s) => s.sidebarVisible);
+  const bottomPanelVisible = useUiStore((s) => s.bottomPanelVisible);
+  const maximized = useUiStore((s) => s.maximized);
+  const panelPosition = useUiStore((s) => s.panelPosition);
+  const onSidebarResize = useCollapsibleSync(sidebarRef, sidebarVisible, (v) => useUiStore.getState().setSidebarVisible(v));
+  const onBottomResize = useCollapsibleSync(bottomRef, bottomPanelVisible, (v) => useUiStore.getState().setBottomPanelVisible(v));
+  // Dragging the separator all the way over the editor maximizes the terminal panel, and back.
+  const onWorkbenchResize = useCollapsibleSync(workbenchRef, maximized !== "panel", (v) =>
+    useUiStore.getState().setMaximized(v ? null : "panel"),
+  );
+  const side = panelPosition === "right";
 
   const mainLayout = useDefaultLayout({ id: "leverframe.layout.main", storage: safeStorage });
   const centerLayout = useDefaultLayout({ id: "leverframe.layout.center", storage: safeStorage });
@@ -76,17 +86,23 @@ export default function App() {
           </Panel>
           <Separator className="lf-separator lf-separator-col" />
           <Panel id="center" minSize={300}>
-            <Group orientation="vertical" {...centerLayout}>
-              <Panel id="workbench" minSize={120}>
+            {/* Same children for both positions, so the terminals keep running when the panel moves. */}
+            <Group orientation={side ? "horizontal" : "vertical"} {...centerLayout}>
+              <Panel
+                id="workbench"
+                panelRef={workbenchRef}
+                minSize={side ? 200 : 120}
+                collapsible
+                onResize={onWorkbenchResize}
+              >
                 <Workbench />
               </Panel>
-              <Separator className="lf-separator lf-separator-row" />
+              <Separator className={`lf-separator ${side ? "lf-separator-col" : "lf-separator-row"}`} />
               <Panel
                 id="bottom"
                 panelRef={bottomRef}
-                defaultSize={220}
-                minSize={100}
-                maxSize="80%"
+                defaultSize={side ? "40%" : 220}
+                minSize={side ? 200 : 100}
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={onBottomResize}

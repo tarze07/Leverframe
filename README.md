@@ -28,10 +28,15 @@ Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżen
 | Ctrl+Shift+P | Paleta poleceń |
 | Ctrl+P | Szybkie otwieranie pliku |
 | Ctrl+` / Ctrl+Shift+` | Pokaż/ukryj terminal / nowy terminal |
-| Ctrl+B / Ctrl+J | Panel boczny / panel dolny |
+| Ctrl+B / Ctrl+J | Panel boczny / panel terminala |
+| Ctrl+Shift+M | Maksymalizuj panel terminala (ukryj edytor) / przywróć |
 | Ctrl+Shift+E | Panel „Pliki” |
 | Ctrl+S, Ctrl+F | Zapis i wyszukiwanie w edytorze |
 | Ctrl+F, Ctrl+Shift+C / V | Wyszukiwanie, kopiowanie i wklejanie w terminalu |
+
+## Układ okna
+
+Panel terminala może być pod edytorem albo obok niego (przycisk w nagłówku panelu, ustawienia lub paleta poleceń: „Przenieś panel terminala obok edytora”). Przycisk maksymalizacji w nagłówku panelu (Ctrl+Shift+M) ukrywa edytor, a ten sam przycisk na pasku zakładek edytora ukrywa terminal; ponowne kliknięcie przywraca układ. Przeciągnięcie separatora do końca działa tak samo. Uruchomione terminale działają dalej przy każdej zmianie układu.
 
 ## Ustawienia
 
@@ -40,6 +45,8 @@ Plik `settings.json` (paleta poleceń → „Otwórz settings.json”) – zmian
 ```json
 {
   "theme": "system",
+  "darkTheme": "dark-midnight",
+  "lightTheme": "light-paper",
   "fontFamily": "JetBrains Mono, monospace",
   "fontSize": 14,
   "keybindings": { "palette.open": "Ctrl+K", "view.files": null },
@@ -47,7 +54,7 @@ Plik `settings.json` (paleta poleceń → „Otwórz settings.json”) – zmian
 }
 ```
 
-`theme`: `dark` / `light` / `system`. W `keybindings` identyfikatory poleceń (np. `palette.open`, `files.quickOpen`, `terminal.new`, `view.toggleSidebar`) przypisuje się do skrótów; `null` wyłącza skrót domyślny. Własnych agentów CLI dodaje się w `agents.json` w tym samym folderze.
+`theme`: identyfikator motywu albo `system` (wtedy motyw wybierają `darkTheme` i `lightTheme` według ustawień systemu). Motywy ciemne: `dark`, `dark-midnight` (Północ), `dark-graphite` (Grafit), `dark-forest` (Las), `dark-plum` (Śliwka), `dark-contrast` (Wysoki kontrast); jasne: `light`, `light-paper` (Papier), `light-sky` (Błękit), `light-mint` (Mięta), `light-mist` (Mgła). Motyw zmienia też kolory terminala i edytora; szybko wybierzesz go w palecie poleceń („Motyw: …”). W `keybindings` identyfikatory poleceń (np. `palette.open`, `files.quickOpen`, `terminal.new`, `view.toggleSidebar`) przypisuje się do skrótów; `null` wyłącza skrót domyślny. Własnych agentów CLI dodaje się w `agents.json` w tym samym folderze.
 
 ## Bezpieczeństwo
 

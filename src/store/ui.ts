@@ -7,17 +7,35 @@ export type ViewId = "terminals" | "agents" | "sessions" | "files" | "settings";
 export const DEFAULT_FONT_MONO = '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace';
 export const DEFAULT_FONT_SIZE = 13;
 
+/** Where the terminal panel sits relative to the editor area. */
+export type PanelPosition = "bottom" | "right";
+/** Area that fills the center: "panel" hides the editor, "editor" hides the terminal panel. */
+export type Maximized = "panel" | "editor" | null;
+
 export interface UiState {
   activeView: ViewId;
   sidebarVisible: boolean;
   bottomPanelVisible: boolean;
   fontMono: string;
   fontSize: number;
-  /** Theme from settings.json and the one in effect ("system" resolved via the OS). */
-  theme: "dark" | "light" | "system";
+  /** Theme from settings.json: a theme id or "system" (then `darkTheme` / `lightTheme` by the OS). */
+  theme: string;
+  darkTheme: string;
+  lightTheme: string;
+  /** Theme in effect and its kind. */
+  resolvedThemeId: string;
   resolvedTheme: "dark" | "light";
-  setTheme: (theme: "dark" | "light" | "system") => void;
-  setResolvedTheme: (theme: "dark" | "light") => void;
+  setTheme: (theme: string) => void;
+  setThemePreferences: (prefs: { darkTheme?: string; lightTheme?: string }) => void;
+  setResolvedTheme: (kind: "dark" | "light", id: string) => void;
+  panelPosition: PanelPosition;
+  setPanelPosition: (position: PanelPosition) => void;
+  maximized: Maximized;
+  /** Terminal panel over the whole center (editor hidden), or back. */
+  togglePanelMaximized: () => void;
+  /** Editor over the whole center (terminal panel hidden), or back. */
+  toggleEditorMaximized: () => void;
+  setMaximized: (maximized: Maximized) => void;
   /** Command palette (Ctrl+Shift+P) visible – not persisted. */
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
@@ -44,9 +62,25 @@ export const useUiStore = create<UiState>()(
       fontSize: DEFAULT_FONT_SIZE,
       quickOpen: false,
       theme: "dark",
+      darkTheme: "dark",
+      lightTheme: "light",
+      resolvedThemeId: "dark",
       resolvedTheme: "dark",
       setTheme: (theme) => set({ theme }),
-      setResolvedTheme: (resolvedTheme) => set({ resolvedTheme }),
+      setThemePreferences: (prefs) => set(prefs),
+      setResolvedTheme: (resolvedTheme, resolvedThemeId) => set({ resolvedTheme, resolvedThemeId }),
+      panelPosition: "bottom",
+      setPanelPosition: (panelPosition) => set({ panelPosition }),
+      maximized: null,
+      togglePanelMaximized: () =>
+        set(get().maximized === "panel" ? { maximized: null } : { maximized: "panel", bottomPanelVisible: true }),
+      toggleEditorMaximized: () =>
+        set(
+          get().maximized === "editor"
+            ? { maximized: null, bottomPanelVisible: true }
+            : { maximized: "editor", bottomPanelVisible: false },
+        ),
+      setMaximized: (maximized) => set({ maximized }),
       paletteOpen: false,
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       setQuickOpen: (quickOpen) => set({ quickOpen }),
@@ -57,8 +91,9 @@ export const useUiStore = create<UiState>()(
       },
       setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
       toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
-      setBottomPanelVisible: (bottomPanelVisible) => set({ bottomPanelVisible }),
-      toggleBottomPanel: () => set({ bottomPanelVisible: !get().bottomPanelVisible }),
+      // Showing or hiding the panel ends a maximized state (the editor comes back with it).
+      setBottomPanelVisible: (bottomPanelVisible) => set({ bottomPanelVisible, maximized: null }),
+      toggleBottomPanel: () => get().setBottomPanelVisible(!get().bottomPanelVisible),
       setFontMono: (fontMono) => set({ fontMono: fontMono.trim() || DEFAULT_FONT_MONO }),
       setFontSize: (fontSize) =>
         set({ fontSize: Number.isFinite(fontSize) ? Math.min(32, Math.max(8, Math.round(fontSize))) : DEFAULT_FONT_SIZE }),
@@ -66,12 +101,14 @@ export const useUiStore = create<UiState>()(
     {
       name: "leverframe.ui",
       storage: createJSONStorage(() => safeStorage),
-      partialize: ({ activeView, sidebarVisible, bottomPanelVisible, fontMono, fontSize }) => ({
+      partialize: ({ activeView, sidebarVisible, bottomPanelVisible, fontMono, fontSize, panelPosition, maximized }) => ({
         activeView,
         sidebarVisible,
         bottomPanelVisible,
         fontMono,
         fontSize,
+        panelPosition,
+        maximized,
       }),
     },
   ),

@@ -2,6 +2,13 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
+## [Unreleased]
+
+### Dodane
+- **Panel terminala obok edytora**: panel może być pod edytorem albo po jego prawej stronie (przycisk w nagłówku panelu, ustawienia, paleta poleceń); terminale działają dalej po przeniesieniu.
+- **Maksymalizacja**: panel terminala na cały obszar bez edytora (Ctrl+Shift+M lub przycisk w nagłówku panelu) i edytor na cały obszar bez terminala (przycisk na pasku zakładek edytora); ponowne kliknięcie przywraca układ.
+- **Odcienie motywów**: ciemne Północ, Grafit, Las, Śliwka, Wysoki kontrast i jasne Papier, Błękit, Mięta, Mgła, obok dotychczasowych. Motyw zmienia kolory interfejsu, terminala i edytora. W trybie „Jak w systemie” można wybrać, który motyw ciemny i który jasny ma być używany (`darkTheme`, `lightTheme` w `settings.json`).
+
 ## [0.1.0] – 2026-11-08
 
 Pierwsza pełna wersja: wszystkie etapy [planu projektu](https://github.com/tarze07/Leverframe/blob/main/docs/PLAN.md).

@@ -18,11 +18,15 @@ function EmptyPanel() {
   );
 }
 
-/** Bottom panel with terminal tabs (VS Code style). */
+/** Terminal panel (below or beside the editor) with terminal tabs, VS Code style. */
 export function BottomPanel() {
   const setVisible = useUiStore((s) => s.setBottomPanelVisible);
+  const maximized = useUiStore((s) => s.maximized === "panel");
+  const toggleMaximized = useUiStore((s) => s.togglePanelMaximized);
+  const position = useUiStore((s) => s.panelPosition);
+  const setPosition = useUiStore((s) => s.setPanelPosition);
   return (
-    <section aria-label="Panel dolny" className="flex h-full flex-col bg-lf-panel">
+    <section aria-label="Panel terminala" className="flex h-full flex-col bg-lf-panel">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-lf-border px-4 text-[11px] font-semibold uppercase tracking-wider">
         <span className="border-b border-lf-accent pb-1 pt-1.5 text-lf-fg">Terminal</span>
         <div className="flex items-center gap-0.5">
@@ -30,6 +34,16 @@ export function BottomPanel() {
           <ProfileMenu />
           <PanelButton icon="split-horizontal" label="Podziel terminal" onClick={() => openTerminal({ split: "right" })} />
           <PanelButton icon="trash" label="Zamknij aktywny terminal" onClick={() => closeActiveTerminal()} />
+          {position === "bottom" ? (
+            <PanelButton icon="layout-sidebar-right" label="Przenieś panel obok edytora" onClick={() => setPosition("right")} />
+          ) : (
+            <PanelButton icon="layout-panel" label="Przenieś panel pod edytor" onClick={() => setPosition("bottom")} />
+          )}
+          <PanelButton
+            icon={maximized ? "screen-normal" : "screen-full"}
+            label={maximized ? "Przywróć edytor (Ctrl+Shift+M)" : "Maksymalizuj panel – ukryj edytor (Ctrl+Shift+M)"}
+            onClick={toggleMaximized}
+          />
           <PanelButton icon="close" label="Ukryj panel (Ctrl+J)" onClick={() => setVisible(false)} />
         </div>
       </div>
