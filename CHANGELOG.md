@@ -2,6 +2,14 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
+## [Unreleased]
+
+### Dodane
+- **Folder, w którym startuje agent** ([#26](https://github.com/tarze07/Leverframe/issues/26)):
+  - lista ostatnio używanych folderów w panelu „Agenci” – szybkie przełączanie bez okna wyboru;
+  - **SSH**: katalog na serwerze, osobno dla każdego profilu (np. `~/projekty/app`); przed uruchomieniem agenta wykonywane jest `cd`;
+  - **WSL**: folder wybrany w oknie wyboru z dysku dystrybucji (`\\wsl.localhost\Ubuntu\…`) jest zamieniany na ścieżkę Linuksa.
+
 ## [0.2.0] – 2026-11-09
 
 Układ okna i motywy ([#22](https://github.com/tarze07/Leverframe/issues/22)).

@@ -14,6 +14,7 @@ use super::manager::{
 use crate::agents::AgentService;
 use crate::profiles::{Profile, ProfileKind, ProfileService};
 use crate::sessions::{Recorder, RecordingRequest, SessionService};
+use crate::settings::SettingsStore;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,7 +92,10 @@ pub struct Resolved {
 
 /// `wsl.exe --cd <dir>` decides the working directory inside WSL (the PTY's cwd does not).
 /// Windows paths are accepted by `--cd` and translated by WSL itself.
+/// Folders picked in Windows' dialog inside WSL (`\\wsl.localhost\Ubuntu\home\me`) are
+/// passed as Linux paths (`/home/me`).
 fn wsl_with_cwd(args: Vec<String>, cwd: &str) -> Vec<String> {
+    let cwd = &wsl_unc_to_linux(cwd).unwrap_or_else(|| cwd.to_string());
     let mut out = Vec::with_capacity(args.len() + 2);
     let mut it = args.into_iter();
     let mut replaced = false;
@@ -108,6 +112,46 @@ fn wsl_with_cwd(args: Vec<String>, cwd: &str) -> Vec<String> {
         out.extend(["--cd".to_string(), cwd.to_string()]);
     }
     out
+}
+
+fn wsl_unc_to_linux(path: &str) -> Option<String> {
+    let normalized = path.replace('/', "\\");
+    let lower = normalized.to_ascii_lowercase();
+    let rest = ["\\\\wsl.localhost\\", "\\\\wsl$\\"]
+        .iter()
+        .find(|prefix| lower.starts_with(*prefix))
+        .map(|prefix| &normalized[prefix.len()..])?;
+    // Skip the distribution name.
+    let inside = rest.split_once('\\').map(|(_, p)| p).unwrap_or("");
+    Some(format!(
+        "/{}",
+        inside.replace('\\', "/").trim_end_matches('/')
+    ))
+}
+
+/// POSIX shell word for a remote directory; `~` and `~/…` keep their meaning (home directory).
+fn shell_dir(dir: &str) -> String {
+    let quote = |s: &str| format!("'{}'", s.replace('\'', r"'\''"));
+    if dir == "~" {
+        "~".into()
+    } else if let Some(rest) = dir.strip_prefix("~/") {
+        format!("~/{}", quote(rest))
+    } else {
+        quote(dir)
+    }
+}
+
+/// On SSH hosts the local working directory means nothing: the agent starts in the profile's
+/// remote directory (`cd` typed before the agent command), or in the home directory.
+pub fn apply_ssh_dir(resolved: &mut Resolved, remote_dir: Option<&str>) {
+    if resolved.profile.as_ref().map(|p| p.kind) != Some(ProfileKind::Ssh) {
+        return;
+    }
+    resolved.opts.cwd = None;
+    resolved.opts.meta.cwd = remote_dir.map(String::from);
+    if let (Some(dir), Some(cmd)) = (remote_dir, resolved.agent_command.as_mut()) {
+        *cmd = format!("cd -- {} && {cmd}", shell_dir(dir));
+    }
 }
 
 /// Turns a request into spawn options: an explicit profile, an explicit program,
@@ -178,21 +222,29 @@ pub fn resolve_request(
     })
 }
 
+// Tauri injects each managed service as its own argument.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn pty_spawn(
     manager: State<'_, PtyManager>,
     profiles: State<'_, ProfileService>,
     agents: State<'_, AgentService>,
     sessions: State<'_, SessionService>,
+    settings: State<'_, SettingsStore>,
     request: PtySpawnRequest,
     on_data: Channel<InvokeResponseBody>,
     on_exit: Channel<PtyExit>,
 ) -> Result<PtySpawnResponse, String> {
+    let mut resolved = resolve_request(request, &profiles, &agents)?;
+    if let Some(profile) = &resolved.profile {
+        let dir = crate::settings::remote_dir(&settings, &profile.id);
+        apply_ssh_dir(&mut resolved, dir.as_deref());
+    }
     let Resolved {
         opts,
         profile,
         agent_command,
-    } = resolve_request(request, &profiles, &agents)?;
+    } = resolved;
     let agent_id = opts.meta.agent_id.clone();
     let channels = ChannelEvents {
         data: on_data,
@@ -396,6 +448,85 @@ mod tests {
         assert_eq!(
             wsl_with_cwd(args(&["-d", "Ubuntu"]), "/home/me"),
             args(&["-d", "Ubuntu", "--cd", "/home/me"])
+        );
+        assert_eq!(
+            wsl_with_cwd(
+                args(&["-d", "Ubuntu"]),
+                r"\\wsl.localhost\Ubuntu\home\me\app"
+            ),
+            args(&["-d", "Ubuntu", "--cd", "/home/me/app"])
+        );
+        assert_eq!(
+            wsl_unc_to_linux(r"\\wsl$\Debian\srv\").as_deref(),
+            Some("/srv")
+        );
+        assert_eq!(
+            wsl_unc_to_linux(r"\\WSL.LOCALHOST\Ubuntu").as_deref(),
+            Some("/")
+        );
+        assert_eq!(wsl_unc_to_linux(r"C:\src"), None);
+        assert_eq!(wsl_unc_to_linux(r"\\server\share\x"), None);
+    }
+
+    #[test]
+    fn ssh_agents_start_in_the_remote_directory() {
+        let ssh_profile = Profile {
+            id: "user-1".into(),
+            name: "srv".into(),
+            kind: ProfileKind::Ssh,
+            command: "ssh".into(),
+            args: vec!["srv".into()],
+            env: BTreeMap::new(),
+            cwd: None,
+            icon: None,
+            description: None,
+            ssh: None,
+            source: ProfileSource::User,
+        };
+        let resolved = |agent: Option<&str>| Resolved {
+            opts: SpawnOptions {
+                cwd: Some("/local/project".into()),
+                meta: SessionMeta {
+                    cwd: Some("/local/project".into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            profile: Some(ssh_profile.clone()),
+            agent_command: agent.map(String::from),
+        };
+
+        let mut r = resolved(Some("claude"));
+        apply_ssh_dir(&mut r, Some("~/projects/my app"));
+        assert_eq!(
+            r.agent_command.as_deref(),
+            Some("cd -- ~/'projects/my app' && claude")
+        );
+        assert_eq!(
+            r.opts.cwd, None,
+            "local folder is not used for the ssh process"
+        );
+        assert_eq!(r.opts.meta.cwd.as_deref(), Some("~/projects/my app"));
+
+        let mut r = resolved(Some("codex"));
+        apply_ssh_dir(&mut r, Some("/srv/it's"));
+        assert_eq!(
+            r.agent_command.as_deref(),
+            Some(r"cd -- '/srv/it'\''s' && codex")
+        );
+
+        let mut r = resolved(Some("codex"));
+        apply_ssh_dir(&mut r, None);
+        assert_eq!(r.agent_command.as_deref(), Some("codex"));
+        assert_eq!(r.opts.meta.cwd, None);
+
+        let mut r = resolved(None);
+        r.profile.as_mut().unwrap().kind = ProfileKind::Local;
+        apply_ssh_dir(&mut r, Some("/x"));
+        assert_eq!(
+            r.opts.cwd,
+            Some(PathBuf::from("/local/project")),
+            "local profiles unchanged"
         );
     }
 }

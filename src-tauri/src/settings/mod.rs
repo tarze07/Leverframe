@@ -54,6 +54,9 @@ mod tests {
 }
 
 const PROJECT_DIR_KEY: &str = "projectDir";
+const RECENT_DIRS_KEY: &str = "recentProjectDirs";
+const REMOTE_DIRS_KEY: &str = "remoteDirs";
+const MAX_RECENT_DIRS: usize = 8;
 
 /// Working directory for new agent terminals ("project folder").
 #[tauri::command]
@@ -79,6 +82,7 @@ pub fn set_project_dir(
                 return Err(format!("Folder „{p}” nie istnieje"));
             }
             store.set(PROJECT_DIR_KEY, serde_json::Value::String(p.clone()))?;
+            remember_recent_dir(store, &p)?;
             Ok(Some(p))
         }
         None => {
@@ -86,6 +90,92 @@ pub fn set_project_dir(
             Ok(None)
         }
     }
+}
+
+fn string_list(value: Option<serde_json::Value>) -> Vec<String> {
+    match value {
+        Some(serde_json::Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Puts a folder at the top of the recently used project folders.
+fn remember_recent_dir(store: &SettingsStore, dir: &str) -> Result<(), String> {
+    let mut list = string_list(store.get_value(RECENT_DIRS_KEY));
+    list.retain(|d| d != dir);
+    list.insert(0, dir.to_string());
+    list.truncate(MAX_RECENT_DIRS);
+    store.set(RECENT_DIRS_KEY, serde_json::json!(list))
+}
+
+/// Recently used project folders that still exist, most recent first.
+pub fn recent_project_dirs(store: &SettingsStore) -> Vec<String> {
+    string_list(store.get_value(RECENT_DIRS_KEY))
+        .into_iter()
+        .filter(|d| std::path::Path::new(d).is_dir())
+        .collect()
+}
+
+#[tauri::command]
+pub fn settings_recent_project_dirs(store: tauri::State<'_, SettingsStore>) -> Vec<String> {
+    recent_project_dirs(&store)
+}
+
+/// Working directory for agents on an SSH host (per profile; it cannot be checked locally).
+pub fn remote_dir(store: &SettingsStore, profile_id: &str) -> Option<String> {
+    store
+        .get_value(REMOTE_DIRS_KEY)?
+        .get(profile_id)?
+        .as_str()
+        .map(String::from)
+}
+
+pub fn remote_dirs(store: &SettingsStore) -> serde_json::Map<String, serde_json::Value> {
+    match store.get_value(REMOTE_DIRS_KEY) {
+        Some(serde_json::Value::Object(m)) => {
+            m.into_iter().filter(|(_, v)| v.is_string()).collect()
+        }
+        _ => Default::default(),
+    }
+}
+
+pub fn set_remote_dir(
+    store: &SettingsStore,
+    profile_id: &str,
+    path: Option<String>,
+) -> Result<Option<String>, String> {
+    let path = path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+    if let Some(p) = &path {
+        if p.len() > 500 || p.chars().any(char::is_control) {
+            return Err("Katalog: jedna linia, do 500 znaków".into());
+        }
+    }
+    let mut map = remote_dirs(store);
+    match &path {
+        Some(p) => map.insert(profile_id.to_string(), serde_json::Value::String(p.clone())),
+        None => map.remove(profile_id),
+    };
+    store.set(REMOTE_DIRS_KEY, serde_json::Value::Object(map))?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn settings_remote_dirs(
+    store: tauri::State<'_, SettingsStore>,
+) -> serde_json::Map<String, serde_json::Value> {
+    remote_dirs(&store)
+}
+
+#[tauri::command]
+pub fn settings_set_remote_dir(
+    store: tauri::State<'_, SettingsStore>,
+    profile_id: String,
+    path: Option<String>,
+) -> Result<Option<String>, String> {
+    set_remote_dir(&store, &profile_id, path)
 }
 
 #[cfg(test)]
@@ -106,6 +196,67 @@ mod project_dir_tests {
         assert!(set_project_dir(&store, Some("/definitely/missing/dir".into())).is_err());
         assert_eq!(set_project_dir(&store, None).unwrap(), None);
         assert_eq!(store.get_string(PROJECT_DIR_KEY), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn remembers_recent_project_dirs() {
+        let dir = std::env::temp_dir().join(format!("lf-settings-recent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let folders: Vec<String> = (0..10)
+            .map(|i| {
+                let d = dir.join(format!("p{i}"));
+                std::fs::create_dir_all(&d).unwrap();
+                d.to_string_lossy().into_owned()
+            })
+            .collect();
+        let store = SettingsStore::new(&dir);
+        for f in &folders {
+            set_project_dir(&store, Some(f.clone())).unwrap();
+        }
+        set_project_dir(&store, Some(folders[5].clone())).unwrap();
+        let recent = recent_project_dirs(&store);
+        assert_eq!(recent.len(), MAX_RECENT_DIRS);
+        assert_eq!(recent[0], folders[5], "most recent first, no duplicates");
+        assert_eq!(recent[1], folders[9]);
+        assert_eq!(recent.iter().filter(|d| **d == folders[5]).count(), 1);
+        std::fs::remove_dir_all(&folders[9]).unwrap();
+        assert!(
+            !recent_project_dirs(&store).contains(&folders[9]),
+            "deleted folders are not offered"
+        );
+        set_project_dir(&store, None).unwrap();
+        assert_eq!(
+            recent_project_dirs(&store)[0],
+            folders[5],
+            "clearing keeps the history"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn stores_remote_dirs_per_profile() {
+        let dir = std::env::temp_dir().join(format!("lf-settings-remote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = SettingsStore::new(&dir);
+        assert_eq!(remote_dir(&store, "user-1"), None);
+        assert_eq!(
+            set_remote_dir(&store, "user-1", Some("  ~/projects/app ".into())).unwrap(),
+            Some("~/projects/app".into())
+        );
+        set_remote_dir(&store, "user-2", Some("/srv/www".into())).unwrap();
+        assert_eq!(
+            remote_dir(&store, "user-1").as_deref(),
+            Some("~/projects/app")
+        );
+        assert!(set_remote_dir(&store, "user-1", Some("a\nb".into())).is_err());
+        assert_eq!(
+            set_remote_dir(&store, "user-1", Some(" ".into())).unwrap(),
+            None
+        );
+        assert_eq!(remote_dir(&store, "user-1"), None);
+        assert_eq!(remote_dir(&store, "user-2").as_deref(), Some("/srv/www"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

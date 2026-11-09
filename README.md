@@ -34,6 +34,10 @@ Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżen
 | Ctrl+S, Ctrl+F | Zapis i wyszukiwanie w edytorze |
 | Ctrl+F, Ctrl+Shift+C / V | Wyszukiwanie, kopiowanie i wklejanie w terminalu |
 
+## Agenci
+
+Panel „Agenci” uruchamia agenta CLI w nowym terminalu wybranego profilu. Folder, w którym startuje, wybierasz nad listą agentów (ikona zegara pokazuje ostatnio używane foldery); ten sam folder jest korzeniem panelu „Pliki”. W profilach WSL można wskazać też folder z dysku dystrybucji (w oknie wyboru: Linux → dystrybucja). Dla profili SSH wpisuje się katalog na serwerze – osobno dla każdego hosta.
+
 ## Układ okna
 
 Panel terminala może być pod edytorem albo obok niego (przycisk w nagłówku panelu, ustawienia lub paleta poleceń: „Przenieś panel terminala obok edytora”). Przycisk maksymalizacji w nagłówku panelu (Ctrl+Shift+M) ukrywa edytor, a ten sam przycisk na pasku zakładek edytora ukrywa terminal; ponowne kliknięcie przywraca układ. Przeciągnięcie separatora do końca działa tak samo. Uruchomione terminale działają dalej przy każdej zmianie układu.
