@@ -44,26 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${TAG#v}"
-          node scripts/release-notes.mjs "$version" > notes.md
-          prerelease=false
-          case "$version" in *-*) prerelease=true ;; esac
-
-          # Published releases are found by tag; drafts are not returned by this endpoint.
-          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .id 2>/dev/null || true)
-          if [ -n "$id" ]; then
-            echo "Reusing existing release $id for $TAG"
-          else
-            # The id comes straight from the create response (listing right after creation can miss the draft).
-            id=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
-              -f tag_name="$TAG" -f name="Leverframe $version" \
-              -F draft=true -F prerelease="$prerelease" -F body=@notes.md --jq .id)
-            echo "Created draft release $id for $TAG"
-          fi
-          if [ -z "$id" ]; then
-            echo "::error::Could not determine the release id for $TAG"
-            exit 1
-          fi
+          id=$(bash scripts/ensure-release.sh)
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
   build:
@@ -98,14 +79,18 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
-      - name: Package and upload the portable ZIP (Windows)
+      - name: Package the portable ZIP (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        run: pwsh packaging/windows/make-portable.ps1
+      - name: Upload the portable ZIP to the release (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          pwsh packaging/windows/make-portable.ps1
-          gh release upload "$env:TAG" (Get-ChildItem dist-portable/*.zip).FullName --clobber --repo "$env:GITHUB_REPOSITORY"
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        # By release id: a draft release cannot be found by its tag.
+        run: bash scripts/upload-release-asset.sh "$RELEASE_ID" dist-portable/*.zip
 
   publish:
     name: Publish release
