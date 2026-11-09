@@ -2,7 +2,9 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
-## [Unreleased]
+## [0.3.0] – 2026-11-09
+
+Wybór folderu, w którym startuje agent ([#26](https://github.com/tarze07/Leverframe/issues/26)).
 
 ### Dodane
 - **Folder, w którym startuje agent** ([#26](https://github.com/tarze07/Leverframe/issues/26)):
@@ -82,6 +84,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.3.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0
 [0.1.0-alpha.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0-alpha.1
