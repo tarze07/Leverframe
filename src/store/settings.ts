@@ -3,7 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../lib/tauri";
 import { useUiStore } from "./ui";
 
-export type ThemeSetting = "dark" | "light" | "system";
+/** A theme id (see theme/themes.ts) or "system". */
+export type ThemeSetting = string;
+
+export type SettingKey = "theme" | "darkTheme" | "lightTheme" | "fontFamily" | "fontSize" | "keybindings";
 
 export interface SettingsSnapshot {
   path: string;
@@ -18,14 +21,15 @@ interface SettingsStore {
   loaded: boolean;
   load: () => Promise<void>;
   /** Validated by the backend; returns an error message or null. */
-  update: (key: "theme" | "fontFamily" | "fontSize" | "keybindings", value: unknown) => Promise<string | null>;
+  update: (key: SettingKey, value: unknown) => Promise<string | null>;
 }
 
 /** Pushes values that drive the UI into the UI store. */
 function apply(values: Record<string, unknown>) {
   const ui = useUiStore.getState();
-  const theme = values.theme;
-  ui.setTheme(theme === "light" || theme === "system" ? theme : "dark");
+  const str = (v: unknown, fallback: string) => (typeof v === "string" && v ? v : fallback);
+  ui.setTheme(str(values.theme, "dark"));
+  ui.setThemePreferences({ darkTheme: str(values.darkTheme, "dark"), lightTheme: str(values.lightTheme, "light") });
   // Fonts: only when set in the file (otherwise the last choice in this app stays).
   if (typeof values.fontFamily === "string") ui.setFontMono(values.fontFamily);
   if (typeof values.fontSize === "number") ui.setFontSize(values.fontSize);

@@ -24,6 +24,33 @@ describe("ui store", () => {
     expect(useUiStore.getState().bottomPanelVisible).toBe(false);
   });
 
+  it("maximizes the terminal panel and restores the editor", () => {
+    const s = useUiStore.getState();
+    useUiStore.setState({ bottomPanelVisible: false });
+    s.togglePanelMaximized();
+    expect(useUiStore.getState()).toMatchObject({ maximized: "panel", bottomPanelVisible: true });
+    s.togglePanelMaximized();
+    expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: true });
+  });
+
+  it("maximizes the editor by hiding the panel, and brings the panel back", () => {
+    const s = useUiStore.getState();
+    s.toggleEditorMaximized();
+    expect(useUiStore.getState()).toMatchObject({ maximized: "editor", bottomPanelVisible: false });
+    s.toggleEditorMaximized();
+    expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: true });
+  });
+
+  it("ends a maximized state when the panel is shown or hidden", () => {
+    const s = useUiStore.getState();
+    s.togglePanelMaximized();
+    s.setBottomPanelVisible(false); // e.g. last terminal closed: the editor must come back
+    expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: false });
+    s.toggleEditorMaximized();
+    s.toggleBottomPanel();
+    expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: true });
+  });
+
   it("falls back to defaults for invalid font settings and clamps size", () => {
     const s = useUiStore.getState();
     s.setFontMono("   ");

@@ -4,7 +4,7 @@ import { useEditorStore } from "../../store/editor";
 import { useSettingsStore } from "../../store/settings";
 import { useUiStore } from "../../store/ui";
 import { baseName, errorMessage, fsClient, isConflict } from "./fsClient";
-import { applyEditorTheme, ensureTheme, languageForPath, monaco } from "./monacoSetup";
+import { applyEditorTheme, editorThemeName, ensureTheme, languageForPath, monaco } from "./monacoSetup";
 import type { EditorParams } from "./EditorPanel";
 
 type Banner = { kind: "conflict" | "error"; message: string } | null;
@@ -26,7 +26,7 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
     ensureTheme();
     const { fontMono, fontSize } = useUiStore.getState();
     const editor = monaco.editor.create(container, {
-      theme: useUiStore.getState().resolvedTheme === "light" ? "leverframe-light" : "leverframe-dark",
+      theme: editorThemeName(useUiStore.getState().resolvedThemeId),
       automaticLayout: true,
       fontFamily: fontMono,
       fontSize,
@@ -118,8 +118,8 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
     editorRef.current?.updateOptions({ fontFamily: fontMono, fontSize });
   }, [fontMono, fontSize]);
 
-  const resolvedTheme = useUiStore((s) => s.resolvedTheme);
-  useEffect(() => applyEditorTheme(resolvedTheme), [resolvedTheme]);
+  const themeId = useUiStore((s) => s.resolvedThemeId);
+  useEffect(() => applyEditorTheme(themeId), [themeId]);
 
   if (loadError) {
     return <p className="m-4 rounded bg-lf-elevated p-3 text-xs text-lf-danger">{loadError}</p>;

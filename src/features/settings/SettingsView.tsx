@@ -1,14 +1,24 @@
 import { useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore } from "../../store/ui";
-import { useSettingsStore, type ThemeSetting } from "../../store/settings";
+import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore, type PanelPosition } from "../../store/ui";
+import { useSettingsStore, type SettingKey } from "../../store/settings";
+import { THEMES, themeById, type ThemeKind } from "../../theme/themes";
 import { isTauri } from "../../lib/tauri";
 import { openFile } from "../../workbench/commands";
 
-const THEMES: { value: ThemeSetting; label: string }[] = [
-  { value: "dark", label: "Ciemny" },
-  { value: "light", label: "Jasny" },
-  { value: "system", label: "Jak w systemie" },
+const themesOf = (kind: ThemeKind) => THEMES.filter((t) => t.kind === kind);
+
+function ThemeOptions({ kind }: { kind: ThemeKind }) {
+  return themesOf(kind).map((t) => (
+    <option key={t.id} value={t.id}>
+      {t.name}
+    </option>
+  ));
+}
+
+const PANEL_POSITIONS: { value: PanelPosition; label: string }[] = [
+  { value: "bottom", label: "Pod edytorem" },
+  { value: "right", label: "Obok edytora (po prawej)" },
 ];
 
 const inputClass =
@@ -19,20 +29,37 @@ export function SettingsView() {
   const fontMono = useUiStore((s) => s.fontMono);
   const fontSize = useUiStore((s) => s.fontSize);
   const theme = useUiStore((s) => s.theme);
+  const darkTheme = useUiStore((s) => s.darkTheme);
+  const lightTheme = useUiStore((s) => s.lightTheme);
+  const panelPosition = useUiStore((s) => s.panelPosition);
+  const setPanelPosition = useUiStore((s) => s.setPanelPosition);
   const settingsError = useSettingsStore((s) => s.error);
   const update = useSettingsStore((s) => s.update);
   const [error, setError] = useState<string | null>(null);
   const fontId = useId();
   const sizeId = useId();
   const themeId = useId();
+  const darkId = useId();
+  const lightId = useId();
+  const positionId = useId();
 
-  const save = async (key: "theme" | "fontFamily" | "fontSize", value: unknown) => {
+  const save = async (key: SettingKey, value: unknown) => {
     // Apply immediately, persist in settings.json (in the browser there is no file).
     const ui = useUiStore.getState();
-    if (key === "theme") ui.setTheme(value as ThemeSetting);
+    if (key === "theme") ui.setTheme(String(value));
+    if (key === "darkTheme") ui.setThemePreferences({ darkTheme: String(value) });
+    if (key === "lightTheme") ui.setThemePreferences({ lightTheme: String(value) });
     if (key === "fontFamily") ui.setFontMono(String(value));
     if (key === "fontSize") ui.setFontSize(Number(value));
     setError(await update(key, value));
+  };
+
+  // A chosen theme also becomes the preferred one of its kind (used by "system" and the toggle command).
+  const saveTheme = async (id: string) => {
+    await save("theme", id);
+    const kind = themeById(id)?.kind;
+    if (kind === "dark" && darkTheme !== id) await save("darkTheme", id);
+    if (kind === "light" && lightTheme !== id) await save("lightTheme", id);
   };
 
   const openSettingsFile = async () => {
@@ -54,10 +81,49 @@ export function SettingsView() {
         <label htmlFor={themeId} className="text-xs font-semibold text-lf-fg">
           Motyw
         </label>
-        <select id={themeId} value={theme} onChange={(e) => void save("theme", e.target.value)} className={inputClass}>
-          {THEMES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
+        <select id={themeId} value={theme} onChange={(e) => void saveTheme(e.target.value)} className={inputClass}>
+          <optgroup label="Ciemne">
+            <ThemeOptions kind="dark" />
+          </optgroup>
+          <optgroup label="Jasne">
+            <ThemeOptions kind="light" />
+          </optgroup>
+          <option value="system">Jak w systemie</option>
+        </select>
+      </div>
+      {theme === "system" && (
+        <>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={darkId} className="text-xs font-semibold text-lf-fg">
+              Motyw, gdy system jest ciemny
+            </label>
+            <select id={darkId} value={darkTheme} onChange={(e) => void save("darkTheme", e.target.value)} className={inputClass}>
+              <ThemeOptions kind="dark" />
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={lightId} className="text-xs font-semibold text-lf-fg">
+              Motyw, gdy system jest jasny
+            </label>
+            <select id={lightId} value={lightTheme} onChange={(e) => void save("lightTheme", e.target.value)} className={inputClass}>
+              <ThemeOptions kind="light" />
+            </select>
+          </div>
+        </>
+      )}
+      <div className="flex flex-col gap-1">
+        <label htmlFor={positionId} className="text-xs font-semibold text-lf-fg">
+          Panel terminala
+        </label>
+        <select
+          id={positionId}
+          value={panelPosition}
+          onChange={(e) => setPanelPosition(e.target.value as PanelPosition)}
+          className={inputClass}
+        >
+          {PANEL_POSITIONS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
             </option>
           ))}
         </select>

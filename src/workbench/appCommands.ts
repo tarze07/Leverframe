@@ -5,6 +5,7 @@ import { useProfilesStore } from "../store/profiles";
 import { useSessionsStore } from "../store/sessions";
 import { useSettingsStore } from "../store/settings";
 import { useUiStore, type ViewId } from "../store/ui";
+import { THEMES, themeById } from "../theme/themes";
 import { closeActiveTerminal, openAgent, openFile, openProfile, openTerminal, toggleTerminalPanel } from "./commands";
 
 export interface AppCommand {
@@ -23,7 +24,24 @@ export const DEFAULT_KEYBINDINGS: Record<string, string> = {
   "terminal.toggle": "Ctrl+`",
   "terminal.new": "Ctrl+Shift+`",
   "view.files": "Ctrl+Shift+E",
+  "view.maximizePanel": "Ctrl+Shift+M",
 };
+
+/** Applies a theme now and stores it in settings.json; also becomes the preferred one of its kind. */
+function setTheme(id: string) {
+  const ui = useUiStore.getState();
+  const settings = useSettingsStore.getState();
+  ui.setTheme(id);
+  const kind = themeById(id)?.kind;
+  const key = kind === "dark" ? "darkTheme" : kind === "light" ? "lightTheme" : null;
+  const updatePreferred = key !== null && ui[key] !== id;
+  if (key && updatePreferred) ui.setThemePreferences({ [key]: id });
+  // One write after the other: both change the same settings file.
+  void (async () => {
+    await settings.update("theme", id);
+    if (key && updatePreferred) await settings.update(key, id);
+  })();
+}
 
 const showView = (view: ViewId) => {
   const ui = useUiStore.getState();
@@ -37,7 +55,25 @@ export function allCommands(): AppCommand[] {
     { id: "palette.open", title: "Paleta poleceń", category: "Widok", run: () => ui().setPaletteOpen(true) },
     { id: "files.quickOpen", title: "Szybkie otwieranie pliku", category: "Pliki", run: () => ui().setQuickOpen(true) },
     { id: "view.toggleSidebar", title: "Pokaż / ukryj panel boczny", category: "Widok", run: () => ui().toggleSidebar() },
-    { id: "view.togglePanel", title: "Pokaż / ukryj panel dolny", category: "Widok", run: () => ui().toggleBottomPanel() },
+    { id: "view.togglePanel", title: "Pokaż / ukryj panel terminala", category: "Widok", run: () => ui().toggleBottomPanel() },
+    {
+      id: "view.maximizePanel",
+      title: "Maksymalizuj / przywróć panel terminala (ukryj edytor)",
+      category: "Widok",
+      run: () => ui().togglePanelMaximized(),
+    },
+    {
+      id: "view.maximizeEditor",
+      title: "Maksymalizuj / przywróć edytor (ukryj panel terminala)",
+      category: "Widok",
+      run: () => ui().toggleEditorMaximized(),
+    },
+    {
+      id: "view.panelPosition",
+      title: ui().panelPosition === "bottom" ? "Przenieś panel terminala obok edytora" : "Przenieś panel terminala pod edytor",
+      category: "Widok",
+      run: () => ui().setPanelPosition(ui().panelPosition === "bottom" ? "right" : "bottom"),
+    },
     { id: "view.terminals", title: "Pokaż terminale", category: "Widok", run: () => showView("terminals") },
     { id: "view.agents", title: "Pokaż agentów", category: "Widok", run: () => showView("agents") },
     { id: "view.sessions", title: "Pokaż sesje", category: "Widok", run: () => showView("sessions") },
@@ -61,9 +97,9 @@ export function allCommands(): AppCommand[] {
       title: "Przełącz motyw jasny / ciemny",
       category: "Ustawienia",
       run: () => {
-        const next = ui().resolvedTheme === "dark" ? "light" : "dark";
-        ui().setTheme(next);
-        void useSettingsStore.getState().update("theme", next);
+        // To the preferred theme of the other kind (darkTheme / lightTheme in settings.json).
+        const { resolvedTheme, darkTheme, lightTheme } = ui();
+        setTheme(resolvedTheme === "dark" ? lightTheme : darkTheme);
       },
     },
     {
@@ -73,6 +109,14 @@ export function allCommands(): AppCommand[] {
       run: () => void invoke<string>("settings_ensure_file").then((p) => openFile(p)).catch(() => undefined),
     },
   ];
+  for (const t of THEMES) {
+    cmds.push({
+      id: `theme.set.${t.id}`,
+      title: `Motyw: ${t.name} (${t.kind === "dark" ? "ciemny" : "jasny"})`,
+      category: "Ustawienia",
+      run: () => setTheme(t.id),
+    });
+  }
   for (const p of useProfilesStore.getState().profiles) {
     cmds.push({ id: `terminal.profile.${p.id}`, title: `Nowy terminal: ${p.name}`, category: "Terminal", run: () => void openProfile(p.id) });
   }

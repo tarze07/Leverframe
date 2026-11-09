@@ -137,8 +137,14 @@ pub fn snapshot(store: &SettingsStore) -> SettingsSnapshot {
 pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), String> {
     use serde_json::Value;
     match (key, value) {
-        ("theme", Value::String(s)) if ["dark", "light", "system"].contains(&s.as_str()) => Ok(()),
-        ("theme", _) => Err("theme: dozwolone \"dark\", \"light\" lub \"system\"".into()),
+        // Theme ids are defined by the UI (unknown ones fall back to the default theme there).
+        ("theme" | "darkTheme" | "lightTheme", Value::String(s)) if is_theme_id(s) => Ok(()),
+        ("theme", _) => {
+            Err("theme: identyfikator motywu (np. \"dark\", \"light-paper\") lub \"system\"".into())
+        }
+        ("darkTheme" | "lightTheme", _) => Err(format!(
+            "{key}: identyfikator motywu, np. \"dark-midnight\""
+        )),
         ("fontFamily", Value::String(s)) if !s.trim().is_empty() && s.len() <= 200 => Ok(()),
         ("fontFamily", _) => Err("fontFamily: niepusty tekst do 200 znaków".into()),
         ("fontSize", Value::Number(n)) if n.as_u64().is_some_and(|v| (8..=32).contains(&v)) => {
@@ -153,6 +159,12 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
         }
         _ => Err(format!("Ustawienia „{key}” nie można zmienić w ten sposób")),
     }
+}
+
+fn is_theme_id(s: &str) -> bool {
+    (1..=40).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 #[tauri::command]
@@ -188,7 +200,12 @@ mod settings_command_tests {
     #[test]
     fn validates_ui_settings() {
         assert!(validate_setting("theme", &json!("light")).is_ok());
-        assert!(validate_setting("theme", &json!("blue")).is_err());
+        assert!(validate_setting("theme", &json!("system")).is_ok());
+        assert!(validate_setting("theme", &json!("dark-midnight")).is_ok());
+        assert!(validate_setting("theme", &json!("Blue Theme")).is_err());
+        assert!(validate_setting("theme", &json!(1)).is_err());
+        assert!(validate_setting("darkTheme", &json!("dark-plum")).is_ok());
+        assert!(validate_setting("lightTheme", &json!("")).is_err());
         assert!(validate_setting("fontSize", &json!(14)).is_ok());
         assert!(validate_setting("fontSize", &json!(64)).is_err());
         assert!(validate_setting("fontSize", &json!(13.5)).is_err());

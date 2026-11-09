@@ -32,7 +32,7 @@ export function StatusBar() {
           label={info ? `${info.os} · ${info.arch} · v${info.version}` : "przeglądarka (bez Tauri)"}
         />
         <StatusButton icon="layout-sidebar-left" title="Panel boczny (Ctrl+B)" onClick={toggleSidebar} />
-        <StatusButton icon="layout-panel" title="Panel dolny (Ctrl+J)" onClick={toggleBottomPanel} />
+        <StatusButton icon="layout-panel" title="Panel terminala (Ctrl+J)" onClick={toggleBottomPanel} />
       </div>
     </footer>
   );
