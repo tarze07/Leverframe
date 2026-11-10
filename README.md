@@ -32,7 +32,14 @@ Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżen
 | Ctrl+Shift+M | Maksymalizuj panel terminala (ukryj edytor) / przywróć |
 | Ctrl+Shift+E | Panel „Pliki” |
 | Ctrl+S, Ctrl+F | Zapis i wyszukiwanie w edytorze |
+| Ctrl+Shift+V / Ctrl+K V | Podgląd Markdown / podgląd obok tekstu (w edytorze pliku `.md`) |
 | Ctrl+F, Ctrl+Shift+C / V | Wyszukiwanie, kopiowanie i wklejanie w terminalu |
+
+## Edytor
+
+Nad każdym plikiem jest pasek z jego ścieżką, informacją o niezapisanych zmianach i przyciskiem **Zapisz** (albo Ctrl+S). Paleta poleceń ma też „Zapisz wszystkie pliki”. Automatyczny zapis włączysz w ustawieniach („Automatyczny zapis plików”) lub w `settings.json`: `"autoSave": "afterDelay"` (po sekundzie bez pisania) albo `"onFocusChange"` (po wyjściu z edytora). Jeśli plik zmienił się na dysku, aplikacja zapyta, czy go nadpisać.
+
+Pliki Markdown (`.md`) mają trzy widoki, przełączane na pasku: sam tekst, tekst z podglądem obok i sam podgląd. Podgląd pokazuje obrazki z dysku (ścieżki względem pliku) i z internetu; linki do stron otwierają się w przeglądarce, a linki do innych plików – w edytorze.
 
 ## Agenci
 

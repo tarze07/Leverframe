@@ -86,6 +86,38 @@ describe("Leverframe", () => {
     assert.match(readFileSync(join(env.project, "src", "payments.ts"), "utf8"), /\/\/ e2e$/);
   });
 
+  it("saves a Markdown file with the toolbar button and shows its preview", async () => {
+    const bar = `[...document.querySelectorAll('[aria-label="Pasek edytora"]')].find(b => b.querySelector('span[title$="README.md"]'))`;
+    await showView("Pliki");
+    await app.waitFor("return !!document.querySelector('[role=treeitem][aria-label=\"README.md\"]')");
+    await app.click('[role=treeitem][aria-label="README.md"] button');
+    await app.waitFor(`const b = ${bar}; return b && [...b.parentElement.querySelectorAll('.view-line')].some(l => l.innerText.includes('Sklep'))`, 20_000);
+    assert.equal(await app.exec(`return ${bar}.querySelector('button[title^="Zapisz"]').disabled`), true, "nothing to save yet");
+
+    await app.chord(KEY.ctrl, KEY.end);
+    await app.type("\nDopisane w e2e.");
+    await app.waitFor(`return !${bar}.querySelector('button[title^="Zapisz"]').disabled`);
+    await app.exec(`${bar}.querySelector('button[title^="Zapisz"]').click()`);
+    await app.waitFor(`return ${bar}.querySelector('button[title^="Zapisz"]').disabled`);
+    assert.match(readFileSync(join(env.project, "README.md"), "utf8"), /Dopisane w e2e\.\n?$/);
+    await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.trim() === 'README.md')");
+
+    await app.exec(`${bar}.querySelector('button[aria-label^="Tylko podgląd"]').click()`);
+    const preview = `${bar}.parentElement.querySelector('[data-testid=markdown-preview]')`;
+    await app.waitFor(`return ${preview}?.querySelector('h1')?.innerText === 'Sklep'`);
+    assert.match(await app.exec(`return ${preview}.innerText`), /Dopisane w e2e\./);
+    // The local image is read through the backend and shown.
+    await app.waitFor(`const img = ${preview}.querySelector('img[alt=logo]'); return img && img.src.startsWith('blob:') && img.complete && img.naturalWidth === 2`);
+    // A web link must not navigate the app window.
+    const before = await app.exec("return location.href");
+    await app.exec(`${preview}.querySelector('a').click()`);
+    await sleep(300);
+    assert.equal(await app.exec("return location.href"), before);
+
+    await app.exec(`${bar}.querySelector('button[aria-label^="Tylko tekst"]').click()`);
+    await app.waitFor(`return !${bar}.parentElement.querySelector('[data-testid=markdown-preview]')`);
+  });
+
   it("moves the terminal panel beside the editor and maximizes it; the shell keeps running", async () => {
     const panel = 'section[aria-label="Panel terminala"]';
     const size = (sel) => `const r = document.querySelector('${sel}').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.x), Math.round(r.y)];`;

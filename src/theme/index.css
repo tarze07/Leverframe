@@ -130,3 +130,136 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--lf-elevated) transparent;
 }
+
+/* Markdown preview (editor). Colors come from the theme tokens. */
+.lf-markdown {
+  color: var(--lf-fg);
+  font-size: 14px;
+  line-height: 1.6;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.lf-markdown > :first-child {
+  margin-top: 0;
+}
+.lf-markdown h1,
+.lf-markdown h2,
+.lf-markdown h3,
+.lf-markdown h4,
+.lf-markdown h5,
+.lf-markdown h6 {
+  margin: 1.4em 0 0.6em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.lf-markdown h1 {
+  font-size: 1.9em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--lf-border);
+}
+.lf-markdown h2 {
+  font-size: 1.45em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--lf-border);
+}
+.lf-markdown h3 {
+  font-size: 1.2em;
+}
+.lf-markdown h4,
+.lf-markdown h5,
+.lf-markdown h6 {
+  font-size: 1em;
+}
+.lf-markdown h6 {
+  color: var(--lf-fg-muted);
+}
+.lf-markdown p,
+.lf-markdown ul,
+.lf-markdown ol,
+.lf-markdown blockquote,
+.lf-markdown pre,
+.lf-markdown table {
+  margin: 0 0 1em;
+}
+.lf-markdown ul,
+.lf-markdown ol {
+  padding-left: 2em;
+}
+.lf-markdown ul {
+  list-style: disc;
+}
+.lf-markdown ol {
+  list-style: decimal;
+}
+.lf-markdown li + li {
+  margin-top: 0.25em;
+}
+.lf-markdown li.task {
+  list-style: none;
+  margin-left: -1.3em;
+}
+.lf-markdown a {
+  color: var(--lf-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.lf-markdown a:hover {
+  text-decoration: underline;
+}
+.lf-markdown strong {
+  font-weight: 600;
+}
+.lf-markdown code {
+  font-family: var(--lf-font-mono);
+  font-size: 0.88em;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: var(--lf-elevated);
+}
+.lf-markdown pre {
+  padding: 12px 14px;
+  overflow: auto;
+  border-radius: 6px;
+  border: 1px solid var(--lf-border);
+  background: var(--lf-sidebar-bg);
+  line-height: 1.45;
+}
+.lf-markdown pre code {
+  padding: 0;
+  font-size: var(--lf-font-size-mono);
+  background: transparent;
+}
+.lf-markdown blockquote {
+  padding: 0 1em;
+  color: var(--lf-fg-muted);
+  border-left: 3px solid var(--lf-border);
+}
+.lf-markdown hr {
+  height: 1px;
+  margin: 1.5em 0;
+  border: 0;
+  background: var(--lf-border);
+}
+.lf-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+}
+.lf-markdown th,
+.lf-markdown td {
+  padding: 6px 12px;
+  border: 1px solid var(--lf-border);
+}
+.lf-markdown th {
+  font-weight: 600;
+  background: var(--lf-sidebar-bg);
+}
+.lf-markdown img {
+  max-width: 100%;
+  display: inline-block;
+}
+.lf-markdown .lf-md-missing {
+  color: var(--lf-fg-subtle);
+  font-style: italic;
+}

@@ -6,6 +6,8 @@ import { useSessionsStore } from "../store/sessions";
 import { useSettingsStore } from "../store/settings";
 import { useUiStore, type ViewId } from "../store/ui";
 import { THEMES, themeById } from "../theme/themes";
+import { currentEditor, saveAllEditors } from "../store/editor";
+import { dockRegistry } from "./docks";
 import { closeActiveTerminal, openAgent, openFile, openProfile, openTerminal, toggleTerminalPanel } from "./commands";
 
 export interface AppCommand {
@@ -55,6 +57,31 @@ export function allCommands(): AppCommand[] {
     { id: "palette.open", title: "Paleta poleceń", category: "Widok", run: () => ui().setPaletteOpen(true) },
     { id: "files.quickOpen", title: "Szybkie otwieranie pliku", category: "Pliki", run: () => ui().setQuickOpen(true) },
     { id: "view.toggleSidebar", title: "Pokaż / ukryj panel boczny", category: "Widok", run: () => ui().toggleSidebar() },
+    {
+      id: "files.save",
+      title: "Zapisz plik",
+      category: "Pliki",
+      run: () => void currentEditor(dockRegistry.get("main")?.activePanel?.id)?.[1].save(),
+    },
+    { id: "files.saveAll", title: "Zapisz wszystkie pliki", category: "Pliki", run: () => void saveAllEditors() },
+    {
+      id: "markdown.preview",
+      title: "Markdown: pokaż / ukryj podgląd",
+      category: "Pliki",
+      run: () => {
+        const entry = currentEditor(dockRegistry.get("main")?.activePanel?.id)?.[1];
+        entry?.setView?.(entry.view === "preview" ? "edit" : "preview");
+      },
+    },
+    {
+      id: "markdown.previewSide",
+      title: "Markdown: podgląd obok tekstu",
+      category: "Pliki",
+      run: () => {
+        const entry = currentEditor(dockRegistry.get("main")?.activePanel?.id)?.[1];
+        entry?.setView?.(entry.view === "split" ? "edit" : "split");
+      },
+    },
     { id: "view.togglePanel", title: "Pokaż / ukryj panel terminala", category: "Widok", run: () => ui().toggleBottomPanel() },
     {
       id: "view.maximizePanel",

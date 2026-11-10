@@ -138,6 +138,41 @@ pub fn list_files(root: &Path, limit: usize) -> Result<FileList, FsError> {
     Ok(FileList { files, truncated })
 }
 
+/// Largest image shown in the Markdown preview.
+pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Image formats the Markdown preview shows, with their MIME types.
+const IMAGE_TYPES: &[(&str, &str)] = &[
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("gif", "image/gif"),
+    ("webp", "image/webp"),
+    ("svg", "image/svg+xml"),
+    ("bmp", "image/bmp"),
+    ("ico", "image/x-icon"),
+    ("avif", "image/avif"),
+];
+
+/// MIME type of an image file by extension; `None` for anything else.
+pub fn image_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    IMAGE_TYPES.iter().find(|(e, _)| *e == ext).map(|(_, m)| *m)
+}
+
+/// Reads an image for the Markdown preview: only image extensions, up to `MAX_IMAGE_BYTES`.
+pub fn read_image(path: &Path) -> Result<Vec<u8>, FsError> {
+    if image_mime(path).is_none() {
+        return Err(FsError::other("To nie jest obraz"));
+    }
+    let meta = std::fs::metadata(path)
+        .map_err(|e| FsError::other(format!("Nie można otworzyć obrazu: {e}")))?;
+    if !meta.is_file() || meta.len() > MAX_IMAGE_BYTES {
+        return Err(FsError::other("Obraz jest za duży albo nie jest plikiem"));
+    }
+    std::fs::read(path).map_err(|e| FsError::other(format!("Nie można odczytać obrazu: {e}")))
+}
+
 pub fn read_text(path: &Path) -> Result<TextFile, FsError> {
     let meta = std::fs::metadata(path)
         .map_err(|e| FsError::other(format!("Nie można otworzyć pliku: {e}")))?;
@@ -210,6 +245,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn reads_only_images_for_the_preview() {
+        let d = temp("image");
+        let png = d.join("Logo.PNG");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G', 0]).unwrap();
+        std::fs::write(d.join("secret.txt"), "token").unwrap();
+        std::fs::create_dir_all(d.join("dir.png")).unwrap();
+        assert_eq!(image_mime(&png), Some("image/png"));
+        assert_eq!(image_mime(&d.join("a.svg")), Some("image/svg+xml"));
+        assert_eq!(read_image(&png).unwrap(), vec![0x89, b'P', b'N', b'G', 0]);
+        assert!(
+            read_image(&d.join("secret.txt")).is_err(),
+            "only image extensions"
+        );
+        assert!(
+            read_image(&d.join("dir.png")).is_err(),
+            "folders are not images"
+        );
+        assert!(read_image(&d.join("missing.png")).is_err());
+        std::fs::remove_dir_all(d).unwrap();
     }
 
     fn tree(root: &Path) {

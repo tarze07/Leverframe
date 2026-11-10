@@ -4,6 +4,13 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Zapisywanie plików** ([#31](https://github.com/tarze07/Leverframe/issues/31)): pasek nad edytorem z przyciskiem „Zapisz” i informacją o niezapisanych zmianach; polecenia „Zapisz plik” i „Zapisz wszystkie pliki” w palecie poleceń; opcjonalny automatyczny zapis (`autoSave`: po chwili bez pisania albo po wyjściu z edytora).
+- **Podgląd Markdown** ([#32](https://github.com/tarze07/Leverframe/issues/32)): dla plików `.md` tryby „tylko tekst”, „tekst i podgląd obok” (Ctrl+K V) i „tylko podgląd” (Ctrl+Shift+V). Podgląd odświeża się podczas pisania, pokazuje tabele, listy zadań, kod z kolorowaniem i obrazki z dysku; linki do stron otwierają się w przeglądarce, linki do plików – w edytorze. HTML z pliku jest oczyszczany (bez skryptów).
+
+### Poprawione
+- Przełączanie zakładek między plikami w edytorze: tekst nie trafia już do ukrytego, poprzednio edytowanego pliku, gdy fokus nie przeszedł na nowy plik (np. po otwarciu pliku z drzewa).
+
 ### Zmienione
 - Nieudane wykrywanie agentów (np. host SSH nie odpowiada) nie jest już ponawiane przy każdym powrocie do panelu „Agenci” ani do profilu – ponownie tylko po kliknięciu „Sprawdź ponownie” ([#29](https://github.com/tarze07/Leverframe/issues/29)).
 

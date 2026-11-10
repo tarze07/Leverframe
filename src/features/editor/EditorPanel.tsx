@@ -7,6 +7,8 @@ export interface EditorParams {
   path: string;
   /** 1-based line to reveal after opening. */
   line?: number;
+  /** Markdown: text, text + preview, or preview only (kept with the layout). */
+  view?: "edit" | "split" | "preview";
 }
 
 // Monaco (several MB) is loaded only when the first editor is opened.
