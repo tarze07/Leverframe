@@ -2,6 +2,11 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
+## [Unreleased]
+
+### Zmienione
+- Nieudane wykrywanie agentów (np. host SSH nie odpowiada) nie jest już ponawiane przy każdym powrocie do panelu „Agenci” ani do profilu – ponownie tylko po kliknięciu „Sprawdź ponownie” ([#29](https://github.com/tarze07/Leverframe/issues/29)).
+
 ## [0.3.0] – 2026-11-09
 
 Wybór folderu, w którym startuje agent ([#26](https://github.com/tarze07/Leverframe/issues/26)).

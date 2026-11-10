@@ -159,6 +159,39 @@ describe("AgentsView", () => {
     expect(invoke).toHaveBeenLastCalledWith("agents_detect", { profileId: "local:bash", force: true });
   });
 
+  it("does not search again after a failed detection until asked", async () => {
+    mockBackend((p) => {
+      if (p === "user-1") throw "Brak odpowiedzi z hosta SSH";
+      return [{ id: "claude", installed: true, command: "claude", version: "local 1" }];
+    });
+    const detectCalls = (profileId: string) =>
+      invoke.mock.calls.filter(([cmd, args]) => cmd === "agents_detect" && (args as { profileId: string }).profileId === profileId);
+
+    const view = render(<AgentsView />);
+    await screen.findByText("local 1");
+    fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "user-1" } });
+    expect(await screen.findByText("Brak odpowiedzi z hosta SSH")).toBeInTheDocument();
+    expect(screen.getByText(/nie będzie ponawiane samo/)).toBeInTheDocument();
+
+    // Back to the local profile and to the SSH one again, then the panel is closed and reopened.
+    fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "local:bash" } });
+    await screen.findByText("local 1");
+    fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "user-1" } });
+    view.unmount();
+    render(<AgentsView />);
+    expect(await screen.findByText("Brak odpowiedzi z hosta SSH")).toBeInTheDocument();
+    expect(detectCalls("user-1")).toHaveLength(1);
+    expect(detectCalls("local:bash")).toHaveLength(1);
+
+    // Agents can still be launched without detection.
+    fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Uruchom"));
+    expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "user-1" }));
+
+    fireEvent.click(screen.getByLabelText("Sprawdź ponownie"));
+    await waitFor(() => expect(detectCalls("user-1")).toHaveLength(2));
+    expect(invoke).toHaveBeenLastCalledWith("agents_detect", { profileId: "user-1", force: true });
+  });
+
   it("picks and clears the project folder", async () => {
     mockBackend(() => []);
     openDialog.mockResolvedValue("/home/me/other");
