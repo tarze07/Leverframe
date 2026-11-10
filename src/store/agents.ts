@@ -22,6 +22,10 @@ interface AgentsStore {
   detection: Record<string, DetectState>;
   load: () => Promise<void>;
   setProfile: (profileId: string | null) => void;
+  /**
+   * Checks which agents a profile has. Runs once per profile: the result – also a failure,
+   * e.g. an unreachable SSH host – is kept until `force` (the "Sprawdź ponownie" button).
+   */
   detect: (profileId: string, force?: boolean) => Promise<void>;
   setProjectDir: (path: string | null) => Promise<void>;
   setRemoteDir: (profileId: string, path: string | null) => Promise<void>;
@@ -58,7 +62,7 @@ export const useAgentsStore = create<AgentsStore>()((set, get) => ({
   setProfile: (profileId) => set({ profileId }),
   detect: async (profileId, force = false) => {
     const current = get().detection[profileId];
-    if (!force && current && current.status !== "error") return;
+    if (!force && current) return;
     set((s) => ({ detection: { ...s.detection, [profileId]: { status: "loading" } } }));
     try {
       const results = await agentsClient.detect(profileId, force);

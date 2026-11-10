@@ -172,7 +172,13 @@ export function AgentsView() {
       )}
 
       {state?.status === "error" && (
-        <p className="rounded border border-lf-border bg-lf-editor p-2 text-[11px] text-lf-danger">{state.error}</p>
+        <div className="rounded border border-lf-border bg-lf-editor p-2 text-[11px]">
+          <p className="text-lf-danger">{state.error}</p>
+          <p className="mt-1 text-lf-subtle">
+            Wykrywanie nie będzie ponawiane samo – kliknij <span className="codicon codicon-refresh align-middle" aria-hidden />{" "}
+            „Sprawdź ponownie”, gdy profil będzie dostępny. Agenta można uruchomić i bez tego.
+          </p>
+        </div>
       )}
 
       <ul className="flex flex-col gap-2" aria-label="Agenci">
