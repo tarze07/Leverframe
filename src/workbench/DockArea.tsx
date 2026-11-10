@@ -47,6 +47,8 @@ export function DockArea({ id, components, tabComponents, addDefaultPanels, onEm
     ({ api }: DockviewReadyEvent) => {
       const key = layoutStorageKey(id);
       if (!restoreLayout(api, key)) addDefaultPanels?.(api);
+      // Editors saved by older versions: keep them in the DOM like new ones (see openFile).
+      for (const panel of api.panels) if (panel.view.contentComponent === "editor") panel.api.setRenderer("always");
       api.onDidLayoutChange(() => safeStorage.setItem(key, JSON.stringify(api.toJSON())));
       api.onDidRemovePanel(() => {
         if (api.panels.length === 0) onEmpty?.();

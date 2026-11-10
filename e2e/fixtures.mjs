@@ -24,6 +24,16 @@ export function makeHome() {
 
   writeFileSync(join(project, ".gitignore"), "node_modules/\n");
   writeFileSync(join(project, "src", "payments.ts"), "export const total = 1;\n");
+  // Markdown with a local image (a 2×2 red PNG) and a web link, for the preview.
+  mkdirSync(join(project, "img"), { recursive: true });
+  writeFileSync(
+    join(project, "img", "logo.png"),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  );
+  writeFileSync(join(project, "README.md"), "# Sklep\n\nOpis [strony](https://example.com).\n\n![logo](img/logo.png)\n\n## Zadania\n\n- [x] Koszyk\n- [ ] Płatności\n\n| Moduł | Stan |\n|---|---|\n| koszyk | gotowy |\n\n> Uwaga: **ważne**.\n\n```ts\nexport const total = (a: number) => a * 2;\n```\n");
   writeFileSync(join(project, "node_modules", "x", "index.js"), "ignored\n");
 
   const claudeLogs = join(home, ".claude", "projects", "-home-me-shop");

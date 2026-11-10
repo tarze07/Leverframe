@@ -16,6 +16,12 @@ function ThemeOptions({ kind }: { kind: ThemeKind }) {
   ));
 }
 
+const AUTO_SAVE: { value: string; label: string }[] = [
+  { value: "off", label: "Wyłączony – zapis przez Ctrl+S" },
+  { value: "afterDelay", label: "Po chwili bez pisania (1 s)" },
+  { value: "onFocusChange", label: "Po wyjściu z edytora" },
+];
+
 const PANEL_POSITIONS: { value: PanelPosition; label: string }[] = [
   { value: "bottom", label: "Pod edytorem" },
   { value: "right", label: "Obok edytora (po prawej)" },
@@ -42,6 +48,8 @@ export function SettingsView() {
   const darkId = useId();
   const lightId = useId();
   const positionId = useId();
+  const autoSaveId = useId();
+  const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
 
   const save = async (key: SettingKey, value: unknown) => {
     // Apply immediately, persist in settings.json (in the browser there is no file).
@@ -111,6 +119,18 @@ export function SettingsView() {
           </div>
         </>
       )}
+      <div className="flex flex-col gap-1">
+        <label htmlFor={autoSaveId} className="text-xs font-semibold text-lf-fg">
+          Automatyczny zapis plików
+        </label>
+        <select id={autoSaveId} value={autoSave} onChange={(e) => void save("autoSave", e.target.value)} className={inputClass}>
+          {AUTO_SAVE.map((a) => (
+            <option key={a.value} value={a.value}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={positionId} className="text-xs font-semibold text-lf-fg">
           Panel terminala

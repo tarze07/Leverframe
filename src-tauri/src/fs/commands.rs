@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use super::{
-    list_dir, list_files, read_text, write_text, DirEntry, FileList, FsError, TextFile,
+    list_dir, list_files, read_image, read_text, write_text, DirEntry, FileList, FsError, TextFile,
     MAX_LIST_FILES,
 };
 
@@ -40,4 +40,12 @@ pub async fn fs_write_text(
     expected_mtime: Option<i64>,
 ) -> Result<i64, FsError> {
     blocking(move || write_text(&PathBuf::from(path), &content, expected_mtime)).await
+}
+
+/// Image bytes for the Markdown preview (sent raw, no base64 / JSON overhead).
+#[tauri::command]
+pub async fn fs_read_image(path: String) -> Result<tauri::ipc::Response, FsError> {
+    blocking(move || read_image(&PathBuf::from(path)))
+        .await
+        .map(tauri::ipc::Response::new)
 }

@@ -156,6 +156,9 @@ export function openFile(path: string, options: { line?: number } = {}) {
     id,
     component: "editor",
     tabComponent: "editor",
+    // Kept in the DOM while hidden: a detached editor can keep the keyboard focus (WebKit) and
+    // receive typing meant for the visible file; Monaco also keeps its scroll and undo state.
+    renderer: "always",
     title: baseName(path),
     params: { path, line: options.line },
   });
