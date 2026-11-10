@@ -2,7 +2,9 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
-## [Unreleased]
+## [0.4.0] – 2026-11-10
+
+Zapisywanie i podgląd Markdown w edytorze ([#31](https://github.com/tarze07/Leverframe/issues/31), [#32](https://github.com/tarze07/Leverframe/issues/32)), bez ponownego wykrywania agentów po nieudanej próbie ([#29](https://github.com/tarze07/Leverframe/issues/29)).
 
 ### Dodane
 - **Zapisywanie plików** ([#31](https://github.com/tarze07/Leverframe/issues/31)): pasek nad edytorem z przyciskiem „Zapisz” i informacją o niezapisanych zmianach; polecenia „Zapisz plik” i „Zapisz wszystkie pliki” w palecie poleceń; opcjonalny automatyczny zapis (`autoSave`: po chwili bez pisania albo po wyjściu z edytora).
@@ -96,6 +98,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.4.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.1.0
