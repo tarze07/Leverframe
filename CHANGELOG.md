@@ -2,6 +2,11 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
+## [Unreleased]
+
+### Poprawione
+- Po otwarciu pliku (np. z drzewa „Pliki”) kursor czasem nie trafiał do edytora i pisanie nic nie dawało, dopóki nie kliknęło się w tekst. Edytor ponawia teraz przejęcie fokusu, gdy panel na chwilę jest ukryty podczas przeliczania układu.
+
 ## [0.4.0] – 2026-11-10
 
 Zapisywanie i podgląd Markdown w edytorze ([#31](https://github.com/tarze07/Leverframe/issues/31), [#32](https://github.com/tarze07/Leverframe/issues/32)), bez ponownego wykrywania agentów po nieudanej próbie ([#29](https://github.com/tarze07/Leverframe/issues/29)).
