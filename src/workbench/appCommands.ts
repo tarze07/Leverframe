@@ -162,6 +162,12 @@ export function allCommands(): AppCommand[] {
         category: "Agenci",
         run: () => void openAgentChat(a.id, { profileId: agents.profileId, cwd: agents.projectDir }),
       });
+      cmds.push({
+        id: `agents.chatPanel.${a.id}`,
+        title: `Rozmowa z ${a.name} w panelu terminala`,
+        category: "Agenci",
+        run: () => void openAgentChat(a.id, { profileId: agents.profileId, cwd: agents.projectDir, dock: "panel" }),
+      });
     }
   }
   return cmds;

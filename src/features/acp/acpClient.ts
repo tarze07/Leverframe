@@ -4,7 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 export type AcpEvent =
   | { type: "initialized"; agentInfo: { name?: string; title?: string; version?: string } | null; agentCapabilities: unknown; authMethods: AuthMethod[] }
   | { type: "authRequired"; authMethods: AuthMethod[]; message: string }
-  | { type: "sessionReady"; sessionId: string; cwd: string; modes: unknown; configOptions: unknown }
+  | { type: "sessionReady"; sessionId: string; cwd: string; modes: ModeState | null; configOptions: ConfigOption[] | null }
   | { type: "update"; update: SessionUpdate }
   | { type: "permission"; requestId: number; toolCall: { title?: string; kind?: string } & Record<string, unknown>; options: PermissionOption[] }
   | { type: "permissionClosed"; requestId: number }
@@ -26,8 +26,73 @@ export interface PermissionOption {
   kind: "allow_once" | "allow_always" | "reject_once" | "reject_always" | string;
 }
 
-/** A `session/update` (ACP v1); only the fields this UI reads are typed. */
-export type SessionUpdate = { sessionUpdate: string; content?: { type: string; text?: string } } & Record<string, unknown>;
+/** ACP v1 content block; text is shown, the others by name. */
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "resource_link"; uri: string; name?: string }
+  | { type: "resource"; resource: { uri: string; text?: string } }
+  | { type: "image" | "audio"; mimeType?: string }
+  | { type: string; [key: string]: unknown };
+
+export type ToolKind = "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
+export type ToolStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface ToolLocation {
+  path: string;
+  line?: number | null;
+}
+
+export type ToolContent =
+  | { type: "content"; content: ContentBlock }
+  | { type: "diff"; path: string; oldText?: string | null; newText: string }
+  | { type: "terminal"; terminalId: string };
+
+export interface PlanEntry {
+  content: string;
+  priority: "high" | "medium" | "low";
+  status: "pending" | "in_progress" | "completed";
+}
+
+export interface AvailableCommand {
+  name: string;
+  description: string;
+  input?: { hint: string } | null;
+}
+
+export interface SessionMode {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface ModeState {
+  currentModeId: string;
+  availableModes: SessionMode[];
+}
+
+export interface ConfigSelectOption {
+  value: string;
+  name: string;
+  description?: string | null;
+}
+
+export type ConfigOption = { id: string; name: string; description?: string | null; category?: string | null } & (
+  | { type: "select"; currentValue: string; options: ConfigSelectOption[] | { group: string; name: string; options: ConfigSelectOption[] }[] }
+  | { type: "boolean"; currentValue: boolean }
+);
+
+/** A `session/update` (ACP v1). Variants the UI reads are typed; unknown ones are ignored. */
+export type SessionUpdate =
+  | { sessionUpdate: "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk"; content: ContentBlock }
+  | ({ sessionUpdate: "tool_call"; toolCallId: string; title: string; kind?: ToolKind; status?: ToolStatus; content?: ToolContent[]; locations?: ToolLocation[] })
+  | ({ sessionUpdate: "tool_call_update"; toolCallId: string; title?: string | null; kind?: ToolKind | null; status?: ToolStatus | null; content?: ToolContent[] | null; locations?: ToolLocation[] | null })
+  | { sessionUpdate: "plan"; entries: PlanEntry[] }
+  | { sessionUpdate: "available_commands_update"; availableCommands: AvailableCommand[] }
+  | { sessionUpdate: "current_mode_update"; currentModeId: string }
+  | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] }
+  | { sessionUpdate: "session_info_update"; title?: string | null }
+  | { sessionUpdate: "usage_update"; used: number; size: number; cost?: { amount: number; currency: string } | null }
+  | { sessionUpdate: string; [key: string]: unknown };
 
 export interface AcpStartRequest {
   agentId?: string;
@@ -43,6 +108,9 @@ export interface AcpHandle {
   cancel(): Promise<void>;
   replyPermission(requestId: number, optionId: string | null): Promise<void>;
   authenticate(methodId: string): Promise<void>;
+  setMode(modeId: string): Promise<void>;
+  /** A select takes the value id, a boolean option `true` / `false`. */
+  setConfigOption(configId: string, value: string | boolean): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -59,6 +127,8 @@ export async function startAcp(request: AcpStartRequest, onEvent: (event: AcpEve
     cancel: () => invoke("acp_cancel", { id }),
     replyPermission: (requestId, optionId) => invoke("acp_permission_reply", { id, requestId, optionId }),
     authenticate: (methodId) => invoke("acp_authenticate", { id, methodId }),
+    setMode: (modeId) => invoke("acp_set_mode", { id, modeId }),
+    setConfigOption: (configId, value) => invoke("acp_set_config_option", { id, configId, value }),
     stop: () => invoke("acp_stop", { id }),
   };
 }

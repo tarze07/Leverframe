@@ -79,6 +79,8 @@ pub fn run() {
             acp::commands::acp_cancel,
             acp::commands::acp_permission_reply,
             acp::commands::acp_authenticate,
+            acp::commands::acp_set_mode,
+            acp::commands::acp_set_config_option,
             acp::commands::acp_stop,
         ])
         .build(tauri::generate_context!())

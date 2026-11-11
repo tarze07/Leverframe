@@ -220,4 +220,51 @@ describe("Leverframe", () => {
     const text = await transcript();
     assert.ok(text.includes(`cwd=${env.project}`), text);
   });
+
+  it("shows the agent's plan, tool calls, Markdown, usage, commands and modes; stops a turn", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const has = (text) => `return document.querySelector('${chat} [role=log]').textContent.includes(${JSON.stringify(text)})`;
+    const focusBox = () => app.waitFor(`const t = document.querySelector('${chat} textarea'); t.focus(); return document.activeElement === t`);
+    const say = async (text) => {
+      await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 20_000);
+      await focusBox();
+      await app.type(`${text}${KEY.enter}`);
+    };
+
+    await say("tools");
+    // Each turn has its own plan: the last one is this turn's.
+    await app.waitFor(`return [...document.querySelectorAll('${chat} [role=group][aria-label="Plan agenta"]')].at(-1)?.textContent.includes('Plan · 2/2')`);
+    const card = `${chat} [role=group][aria-label="Narzędzie: Czytam README.md"]`;
+    await app.waitFor(`return document.querySelector('${card}')?.textContent.includes('gotowe')`);
+    assert.equal(await app.exec(`return document.querySelector('${card} button').textContent`), "README.md:3");
+    assert.match(await app.exec(`return document.querySelector('${chat} [role=group][aria-label="Narzędzie: npm test"]').textContent`), /błąd.*1 test nie przeszedł/s);
+    await app.waitFor(`return document.querySelector('${chat} [role=log] strong')?.textContent === '1 test'`);
+    assert.match(await app.exec(`return document.querySelector('${chat} header').textContent`), /kontekst 12\s300 \/ 200\s000 \(6%\) · 0,42 USD/);
+    // A file the agent worked on opens in the editor at its line.
+    await app.exec(`document.querySelector('${card} button').click()`);
+    await app.waitFor("return [...document.querySelectorAll('.dv-tab.dv-active-tab')].some(t => t.textContent.includes('README.md'))");
+    // Dockview activates a tab on pointerdown (a plain click() does not).
+    await app.exec(`[...document.querySelectorAll('.dv-tab')].find(t => t.textContent.includes('rozmowa')).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, isPrimary: true }))`);
+    await app.waitFor(`return !!document.querySelector('${chat} textarea')`);
+
+    // The agent's commands after "/".
+    await focusBox();
+    await app.type("/");
+    await app.waitFor(`return [...document.querySelectorAll('${chat} [role=option]')].map(o => o.textContent).join('|').includes('/review')`);
+    await app.keys([{ type: "keyDown", value: KEY.escape }, { type: "keyUp", value: KEY.escape }]);
+    await app.exec(`const t = document.querySelector('${chat} textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true }))`);
+
+    // Mode: the agent confirms the change.
+    await app.exec(`const s = document.querySelector('${chat} select[aria-label="Tryb agenta"]'); s.value = 'ask'; s.dispatchEvent(new Event('change', { bubbles: true }))`);
+    await app.waitFor(`return document.querySelector('${chat} select[aria-label="Tryb agenta"]').value === 'ask'`);
+
+    // Stop.
+    await say("slow");
+    await app.waitFor(has("pracuję"));
+    await app.click(`${chat} button`, "Stop");
+    await app.waitFor(has("Przerwano."));
+
+    await say("limit");
+    await app.waitFor(has("limit długości odpowiedzi"));
+  });
 });

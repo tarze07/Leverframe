@@ -9,6 +9,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 - **Gemini CLI** jako nowy agent (terminal i tryb rozmowy).
 - Tryb rozmowy Claude Code i Codex przez oficjalne adaptery (`claude-agent-acp`, `codex-acp`); panel „Agenci” pokazuje, czy są zainstalowane, i podpowiada instalację. Pole `acp` w `agents.json`.
 
+- **Pełny panel rozmowy** ([#38](https://github.com/tarze07/Leverframe/issues/38)): odpowiedzi jako Markdown (oczyszczany jak podgląd plików; linki otwierają się w przeglądarce lub edytorze), rozwijane rozumowanie, plan agenta ze statusem kroków, karty wywołań narzędzi (rodzaj, status, wynik, pliki z numerem linii – otwierane w edytorze, także z WSL), komendy agenta po wpisaniu `/`, wybór trybu i opcji agenta (np. modelu), zużycie kontekstu i koszt, przyczyna nietypowego końca tury, podpowiedź instalacji, gdy brakuje programu agenta. Rozmowę można otworzyć także w panelu terminala.
+
 ### Zmienione
 - Przycisk uruchamiający agenta w terminalu nazywa się teraz **Terminal**.
 

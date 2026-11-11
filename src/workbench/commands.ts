@@ -70,9 +70,17 @@ export function openAgent(agentId: string, options: { profileId?: string | null;
 
 let chatCounter = 0;
 
-/** Opens a conversation with an agent in ACP mode, in the editor area (a new agent process). */
-export function openAgentChat(agentId: string, options: { profileId?: string | null; cwd?: string | null } = {}) {
-  const api = dockRegistry.get("main");
+/**
+ * Opens a conversation with an agent in ACP mode (a new agent process), in the editor area or
+ * in the terminal panel.
+ */
+export function openAgentChat(
+  agentId: string,
+  options: { profileId?: string | null; cwd?: string | null; dock?: DockId } = {},
+) {
+  const dock = options.dock ?? "main";
+  if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
+  const api = dockRegistry.get(dock);
   if (!api) return null;
   const agent = useAgentsStore.getState().agentById(agentId);
   const profile = useProfilesStore.getState().byId(options.profileId ?? useProfilesStore.getState().defaultProfileId);

@@ -6,6 +6,8 @@
 //! - `crash`      – writes to stderr and exits with code 3
 //! - `garbage`    – prints a non-JSON line on stdout first, then answers normally
 //! - `pwd`        – answers with the session's working directory
+//! - `tools`      – a plan, tool calls with locations and output, usage and a Markdown answer
+//! - `limit`      – ends the turn with `max_tokens`
 //! - `fs`         – asks the client for a file (Leverframe A1 refuses: no fs capability)
 //! - anything else – a thought, an echo of the prompt and a plan
 //!
@@ -22,9 +24,23 @@ struct Agent {
     need_auth: bool,
     protocol: u64,
     cwd: String,
+    mode: String,
+    model: String,
+    web: bool,
 }
 
 impl Agent {
+    fn config_options(&self) -> Value {
+        json!([
+            {
+                "id": "model", "name": "Model", "category": "model", "type": "select",
+                "currentValue": self.model,
+                "options": [{ "value": "fast", "name": "Szybki" }, { "value": "smart", "name": "Dokładny" }]
+            },
+            { "id": "web", "name": "Dostęp do sieci", "type": "boolean", "currentValue": self.web }
+        ])
+    }
+
     fn send(&self, msg: Value) {
         let mut out = std::io::stdout().lock();
         writeln!(out, "{msg}").unwrap();
@@ -165,6 +181,70 @@ impl Agent {
                 );
                 "end_turn"
             }
+            "limit" => {
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    "To będzie długa odpowiedź…",
+                );
+                "max_tokens"
+            }
+            "tools" => {
+                let readme = format!("{}/README.md", self.cwd);
+                // Tool call ids are unique within a session (as with real agents).
+                self.next_id += 1;
+                let (read, test) = (
+                    format!("read-{}", self.next_id),
+                    format!("test-{}", self.next_id),
+                );
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "plan", "entries": [
+                        { "content": "Przeczytać README", "priority": "high", "status": "in_progress" },
+                        { "content": "Uruchomić testy", "priority": "medium", "status": "pending" }
+                    ]}),
+                );
+                self.update(
+                    &session,
+                    json!({
+                        "sessionUpdate": "tool_call", "toolCallId": read, "title": "Czytam README.md",
+                        "kind": "read", "status": "in_progress", "locations": [{ "path": readme, "line": 3 }]
+                    }),
+                );
+                self.update(
+                    &session,
+                    json!({
+                        "sessionUpdate": "tool_call_update", "toolCallId": read, "status": "completed",
+                        "content": [{ "type": "content", "content": { "type": "text", "text": "# Sklep\nOpis" } }]
+                    }),
+                );
+                self.update(
+                    &session,
+                    json!({
+                        "sessionUpdate": "tool_call", "toolCallId": test, "title": "npm test",
+                        "kind": "execute", "status": "failed",
+                        "content": [{ "type": "content", "content": { "type": "text", "text": "1 test nie przeszedł" } }]
+                    }),
+                );
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "plan", "entries": [
+                        { "content": "Przeczytać README", "priority": "high", "status": "completed" },
+                        { "content": "Uruchomić testy", "priority": "medium", "status": "completed" }
+                    ]}),
+                );
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "usage_update", "used": 12300, "size": 200000,
+                            "cost": { "amount": 0.42, "currency": "USD" } }),
+                );
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    "Gotowe: **1 test** nie przeszedł. Zobacz [dokumentację](https://example.com/docs).",
+                );
+                "end_turn"
+            }
             "pwd" => {
                 self.chunk(
                     &session,
@@ -207,6 +287,9 @@ fn main() {
         need_auth: args.iter().any(|a| a == "--need-auth"),
         protocol,
         cwd: String::new(),
+        mode: "code".into(),
+        model: "fast".into(),
+        web: false,
     };
     eprintln!("fake agent: start");
     while let Some(msg) = agent.read() {
@@ -238,12 +321,38 @@ fn main() {
                         &id,
                         json!({
                             "sessionId": "fake-1",
-                            "modes": { "currentModeId": "code", "availableModes": [
+                            "modes": { "currentModeId": agent.mode, "availableModes": [
                                 { "id": "code", "name": "Kod" }, { "id": "ask", "name": "Pytania" }
-                            ]}
+                            ]},
+                            "configOptions": agent.config_options()
                         }),
                     );
+                    agent.update(
+                        "fake-1",
+                        json!({ "sessionUpdate": "available_commands_update", "availableCommands": [
+                            { "name": "review", "description": "Przejrzyj zmiany", "input": { "hint": "co przejrzeć" } },
+                            { "name": "init", "description": "Utwórz plik AGENTS.md" }
+                        ]}),
+                    );
                 }
+            }
+            Some("session/set_mode") => {
+                agent.mode = params["modeId"].as_str().unwrap_or("code").to_string();
+                agent.respond(&id, json!({}));
+                let mode = agent.mode.clone();
+                agent.update(
+                    "fake-1",
+                    json!({ "sessionUpdate": "current_mode_update", "currentModeId": mode }),
+                );
+            }
+            Some("session/set_config_option") => {
+                match params["configId"].as_str() {
+                    Some("model") => agent.model = params["value"].as_str().unwrap_or("fast").to_string(),
+                    Some("web") => agent.web = params["value"].as_bool().unwrap_or(false),
+                    _ => {}
+                }
+                let options = agent.config_options();
+                agent.respond(&id, json!({ "configOptions": options }));
             }
             Some("session/prompt") => agent.prompt(&id, &params),
             Some(_) if !id.is_null() => agent.error(&id, -32601, "Nieznana metoda"),
