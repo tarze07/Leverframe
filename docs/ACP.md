@@ -1,6 +1,6 @@
 # Leverframe – propozycja: agenci przez Agent Client Protocol (ACP)
 
-Dokument uzupełnia [PLAN.md](PLAN.md). Zadania: epik i etapy A1–A7 w Issues (oznaczone „ACP”).
+Dokument uzupełnia [PLAN.md](PLAN.md). Zadania: epik [#35](https://github.com/tarze07/Leverframe/issues/35), etapy A1–A7 to #36–#42.
 
 ## 1. Cel
 
@@ -98,13 +98,13 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
 
 | Etap | Zakres | Wynik |
 |---|---|---|
-| **A1** | Klient ACP w Rust: uruchamianie wg profilu, `initialize`, `session/new`, `session/prompt`, `session/cancel`, routing `session/update`, logowanie, błędy procesu; atrapa agenta do testów | rozmowa z agentem z poziomu testów |
-| **A2** | Agenci ACP w `agents.json` (pole `acp`), wykrywanie, wskazówki instalacji, wybór „Terminal / Rozmowa” w panelu „Agenci” | agent startuje w trybie ACP jednym kliknięciem |
-| **A3** | Panel rozmowy: strumień odpowiedzi (Markdown), myśli, plan, karty narzędzi (klik → plik i linia), pole promptu, Stop, komendy `/…`, tryby | pełna rozmowa w UI |
-| **A4** | Zgody (`session/request_permission`), diffy w edytorze (Monaco diff), `fs/read_text_file` z niezapisanych edytorów, `fs/write_text_file` z obsługą konfliktów | agent zmienia pliki pod kontrolą użytkownika |
-| **A5** | Terminale agenta (`terminal/*`) na istniejącym `PtyManager`, podgląd wyjścia w karcie narzędzia | agent uruchamia polecenia przez Leverframe |
-| **A6** | Historia: zapis transkryptu, wyszukiwanie w panelu „Sesje”, wznawianie (`session/list`, `session/load` / `session/resume`) | rozmowy ACP w historii |
-| **A7** | Testy E2E z atrapą agenta, dokumentacja, wydanie | wersja z ACP |
+| **A1** ([#36](https://github.com/tarze07/Leverframe/issues/36)) | Klient ACP w Rust: uruchamianie wg profilu, `initialize`, `session/new`, `session/prompt`, `session/cancel`, routing `session/update`, logowanie, błędy procesu; atrapa agenta do testów | rozmowa z agentem z poziomu testów |
+| **A2** ([#37](https://github.com/tarze07/Leverframe/issues/37)) | Agenci ACP w `agents.json` (pole `acp`), wykrywanie, wskazówki instalacji, wybór „Terminal / Rozmowa” w panelu „Agenci” | agent startuje w trybie ACP jednym kliknięciem |
+| **A3** ([#38](https://github.com/tarze07/Leverframe/issues/38)) | Panel rozmowy: strumień odpowiedzi (Markdown), myśli, plan, karty narzędzi (klik → plik i linia), pole promptu, Stop, komendy `/…`, tryby | pełna rozmowa w UI |
+| **A4** ([#39](https://github.com/tarze07/Leverframe/issues/39)) | Zgody (`session/request_permission`), diffy w edytorze (Monaco diff), `fs/read_text_file` z niezapisanych edytorów, `fs/write_text_file` z obsługą konfliktów | agent zmienia pliki pod kontrolą użytkownika |
+| **A5** ([#40](https://github.com/tarze07/Leverframe/issues/40)) | Terminale agenta (`terminal/*`) na istniejącym `PtyManager`, podgląd wyjścia w karcie narzędzia | agent uruchamia polecenia przez Leverframe |
+| **A6** ([#41](https://github.com/tarze07/Leverframe/issues/41)) | Historia: zapis transkryptu, wyszukiwanie w panelu „Sesje”, wznawianie (`session/list`, `session/load` / `session/resume`) | rozmowy ACP w historii |
+| **A7** ([#42](https://github.com/tarze07/Leverframe/issues/42)) | Testy E2E z atrapą agenta, dokumentacja, wydanie | wersja z ACP |
 
 **MVP = A1–A4** (rozmowa, zgody, diffy) – na wydanie 0.5.0. A5–A6 w kolejnej wersji.
 
