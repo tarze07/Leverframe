@@ -67,9 +67,17 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
    └───────────── zdarzenia ◀──────┘
 ```
 
-- **Backend (Rust)**: moduł `acp` – oficjalna biblioteka [`agent-client-protocol`](https://crates.io/crates/agent-client-protocol)
-  (5.2.0, Apache-2.0; bez funkcji `unstable`), albo własna, cienka warstwa JSON-RPC, jeśli biblioteka okaże się
-  niewygodna z Tauri (decyzja w A1).
+- **Backend (Rust)**: moduł `src-tauri/src/acp` – **własna, cienka warstwa JSON-RPC 2.0** (decyzja z A1, #36):
+  - oficjalna biblioteka [`agent-client-protocol`](https://crates.io/crates/agent-client-protocol) zmieniała wersję
+    główną z 3.x na 5.x w ciągu dwóch tygodni; wersja starsza niż 2 tygodnie (nasza zasada dla zależności) to
+    już 3.4.0, dwie wersje główne wstecz;
+  - wymaga runtime’u async, a backend Leverframe działa na wątkach (PTY, nagrywanie, logi);
+  - potrzebny fragment protokołu jest mały; typy przekazujemy do UI jako JSON, więc nowe pola i warianty
+    `session/update` nie wymagają zmian w Rust.
+
+  Pliki: `rpc.rs` (JSON-RPC na strumieniu, wiadomość = linia), `launch.rs` (uruchamianie wg profilu),
+  `session.rs` (handshake, prompt, zgody, logowanie, zdarzenia `AcpEvent`), `commands.rs` (komendy Tauri).
+  Atrapa agenta do testów: `src-tauri/examples/fake_acp_agent.rs`.
 - **Uruchamianie zależne od profilu**, bez PTY (czyste potoki stdin/stdout):
   - lokalnie / PowerShell: bezpośrednio,
   - WSL: `wsl.exe -d <dystrybucja> --cd <katalog> -- <komenda>`,

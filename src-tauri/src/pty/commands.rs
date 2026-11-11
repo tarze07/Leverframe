@@ -114,7 +114,7 @@ fn wsl_with_cwd(args: Vec<String>, cwd: &str) -> Vec<String> {
     out
 }
 
-fn wsl_unc_to_linux(path: &str) -> Option<String> {
+pub(crate) fn wsl_unc_to_linux(path: &str) -> Option<String> {
     let normalized = path.replace('/', "\\");
     let lower = normalized.to_ascii_lowercase();
     let rest = ["\\\\wsl.localhost\\", "\\\\wsl$\\"]
