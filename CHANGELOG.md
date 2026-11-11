@@ -2,15 +2,15 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
-## [Unreleased]
+## [0.5.0] – 2026-11-11
+
+Tryb rozmowy z agentami przez [Agent Client Protocol](https://agentclientprotocol.com) (epik [#35](https://github.com/tarze07/Leverframe/issues/35)): agent pracuje w tle, a rozmowa, zgody i zmiany plików są w oknach Leverframe. Tryb jest nowy – jeśli prawdziwy agent zachowa się inaczej, niż opisano, zgłoś to w Issues.
 
 ### Dodane
 - **Tryb rozmowy (Agent Client Protocol)** ([#36](https://github.com/tarze07/Leverframe/issues/36), [#37](https://github.com/tarze07/Leverframe/issues/37)): przycisk **Rozmowa** w panelu „Agenci” (i polecenie „Rozmowa z …” w palecie) uruchamia agenta w tle i prowadzi rozmowę w panelu Leverframe – z prośbami o zgodę, przerwaniem (Stop), logowaniem i logiem agenta. Działa w profilach lokalnych, WSL i SSH.
 - **Gemini CLI** jako nowy agent (terminal i tryb rozmowy).
 - Tryb rozmowy Claude Code i Codex przez oficjalne adaptery (`claude-agent-acp`, `codex-acp`); panel „Agenci” pokazuje, czy są zainstalowane, i podpowiada instalację. Pole `acp` w `agents.json`.
-
 - **Pełny panel rozmowy** ([#38](https://github.com/tarze07/Leverframe/issues/38)): odpowiedzi jako Markdown (oczyszczany jak podgląd plików; linki otwierają się w przeglądarce lub edytorze), rozwijane rozumowanie, plan agenta ze statusem kroków, karty wywołań narzędzi (rodzaj, status, wynik, pliki z numerem linii – otwierane w edytorze, także z WSL), komendy agenta po wpisaniu `/`, wybór trybu i opcji agenta (np. modelu), zużycie kontekstu i koszt, przyczyna nietypowego końca tury, podpowiedź instalacji, gdy brakuje programu agenta. Rozmowę można otworzyć także w panelu terminala.
-
 - **Zmiany plików pod kontrolą** ([#39](https://github.com/tarze07/Leverframe/issues/39)): agent czyta i zapisuje pliki przez Leverframe – z niezapisanymi zmianami z otwartych edytorów, z zapisem jako jedna zmiana do cofnięcia i z wykrywaniem konfliktów. Prośba o zgodę pokazuje polecenie i zmianę jako diff (+/− linii, fragment, „Otwórz zmianę” – widok obok siebie); opcje wybiera się też klawiszami 1–9; zakładka czekającej rozmowy ma znacznik ⚑. Dostęp bez pytania tylko w folderze projektu (`..` i dowiązania symboliczne sprawdzane); o pliki spoza niego Leverframe pyta. Drzewo „Pliki” odświeża się po zapisie agenta.
 
 ### Zmienione
@@ -115,6 +115,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.5.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.2.0
