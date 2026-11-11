@@ -8,7 +8,8 @@
 //! - `pwd`        – answers with the session's working directory
 //! - `tools`      – a plan, tool calls with locations and output, usage and a Markdown answer
 //! - `limit`      – ends the turn with `max_tokens`
-//! - `fs`         – reads /etc/hostname through the client (outside the session folder)
+//! - `fs`         – reads `<session folder>/../poza-projektem.txt` through the client (outside
+//!   the folder; an absolute path on every system)
 //! - `edit`       – reads README.md through the client, proposes a change (diff) with a
 //!   permission request and writes it through the client when allowed
 //! - anything else – a thought, an echo of the prompt and a plan
@@ -175,7 +176,7 @@ impl Agent {
                 let answer = self
                     .call(
                         "fs/read_text_file",
-                        json!({ "sessionId": session, "path": "/etc/hostname" }),
+                        json!({ "sessionId": session, "path": format!("{}/../poza-projektem.txt", self.cwd) }),
                     )
                     .unwrap_or(Value::Null);
                 let result = match answer["error"]["code"].as_i64() {
