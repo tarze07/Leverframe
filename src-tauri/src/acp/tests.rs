@@ -338,6 +338,10 @@ fn files_outside_the_folder_are_flagged_and_can_be_refused() {
     let turn = std::thread::spawn(move || s.prompt("fs"));
     let (id, path, inside, _) = fs_request(&events, "read", 0);
     assert!(!inside, "{path} is outside the session folder");
+    assert!(
+        path.ends_with("poza-projektem.txt") && !path.contains(".."),
+        "{path}"
+    );
     session
         .reply_fs(id, Err("Użytkownik nie zezwolił".into()))
         .unwrap();

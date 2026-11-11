@@ -50,7 +50,7 @@ pub fn to_local(kind: &FsKind, agent_path: &str) -> Result<PathBuf, String> {
 }
 
 /// `.` and `..` resolved without touching the disk (`..` never goes above the root).
-fn lexical(p: &Path) -> PathBuf {
+pub fn lexical(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {

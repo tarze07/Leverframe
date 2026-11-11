@@ -319,7 +319,9 @@ describe("Leverframe", () => {
     await focusBox();
     await app.type(`fs${KEY.enter}`);
     const ask = `${chat} [role=group][aria-label="Dostęp do pliku"]`;
-    await app.waitFor(`return document.querySelector('${ask}')?.textContent.includes('/etc/hostname')`);
+    // Shown with `..` resolved: the file next to the project folder.
+    await app.waitFor(`return document.querySelector('${ask}')?.textContent.includes('/projects/poza-projektem.txt')`);
+    assert.doesNotMatch(await app.exec(`return document.querySelector('${ask}').textContent`), /\.\./);
     await app.click(`${ask} button`, "Odmów");
     await app.waitFor(has("fs: -32603"));
   });

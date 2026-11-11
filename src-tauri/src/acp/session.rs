@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::fs::{is_inside, slice_lines, to_local, FsKind};
+use super::fs::{is_inside, lexical, slice_lines, to_local, FsKind};
 use super::launch::{AcpLaunch, CWD_MARKER};
 use super::rpc::{CallError, Connection, Incoming, RpcError};
 
@@ -169,8 +169,9 @@ impl Incoming for Handler {
                 .get("path")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
+            // `..` resolved: the user sees (and the UI opens) the file that is really meant.
             let local = match to_local(kind, agent_path) {
-                Ok(p) => p,
+                Ok(p) => lexical(&p),
                 Err(e) => {
                     let _ = conn.respond(id, Err(RpcError::new(RpcError::INVALID_PARAMS, e)));
                     return;
