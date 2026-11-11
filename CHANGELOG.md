@@ -2,6 +2,11 @@
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numeracja zgodna z [SemVer](https://semver.org/lang/pl/).
 
+## [Unreleased]
+
+### Dodane
+- **Większe pole wiadomości w rozmowie z agentem**: rośnie razem z tekstem (do 40% panelu), przycisk obok pola powiększa je na większość panelu i z powrotem, a uchwyt nad polem pozwala przeciągnąć je wyżej – wysokość jest zapamiętywana, dwuklik na uchwycie przywraca automatyczną (także strzałki ↑/↓ na uchwycie).
+
 ## [0.5.0] – 2026-11-11
 
 Tryb rozmowy z agentami przez [Agent Client Protocol](https://agentclientprotocol.com) (epik [#35](https://github.com/tarze07/Leverframe/issues/35)): agent pracuje w tle, a rozmowa, zgody i zmiany plików są w oknach Leverframe. Tryb jest nowy – jeśli prawdziwy agent zachowa się inaczej, niż opisano, zgłoś to w Issues.

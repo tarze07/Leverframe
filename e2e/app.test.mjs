@@ -325,4 +325,40 @@ describe("Leverframe", () => {
     await app.click(`${ask} button`, "Odmów");
     await app.waitFor(has("fs: -32603"));
   });
+
+  it("lets the message box grow with the text, expand and be dragged taller", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const height = () => app.exec(`return document.querySelector('${chat} textarea').getBoundingClientRect().height`);
+    const panel = await app.exec(`return document.querySelector('${chat}').clientHeight`);
+    await app.waitFor(`const t = document.querySelector('${chat} textarea'); t.focus(); return document.activeElement === t`);
+    const start = await height();
+    assert.ok(start < 60, `two lines at first (${start}px)`);
+
+    // Shift+Enter adds lines: the box grows (up to 40% of the panel).
+    for (let i = 0; i < 6; i++) {
+      await app.type(`linia ${i}`);
+      await app.keys([{ type: "keyDown", value: KEY.shift }, { type: "keyDown", value: KEY.enter }, { type: "keyUp", value: KEY.enter }, { type: "keyUp", value: KEY.shift }]);
+    }
+    const grown = await height();
+    assert.ok(grown > start + 40 && grown <= panel * 0.4 + 1, `${start} → ${grown} (panel ${panel})`);
+
+    await app.click(`${chat} button`, "Powiększ pole wiadomości");
+    await app.waitFor(`return document.querySelector('${chat} textarea').getBoundingClientRect().height > ${panel * 0.6}`);
+    await app.click(`${chat} button`, "Zmniejsz pole wiadomości");
+    await app.waitFor(`return Math.abs(document.querySelector('${chat} textarea').getBoundingClientRect().height - ${grown}) < 2`);
+
+    // Dragging the handle above the box up by 120px.
+    await app.exec(`
+      const h = document.querySelector('${chat} [role=separator]');
+      const y = h.getBoundingClientRect().top + 2;
+      const ev = (type, clientY) => new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, isPrimary: true, clientY });
+      h.dispatchEvent(ev('pointerdown', y));
+      h.dispatchEvent(ev('pointermove', y - 120));
+      h.dispatchEvent(ev('pointerup', y - 120));`);
+    await app.waitFor(`return document.querySelector('${chat} textarea').getBoundingClientRect().height > ${grown + 100}`);
+    assert.ok(Number(await app.exec("return localStorage.getItem('leverframe.chat.inputHeight')")) > grown + 100, "remembered");
+    // Double click: automatic again.
+    await app.exec(`document.querySelector('${chat} [role=separator]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+    await app.waitFor(`return Math.abs(document.querySelector('${chat} textarea').getBoundingClientRect().height - ${grown}) < 2`);
+  });
 });
