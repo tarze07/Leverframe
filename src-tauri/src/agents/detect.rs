@@ -30,16 +30,20 @@ pub enum ScriptKind {
     PowerShell,
 }
 
-/// POSIX `sh` script. It first asks the user's login+interactive shell for its `PATH`
-/// (version managers such as nvm usually set it in `.bashrc` / `.zshrc`), then looks for every agent.
-pub fn posix_script(agents: &[AgentDef]) -> String {
-    let mut s = String::from(
-        r#"lf_out=$("${SHELL:-/bin/sh}" -ilc 'printf "@@PATH@@%s@@END@@" "$PATH"' </dev/null 2>/dev/null)
+/// POSIX `sh` lines that take `PATH` from the user's login+interactive shell (`$SHELL`):
+/// version managers such as nvm usually set it in `.bashrc` / `.zshrc`, which `sh` does not read.
+pub const LOGIN_PATH_PRELUDE: &str = r#"lf_out=$("${SHELL:-/bin/sh}" -ilc 'printf "@@PATH@@%s@@END@@" "$PATH"' </dev/null 2>/dev/null)
 case "$lf_out" in *@@PATH@@*@@END@@*)
   lf_path=${lf_out#*@@PATH@@}; lf_path=${lf_path%%@@END@@*}
   [ -n "$lf_path" ] && PATH="$lf_path:$PATH"; export PATH ;;
 esac
-lf_check() {
+"#;
+
+/// POSIX `sh` script: the login shell's `PATH` first ([`LOGIN_PATH_PRELUDE`]), then every agent.
+pub fn posix_script(agents: &[AgentDef]) -> String {
+    let mut s = String::from(LOGIN_PATH_PRELUDE);
+    s.push_str(
+        r#"lf_check() {
   lf_id=$1; lf_va=$2; shift 2
   for lf_c in "$@"; do
     command -v "$lf_c" >/dev/null 2>&1 || continue

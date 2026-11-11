@@ -1,0 +1,253 @@
+//! A scripted ACP v1 agent for tests (Rust tests, later the E2E fixtures). It speaks JSON-RPC on
+//! stdin/stdout like a real agent; what it does is chosen by the prompt text:
+//!
+//! - `permission` – a tool call that asks for permission, then reports the decision
+//! - `slow`       – streams one chunk and waits for `session/cancel`
+//! - `crash`      – writes to stderr and exits with code 3
+//! - `garbage`    – prints a non-JSON line on stdout first, then answers normally
+//! - `pwd`        – answers with the session's working directory
+//! - `fs`         – asks the client for a file (Leverframe A1 refuses: no fs capability)
+//! - anything else – a thought, an echo of the prompt and a plan
+//!
+//! Flags: `--need-auth` (session/new fails with -32000 until `authenticate`),
+//! `--protocol N` (answers `initialize` with version N).
+
+use std::io::{BufRead, Write};
+
+use serde_json::{json, Value};
+
+struct Agent {
+    input: std::io::Lines<std::io::StdinLock<'static>>,
+    next_id: u64,
+    need_auth: bool,
+    protocol: u64,
+    cwd: String,
+}
+
+impl Agent {
+    fn send(&self, msg: Value) {
+        let mut out = std::io::stdout().lock();
+        writeln!(out, "{msg}").unwrap();
+        out.flush().unwrap();
+    }
+
+    fn respond(&self, id: &Value, result: Value) {
+        self.send(json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+    }
+
+    fn error(&self, id: &Value, code: i64, message: &str) {
+        self.send(
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
+        );
+    }
+
+    fn update(&self, session: &str, update: Value) {
+        self.send(json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": { "sessionId": session, "update": update }
+        }));
+    }
+
+    fn chunk(&self, session: &str, kind: &str, text: &str) {
+        self.update(
+            session,
+            json!({ "sessionUpdate": kind, "content": { "type": "text", "text": text } }),
+        );
+    }
+
+    /// Sends a request to the client and waits for its answer. `Err(())` = cancelled meanwhile.
+    fn call(&mut self, method: &str, params: Value) -> Result<Value, ()> {
+        self.next_id += 1;
+        let id = format!("agent-{}", self.next_id);
+        self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        loop {
+            let msg = self.read().ok_or(())?;
+            if msg.get("id").and_then(Value::as_str) == Some(&id) && msg.get("method").is_none() {
+                return Ok(msg);
+            }
+            if msg.get("method").and_then(Value::as_str) == Some("session/cancel") {
+                // The client must still answer the pending request (with "cancelled").
+                continue;
+            }
+        }
+    }
+
+    fn read(&mut self) -> Option<Value> {
+        loop {
+            let line = self.input.next()?.ok()?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            return Some(serde_json::from_str(&line).expect("client sent valid JSON"));
+        }
+    }
+
+    fn prompt(&mut self, id: &Value, params: &Value) {
+        let session = params["sessionId"].as_str().unwrap_or_default().to_string();
+        let text = params["prompt"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let stop = match text.as_str() {
+            "crash" => {
+                eprintln!("fake agent: awaria podczas pracy");
+                std::process::exit(3);
+            }
+            "slow" => {
+                self.chunk(&session, "agent_message_chunk", "pracuję…");
+                loop {
+                    match self.read() {
+                        Some(m) if m["method"] == "session/cancel" => break "cancelled",
+                        Some(_) => continue,
+                        None => std::process::exit(0),
+                    }
+                }
+            }
+            "permission" => {
+                self.update(
+                    &session,
+                    json!({
+                        "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Edytuj README.md",
+                        "kind": "edit", "status": "pending",
+                        "locations": [{ "path": format!("{}/README.md", self.cwd), "line": 1 }]
+                    }),
+                );
+                let answer = self.call(
+                    "session/request_permission",
+                    json!({
+                        "sessionId": session,
+                        "toolCall": { "toolCallId": "t1", "title": "Edytuj README.md", "kind": "edit" },
+                        "options": [
+                            { "optionId": "allow", "name": "Zezwól", "kind": "allow_once" },
+                            { "optionId": "deny", "name": "Odmów", "kind": "reject_once" }
+                        ]
+                    }),
+                );
+                let outcome = answer
+                    .map(|a| a["result"]["outcome"].clone())
+                    .unwrap_or(Value::Null);
+                let decision = match outcome["outcome"].as_str() {
+                    Some("selected") => outcome["optionId"].as_str().unwrap_or("?").to_string(),
+                    _ => "cancelled".to_string(),
+                };
+                let status = if decision == "allow" {
+                    "completed"
+                } else {
+                    "failed"
+                };
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": status }),
+                );
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    &format!("zgoda: {decision}"),
+                );
+                if decision == "cancelled" {
+                    "cancelled"
+                } else {
+                    "end_turn"
+                }
+            }
+            "fs" => {
+                let answer = self
+                    .call(
+                        "fs/read_text_file",
+                        json!({ "sessionId": session, "path": "/etc/hostname" }),
+                    )
+                    .unwrap_or(Value::Null);
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    &format!("fs: {}", answer["error"]["code"]),
+                );
+                "end_turn"
+            }
+            "pwd" => {
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    &format!("cwd={}", self.cwd),
+                );
+                "end_turn"
+            }
+            other => {
+                if other == "garbage" {
+                    println!("to nie jest JSON");
+                }
+                self.chunk(&session, "agent_thought_chunk", "myślę");
+                self.chunk(&session, "agent_message_chunk", "Echo: ");
+                self.chunk(&session, "agent_message_chunk", other);
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "plan", "entries": [
+                        { "content": "Przeczytać prompt", "priority": "high", "status": "completed" }
+                    ]}),
+                );
+                "end_turn"
+            }
+        };
+        self.respond(id, json!({ "stopReason": stop }));
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let protocol = args
+        .iter()
+        .position(|a| a == "--protocol")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
+    let mut agent = Agent {
+        input: std::io::stdin().lock().lines(),
+        next_id: 0,
+        need_auth: args.iter().any(|a| a == "--need-auth"),
+        protocol,
+        cwd: String::new(),
+    };
+    eprintln!("fake agent: start");
+    while let Some(msg) = agent.read() {
+        let id = msg.get("id").cloned().unwrap_or(Value::Null);
+        let params = msg.get("params").cloned().unwrap_or(Value::Null);
+        match msg.get("method").and_then(Value::as_str) {
+            Some("initialize") => agent.respond(
+                &id,
+                json!({
+                    "protocolVersion": agent.protocol,
+                    "agentCapabilities": { "loadSession": false, "promptCapabilities": { "image": false } },
+                    "authMethods": [{ "id": "fake-login", "name": "Zaloguj w atrapie" }],
+                    "agentInfo": { "name": "fake-acp-agent", "version": "1.0.0" }
+                }),
+            ),
+            Some("authenticate") => {
+                agent.need_auth = params["methodId"] != "fake-login";
+                agent.respond(&id, json!({}));
+            }
+            Some("session/new") => {
+                let cwd = params["cwd"].as_str().unwrap_or_default();
+                if agent.need_auth {
+                    agent.error(&id, -32000, "Najpierw się zaloguj");
+                } else if !(cwd.starts_with('/') || cwd.get(1..3) == Some(":\\")) {
+                    agent.error(&id, -32602, "cwd musi być ścieżką bezwzględną");
+                } else {
+                    agent.cwd = cwd.to_string();
+                    agent.respond(
+                        &id,
+                        json!({
+                            "sessionId": "fake-1",
+                            "modes": { "currentModeId": "code", "availableModes": [
+                                { "id": "code", "name": "Kod" }, { "id": "ask", "name": "Pytania" }
+                            ]}
+                        }),
+                    );
+                }
+            }
+            Some("session/prompt") => agent.prompt(&id, &params),
+            Some(_) if !id.is_null() => agent.error(&id, -32601, "Nieznana metoda"),
+            _ => {}
+        }
+    }
+}

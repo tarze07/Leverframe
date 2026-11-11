@@ -1,5 +1,6 @@
 //! Leverframe backend. Modules follow docs/PLAN.md (section 3); some are filled in by later stages.
 
+pub mod acp;
 pub mod agents;
 pub mod fs;
 pub mod profiles;
@@ -16,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyManager::new())
+        .manage(acp::AcpService::default())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             app.manage(profiles::ProfileService::new(&config_dir));
@@ -72,6 +74,12 @@ pub fn run() {
             profiles::commands::profile_save,
             profiles::commands::profile_delete,
             profiles::commands::profile_set_default,
+            acp::commands::acp_start,
+            acp::commands::acp_prompt,
+            acp::commands::acp_cancel,
+            acp::commands::acp_permission_reply,
+            acp::commands::acp_authenticate,
+            acp::commands::acp_stop,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Leverframe")
@@ -79,6 +87,7 @@ pub fn run() {
             // Do not leave shells (and the programs they run) behind when the app closes.
             if let RunEvent::Exit = event {
                 app.state::<pty::PtyManager>().kill_all();
+                app.state::<acp::AcpService>().stop_all();
             }
         });
 }

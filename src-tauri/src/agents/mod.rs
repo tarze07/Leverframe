@@ -9,6 +9,7 @@ mod service;
 
 pub use detect::{
     detect, detect_command, parse_output, posix_script, powershell_script, run_script, AgentStatus,
+    LOGIN_PATH_PRELUDE,
 };
 pub use model::{load_catalog, AgentCatalog, AgentDef, InstallHint, BUILTIN_AGENTS_JSON};
 pub use service::{AgentService, AgentView, AgentsState};
