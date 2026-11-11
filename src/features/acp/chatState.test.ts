@@ -111,7 +111,7 @@ describe("chat state", () => {
       ev({ type: "permission", requestId: 2, toolCall: {}, options: [] }),
       ev({ type: "permissionClosed", requestId: 1 }),
     ]);
-    expect(s.permissions).toEqual([{ requestId: 2, title: "Agent prosi o zgodę", options: [] }]);
+    expect(s.permissions).toEqual([{ requestId: 2, title: "Agent prosi o zgodę", toolCall: {}, options: [] }]);
   });
 
   it("asks for login, and recognises a missing agent program", () => {

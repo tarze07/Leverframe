@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { ToolKind, ToolStatus } from "./acpClient";
+import type { ToolContent, ToolKind, ToolStatus } from "./acpClient";
 import { blockText, type ToolCallState } from "./chatState";
 import { openFile } from "../../workbench/commands";
+import { DiffSummary } from "./DiffSummary";
 
 const KIND_ICONS: Record<ToolKind, string> = {
   read: "file",
@@ -26,7 +27,16 @@ const STATUS: Record<ToolStatus, { label: string; icon: string; className: strin
 const MAX_OUTPUT = 4000;
 
 /** One tool call of the agent: what, where (files and lines), status and its output. */
-export function ToolCard({ tool, toLocal }: { tool: ToolCallState; toLocal: (path: string) => string | null }) {
+export function ToolCard({
+  tool,
+  toLocal,
+  awaitingPermission = false,
+}: {
+  tool: ToolCallState;
+  toLocal: (path: string) => string | null;
+  /** A permission request shows this call's changes right now: not repeated here. */
+  awaitingPermission?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS[tool.status] ?? STATUS.pending;
   const output = tool.content
@@ -34,7 +44,7 @@ export function ToolCard({ tool, toLocal }: { tool: ToolCallState; toLocal: (pat
     .filter(Boolean)
     .join("\n");
   const long = output.length > MAX_OUTPUT;
-  const changes = tool.content.filter((c) => c.type === "diff");
+  const changes = tool.content.filter((c): c is Extract<ToolContent, { type: "diff" }> => c.type === "diff");
   const terminals = tool.content.filter((c) => c.type === "terminal");
 
   return (
@@ -69,11 +79,13 @@ export function ToolCard({ tool, toLocal }: { tool: ToolCallState; toLocal: (pat
           })}
         </div>
       )}
-      {changes.map((c) => (
-        <p key={c.path} className="px-2 pb-1 text-[11px] text-lf-muted">
-          <span className="codicon codicon-diff align-middle" aria-hidden /> Zmiana pliku <span className="font-mono">{c.path}</span>
-        </p>
-      ))}
+      {awaitingPermission && changes.length > 0 ? (
+        <p className="px-2 pb-1 text-[11px] text-lf-muted">Zmiana czeka na Twoją zgodę – poniżej.</p>
+      ) : (
+        changes.map((c, i) => (
+          <DiffSummary key={`${c.path}:${i}`} path={toLocal(c.path) ?? c.path} oldText={c.oldText} newText={c.newText} />
+        ))
+      )}
       {terminals.length > 0 && <p className="px-2 pb-1 text-[11px] text-lf-muted">Polecenie w terminalu agenta</p>}
       {output && (
         <div className="border-t border-lf-border px-2 py-1">

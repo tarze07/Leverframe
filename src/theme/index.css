@@ -290,3 +290,17 @@ body {
 .lf-chat-md > :last-child {
   margin-bottom: 0;
 }
+
+/* Added lines in change previews (follows the app theme, not the OS). */
+.lf-diff-add {
+  color: #3f8f2f;
+}
+.lf-diff-add-line {
+  background: rgb(63 143 47 / 0.14);
+}
+:root[data-theme="dark"] .lf-diff-add {
+  color: #98c379;
+}
+:root[data-theme="dark"] .lf-diff-add-line {
+  background: rgb(152 195 121 / 0.14);
+}

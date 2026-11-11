@@ -6,6 +6,7 @@ import { AgentLogPanel } from "../features/sessions/AgentLogPanel";
 import { EditorPanel } from "../features/editor/EditorPanel";
 import { EditorTab } from "../features/editor/EditorTab";
 import { AgentChatPanel } from "../features/acp/AgentChatPanel";
+import { DiffPanel } from "../features/editor/DiffPanel";
 import { DockArea } from "../workbench/DockArea";
 import { useUiStore } from "../store/ui";
 
@@ -17,6 +18,7 @@ const components = {
   agentLog: AgentLogPanel,
   editor: EditorPanel,
   agentChat: AgentChatPanel,
+  diff: DiffPanel,
 };
 
 const tabComponents = { editor: EditorTab };

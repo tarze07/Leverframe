@@ -8,7 +8,9 @@
 //! - `pwd`        – answers with the session's working directory
 //! - `tools`      – a plan, tool calls with locations and output, usage and a Markdown answer
 //! - `limit`      – ends the turn with `max_tokens`
-//! - `fs`         – asks the client for a file (Leverframe A1 refuses: no fs capability)
+//! - `fs`         – reads /etc/hostname through the client (outside the session folder)
+//! - `edit`       – reads README.md through the client, proposes a change (diff) with a
+//!   permission request and writes it through the client when allowed
 //! - anything else – a thought, an echo of the prompt and a plan
 //!
 //! Flags: `--need-auth` (session/new fails with -32000 until `authenticate`),
@@ -27,6 +29,8 @@ struct Agent {
     mode: String,
     model: String,
     web: bool,
+    /// The client offered `fs/read_text_file` and `fs/write_text_file`.
+    client_fs: bool,
 }
 
 impl Agent {
@@ -174,11 +178,89 @@ impl Agent {
                         json!({ "sessionId": session, "path": "/etc/hostname" }),
                     )
                     .unwrap_or(Value::Null);
+                let result = match answer["error"]["code"].as_i64() {
+                    Some(code) => format!("fs: {code}"),
+                    None => format!(
+                        "fs: ok {}",
+                        answer["result"]["content"].as_str().unwrap_or("").trim()
+                    ),
+                };
+                self.chunk(&session, "agent_message_chunk", &result);
+                "end_turn"
+            }
+            "edit" if !self.client_fs => {
                 self.chunk(
                     &session,
                     "agent_message_chunk",
-                    &format!("fs: {}", answer["error"]["code"]),
+                    "edit: klient nie udostępnia plików",
                 );
+                "end_turn"
+            }
+            "edit" => {
+                let path = format!("{}/README.md", self.cwd);
+                let read = self
+                    .call(
+                        "fs/read_text_file",
+                        json!({ "sessionId": session, "path": path }),
+                    )
+                    .unwrap_or(Value::Null);
+                let Some(old) = read["result"]["content"].as_str().map(String::from) else {
+                    self.chunk(
+                        &session,
+                        "agent_message_chunk",
+                        &format!("odczyt: błąd {}", read["error"]["message"]),
+                    );
+                    return self.respond(id, json!({ "stopReason": "end_turn" }));
+                };
+                let new = format!("{}\nDopisane przez agenta.\n", old.trim_end());
+                self.next_id += 1;
+                let tool = format!("edit-{}", self.next_id);
+                let diff =
+                    json!([{ "type": "diff", "path": path, "oldText": old, "newText": new }]);
+                self.update(
+                    &session,
+                    json!({
+                        "sessionUpdate": "tool_call", "toolCallId": tool, "title": "Edytuj README.md",
+                        "kind": "edit", "status": "pending", "content": diff,
+                        "locations": [{ "path": path }]
+                    }),
+                );
+                let answer = self.call(
+                    "session/request_permission",
+                    json!({
+                        "sessionId": session,
+                        "toolCall": { "toolCallId": tool, "title": "Edytuj README.md", "kind": "edit", "content": diff },
+                        "options": [
+                            { "optionId": "allow", "name": "Zezwól", "kind": "allow_once" },
+                            { "optionId": "deny", "name": "Odmów", "kind": "reject_once" }
+                        ]
+                    }),
+                );
+                let allowed = answer
+                    .map(|a| a["result"]["outcome"]["optionId"] == "allow")
+                    .unwrap_or(false);
+                let (status, text) = if !allowed {
+                    ("failed", "odmowa".to_string())
+                } else {
+                    let write = self
+                        .call(
+                            "fs/write_text_file",
+                            json!({ "sessionId": session, "path": path, "content": new }),
+                        )
+                        .unwrap_or(Value::Null);
+                    match write.get("error") {
+                        Some(e) => (
+                            "failed",
+                            format!("błąd zapisu: {}", e["message"].as_str().unwrap_or("?")),
+                        ),
+                        None => ("completed", "zapisano".to_string()),
+                    }
+                };
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": status }),
+                );
+                self.chunk(&session, "agent_message_chunk", &text);
                 "end_turn"
             }
             "limit" => {
@@ -290,13 +372,16 @@ fn main() {
         mode: "code".into(),
         model: "fast".into(),
         web: false,
+        client_fs: false,
     };
     eprintln!("fake agent: start");
     while let Some(msg) = agent.read() {
         let id = msg.get("id").cloned().unwrap_or(Value::Null);
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         match msg.get("method").and_then(Value::as_str) {
-            Some("initialize") => agent.respond(
+            Some("initialize") => {
+                agent.client_fs = params["clientCapabilities"]["fs"]["readTextFile"] == true;
+                agent.respond(
                 &id,
                 json!({
                     "protocolVersion": agent.protocol,
@@ -304,7 +389,8 @@ fn main() {
                     "authMethods": [{ "id": "fake-login", "name": "Zaloguj w atrapie" }],
                     "agentInfo": { "name": "fake-acp-agent", "version": "1.0.0" }
                 }),
-            ),
+            );
+            }
             Some("authenticate") => {
                 agent.need_auth = params["methodId"] != "fake-login";
                 agent.respond(&id, json!({}));
@@ -347,7 +433,9 @@ fn main() {
             }
             Some("session/set_config_option") => {
                 match params["configId"].as_str() {
-                    Some("model") => agent.model = params["value"].as_str().unwrap_or("fast").to_string(),
+                    Some("model") => {
+                        agent.model = params["value"].as_str().unwrap_or("fast").to_string()
+                    }
                     Some("web") => agent.web = params["value"].as_bool().unwrap_or(false),
                     _ => {}
                 }

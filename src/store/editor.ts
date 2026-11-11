@@ -11,6 +11,10 @@ export interface EditorEntry {
   /** Markdown files only. */
   setView?: (view: EditorView) => void;
   view?: EditorView;
+  /** Current text, unsaved changes included (`null` while the file is still loading). */
+  getText?: () => string | null;
+  /** Replaces the whole text as one change the user can undo (Ctrl+Z); false if not loaded. */
+  applyText?: (text: string) => boolean;
 }
 
 interface EditorStore {
@@ -59,4 +63,17 @@ export async function saveAllEditors(): Promise<number> {
   const dirty = Object.values(useEditorStore.getState().editors).filter((e) => e.dirty);
   const results = await Promise.all(dirty.map((e) => e.save().catch(() => false)));
   return results.filter((ok) => !ok).length;
+}
+
+/** Same file? Windows paths ignore case and the kind of slash. */
+export function samePath(a: string, b: string): boolean {
+  const windows = /^[a-z]:[\\/]/i.test(a) || a.startsWith("\\\\");
+  if (!windows) return a === b;
+  const norm = (p: string) => p.replaceAll("/", "\\").toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/** The open editor of a file, if any. */
+export function editorForPath(path: string): EditorEntry | undefined {
+  return Object.values(useEditorStore.getState().editors).find((e) => samePath(e.path, path));
 }

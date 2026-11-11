@@ -267,4 +267,60 @@ describe("Leverframe", () => {
     await say("limit");
     await app.waitFor(has("limit długości odpowiedzi"));
   });
+
+  it("lets the agent edit a file through the editor: unsaved text, diff, permission key, files outside refused", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const readmeBar = `[...document.querySelectorAll('[aria-label="Pasek edytora"]')].find(b => b.querySelector('span[title$="README.md"]'))`;
+    const activate = (text) =>
+      app.exec(`[...document.querySelectorAll('.dv-tab')].find(t => t.textContent.includes(${JSON.stringify(text)})).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, isPrimary: true }))`);
+    const has = (text) => `return document.querySelector('${chat} [role=log]')?.textContent.includes(${JSON.stringify(text)})`;
+    const focusBox = () => app.waitFor(`const t = document.querySelector('${chat} textarea'); t.focus(); return document.activeElement === t`);
+
+    // Unsaved text in an open editor.
+    await showView("Pliki");
+    await app.waitFor("return !!document.querySelector('[role=treeitem][aria-label=\"README.md\"]')");
+    await app.click('[role=treeitem][aria-label="README.md"] button');
+    await app.waitFor(`const b = ${readmeBar}; return !!b && !!b.parentElement.querySelector('.view-line')`, 20_000);
+    await app.waitFor(`const ta = ${readmeBar}.parentElement.querySelector('textarea.inputarea'); ta.focus(); return document.activeElement === ta`);
+    await app.chord(KEY.ctrl, KEY.end);
+    await app.type("\nNiezapisane z e2e.");
+    await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.textContent.includes('● README.md'))");
+    assert.doesNotMatch(readFileSync(join(env.project, "README.md"), "utf8"), /Niezapisane/);
+
+    // The agent reads it through Leverframe and proposes a change.
+    await activate("rozmowa");
+    await app.waitFor(`return !!document.querySelector('${chat} textarea')`);
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 20_000);
+    await focusBox();
+    await app.type(`edit${KEY.enter}`);
+    const card = `${chat} [role=group][aria-label="Prośba o zgodę"]`;
+    await app.waitFor(`return document.querySelector('${card}')?.textContent.includes('+ Dopisane przez agenta.')`);
+    const cardText = await app.exec(`return document.querySelector('${card}').textContent`);
+    assert.match(cardText, /Niezapisane z e2e\./, "the agent got the unsaved text");
+    assert.match(cardText, /\+1.*−0/);
+    assert.match(await app.exec("return document.querySelector('.dv-tab.dv-active-tab')?.textContent ?? ''"), /⚑/, "the tab shows a decision is waiting");
+
+    // The full change in the editor area.
+    await app.click(`${card} button`, "Otwórz zmianę");
+    await app.waitFor("return !!document.querySelector('[data-testid=monaco-diff] .monaco-diff-editor')", 20_000);
+    await activate("rozmowa");
+    await app.waitFor(`return !!document.querySelector('${card}')`);
+
+    // Key 1 = the first option ("Zezwól"); the editor gets the change and saves it.
+    await focusBox();
+    await app.type("1");
+    await app.waitFor(has("zapisano"));
+    assert.equal(await app.exec(`return document.querySelector('${chat} textarea').value`), "", "the key chose an option, it was not typed");
+    const saved = readFileSync(join(env.project, "README.md"), "utf8");
+    assert.match(saved, /Niezapisane z e2e\.\nDopisane przez agenta\.\n$/);
+    await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.textContent.trim() === 'README.md')");
+
+    // A file outside the project folder: the user decides – here: no.
+    await focusBox();
+    await app.type(`fs${KEY.enter}`);
+    const ask = `${chat} [role=group][aria-label="Dostęp do pliku"]`;
+    await app.waitFor(`return document.querySelector('${ask}')?.textContent.includes('/etc/hostname')`);
+    await app.click(`${ask} button`, "Odmów");
+    await app.waitFor(has("fs: -32603"));
+  });
 });

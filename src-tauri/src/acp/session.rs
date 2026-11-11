@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use super::fs::{is_inside, slice_lines, to_local, FsKind};
 use super::launch::{AcpLaunch, CWD_MARKER};
 use super::rpc::{CallError, Connection, Incoming, RpcError};
 
@@ -65,6 +66,22 @@ pub enum AcpEvent {
     PermissionClosed {
         request_id: u64,
     },
+    /// The agent reads (`read`) or writes (`write`) a file; answer with `reply_fs`. The UI
+    /// reads open editors (unsaved changes included) and asks the user when `inside` is false.
+    FsRequest {
+        request_id: u64,
+        op: String,
+        /// The file on this machine.
+        path: String,
+        /// Inside the session folder (`..` and symbolic links resolved).
+        inside: bool,
+        /// New content (`write`).
+        content: Option<String>,
+    },
+    /// A file request was answered or dropped (turn cancelled).
+    FsClosed {
+        request_id: u64,
+    },
     /// A line from the agent's stderr (or non-protocol output).
     Log {
         line: String,
@@ -89,12 +106,23 @@ struct State {
     session_cwd: Option<String>,
     /// Permission requests waiting for the user: our id → the agent's JSON-RPC id.
     permissions: HashMap<u64, Value>,
+    /// File requests waiting for the UI.
+    fs_requests: HashMap<u64, PendingFs>,
     next_permission: u64,
     auth_methods: Vec<Value>,
 }
 
+struct PendingFs {
+    id: Value,
+    write: bool,
+    line: Option<u64>,
+    limit: Option<u64>,
+}
+
 /// State shared with the reader and stderr threads.
 struct Shared {
+    /// File access offered to the agent (`None`: not offered, e.g. on SSH hosts).
+    fs: Option<FsKind>,
     events: Arc<dyn AcpEvents>,
     state: Mutex<State>,
     /// Working directory reported by the launch script (see `launch`).
@@ -133,8 +161,59 @@ impl Incoming for Handler {
                     .cloned()
                     .unwrap_or_default(),
             });
+        } else if let (Some(kind), "fs/read_text_file" | "fs/write_text_file") =
+            (&self.0.fs, method)
+        {
+            let write = method == "fs/write_text_file";
+            let agent_path = params
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let local = match to_local(kind, agent_path) {
+                Ok(p) => p,
+                Err(e) => {
+                    let _ = conn.respond(id, Err(RpcError::new(RpcError::INVALID_PARAMS, e)));
+                    return;
+                }
+            };
+            let content = params
+                .get("content")
+                .and_then(Value::as_str)
+                .map(String::from);
+            if write && content.is_none() {
+                let _ = conn.respond(
+                    id,
+                    Err(RpcError::new(RpcError::INVALID_PARAMS, "Brak treści pliku")),
+                );
+                return;
+            }
+            let mut st = self.0.state.lock().unwrap();
+            let root = st
+                .session_cwd
+                .as_deref()
+                .and_then(|cwd| to_local(kind, cwd).ok());
+            let inside = root.is_some_and(|r| is_inside(&local, &[r]));
+            st.next_permission += 1;
+            let request_id = st.next_permission;
+            st.fs_requests.insert(
+                request_id,
+                PendingFs {
+                    id,
+                    write,
+                    line: params.get("line").and_then(Value::as_u64),
+                    limit: params.get("limit").and_then(Value::as_u64),
+                },
+            );
+            drop(st);
+            self.0.emit(AcpEvent::FsRequest {
+                request_id,
+                op: if write { "write" } else { "read" }.into(),
+                path: local.to_string_lossy().into_owned(),
+                inside,
+                content,
+            });
         } else {
-            // File system and terminal access are not offered yet (initialize says so).
+            // Terminals are not offered yet (initialize says so).
             let _ = conn.respond(
                 id,
                 Err(RpcError::new(
@@ -181,6 +260,7 @@ impl AcpSession {
     pub fn start(
         launch: &AcpLaunch,
         events: Arc<dyn AcpEvents>,
+        fs: Option<FsKind>,
     ) -> Result<Arc<AcpSession>, String> {
         let mut command = Command::new(&launch.program);
         command.args(&launch.args);
@@ -207,6 +287,7 @@ impl AcpSession {
             .map_err(|e| format!("Nie można uruchomić {}: {e}", launch.program))?;
 
         let shared = Arc::new(Shared {
+            fs,
             events,
             state: Mutex::new(State::default()),
             reported_cwd: (Mutex::new(launch.session_cwd.clone()), Condvar::new()),
@@ -237,7 +318,7 @@ impl AcpSession {
         let params = json!({
             "protocolVersion": PROTOCOL_VERSION,
             "clientCapabilities": {
-                "fs": { "readTextFile": false, "writeTextFile": false },
+                "fs": { "readTextFile": self.shared.fs.is_some(), "writeTextFile": self.shared.fs.is_some() },
                 "terminal": false
             },
             "clientInfo": { "name": "leverframe", "title": "Leverframe", "version": env!("CARGO_PKG_VERSION") }
@@ -402,6 +483,54 @@ impl AcpSession {
                 .respond(id, Ok(json!({ "outcome": { "outcome": "cancelled" } })));
             self.shared.emit(AcpEvent::PermissionClosed { request_id });
         }
+        let files: Vec<(u64, PendingFs)> = self
+            .shared
+            .state
+            .lock()
+            .unwrap()
+            .fs_requests
+            .drain()
+            .collect();
+        for (request_id, pending) in files {
+            let _ = self.conn.respond(
+                pending.id,
+                Err(RpcError::new(RpcError::INTERNAL_ERROR, "Przerwano")),
+            );
+            self.shared.emit(AcpEvent::FsClosed { request_id });
+        }
+    }
+
+    /// Answers a file request: `Ok(Some(text))` for a read (the whole file; the requested lines
+    /// are cut here), `Ok(None)` for a successful write, `Err(message)` when it failed or the
+    /// user refused.
+    pub fn reply_fs(
+        &self,
+        request_id: u64,
+        result: Result<Option<String>, String>,
+    ) -> Result<(), String> {
+        let pending = self
+            .shared
+            .state
+            .lock()
+            .unwrap()
+            .fs_requests
+            .remove(&request_id)
+            .ok_or("Ta prośba o plik jest już nieaktualna")?;
+        let response = match result {
+            Ok(Some(text)) if !pending.write => {
+                Ok(json!({ "content": slice_lines(&text, pending.line, pending.limit) }))
+            }
+            Ok(None) if pending.write => Ok(json!({})),
+            Ok(_) => Err(RpcError::new(
+                RpcError::INTERNAL_ERROR,
+                "Nieprawidłowa odpowiedź na prośbę o plik",
+            )),
+            Err(message) => Err(RpcError::new(RpcError::INTERNAL_ERROR, message)),
+        };
+        self.shared.emit(AcpEvent::FsClosed { request_id });
+        self.conn
+            .respond(pending.id, response)
+            .map_err(|e| e.to_string())
     }
 
     /// Answers a permission request: `Some(option id)` from the agent's options, or `None`

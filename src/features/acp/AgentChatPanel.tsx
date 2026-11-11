@@ -13,6 +13,8 @@ import { PlanView } from "./PlanView";
 import { PromptBox } from "./PromptBox";
 import { SessionControls } from "./SessionControls";
 import { ToolCard } from "./ToolCard";
+import { PermissionCard } from "./PermissionCard";
+import { serveFsRequest, type FsRequest } from "./agentFiles";
 
 export interface AgentChatParams {
   agentId: string;
@@ -51,9 +53,19 @@ export function AgentChatPanel(props: IDockviewPanelProps<AgentChatParams>) {
   return <Chat {...props} />;
 }
 
-function Chat({ params }: IDockviewPanelProps<AgentChatParams>) {
+/** Serves a file request and answers the agent. */
+async function serveAndReply(req: FsRequest, h: AcpHandle | null, mtimes: Map<string, number>) {
+  if (!h) return;
+  const reply = await serveFsRequest(req, mtimes);
+  await h.replyFs(req.requestId, "error" in reply ? { error: reply.error } : "content" in reply ? { content: reply.content } : {});
+}
+
+function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
   const [state, dispatch] = useReducer(chatReducer, initialChat);
   const handle = useRef<AcpHandle | null>(null);
+  // What this session's agent read (for conflict checks on write) and file requests awaiting the user.
+  const mtimes = useRef(new Map<string, number>());
+  const pendingFs = useRef(new Map<number, FsRequest>());
   const bottom = useRef<HTMLDivElement>(null);
   const agent = useAgentsStore((s) => s.agentById(params.agentId));
   const profile = useProfilesStore((s) => s.byId(params.profileId ?? s.defaultProfileId));
@@ -63,7 +75,15 @@ function Chat({ params }: IDockviewPanelProps<AgentChatParams>) {
     let disposed = false;
     let started: AcpHandle | null = null;
     startAcp({ agentId: params.agentId, profileId: params.profileId, cwd: params.cwd }, (event) => {
-      if (!disposed) dispatch({ type: "event", event });
+      if (disposed) return;
+      dispatch({ type: "event", event });
+      if (event.type === "fsRequest") {
+        // Inside the session folder: served at once. Outside: the user decides (card below).
+        if (event.inside) void serveAndReply(event, handle.current, mtimes.current).catch(() => undefined);
+        else pendingFs.current.set(event.requestId, event);
+      } else if (event.type === "fsClosed") {
+        pendingFs.current.delete(event.requestId);
+      }
     })
       .then((h) => {
         started = h;
@@ -82,7 +102,38 @@ function Chat({ params }: IDockviewPanelProps<AgentChatParams>) {
 
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
-  }, [state.items, state.tools, state.permissions]);
+  }, [state.items, state.tools, state.permissions, state.fileApprovals]);
+
+  // The tab shows when the agent waits for a decision (the panel may be in the background).
+  const waiting = state.permissions.length + state.fileApprovals.length > 0;
+  const baseTitle = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof api?.setTitle !== "function") return;
+    baseTitle.current ??= api.title ?? null;
+    const base = baseTitle.current ?? "";
+    api.setTitle(waiting ? `⚑ ${base}` : base);
+  }, [api, waiting]);
+
+  const decideFile = (requestId: number, allow: boolean) => {
+    const req = pendingFs.current.get(requestId);
+    const h = handle.current;
+    if (!req || !h) return;
+    pendingFs.current.delete(requestId);
+    if (allow) void serveAndReply(req, h, mtimes.current).catch((e: unknown) => dispatch({ type: "failed", message: String(e) }));
+    else run((x) => x.replyFs(requestId, { error: "Użytkownik nie zezwolił na dostęp do pliku spoza folderu projektu." }));
+  };
+
+  // Keys 1–9 choose an option of the first permission request (unless typing a message).
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const first = state.permissions[0];
+    if (!first || e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
+    const target = e.target as HTMLElement;
+    if ((target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) && target.value !== "") return;
+    const option = first.options[Number(e.key) - 1];
+    if (!option) return;
+    e.preventDefault();
+    run((h) => h.replyPermission(first.requestId, option.optionId));
+  };
 
   /** A path the agent mentions, as a file this machine can open (not on SSH hosts). */
   const toLocal = useCallback(
@@ -109,7 +160,7 @@ function Chat({ params }: IDockviewPanelProps<AgentChatParams>) {
   const usage = usageText(state.usage);
   const install = agent?.acp?.install ?? [];
   return (
-    <div className="flex h-full flex-col bg-lf-editor text-xs" data-testid="agent-chat">
+    <div className="flex h-full flex-col bg-lf-editor text-xs" data-testid="agent-chat" onKeyDown={onKeyDown}>
       <header className="flex shrink-0 items-center gap-2 border-b border-lf-border px-3 py-1.5" aria-label="Sesja agenta">
         <span className="codicon codicon-comment-discussion text-lf-muted" aria-hidden />
         <span className="font-semibold text-lf-fg">{title}</span>
@@ -165,7 +216,8 @@ function Chat({ params }: IDockviewPanelProps<AgentChatParams>) {
               );
             case "tool": {
               const tool = state.tools[item.id];
-              return tool ? <ToolCard key={i} tool={tool} toLocal={toLocal} /> : null;
+              const awaiting = state.permissions.some((p) => p.toolCall.toolCallId === tool?.id);
+              return tool ? <ToolCard key={i} tool={tool} toLocal={toLocal} awaitingPermission={awaiting} /> : null;
             }
             case "plan":
               return <PlanView key={i} entries={item.entries} />;
@@ -178,25 +230,32 @@ function Chat({ params }: IDockviewPanelProps<AgentChatParams>) {
           }
         })}
 
-        {state.permissions.map((p) => (
-          <div key={p.requestId} role="group" aria-label="Prośba o zgodę" className="mb-2 rounded border border-lf-accent/60 bg-lf-elevated p-2">
-            <p className="mb-1.5 text-lf-fg">
-              <span className="codicon codicon-shield align-middle text-lf-accent" aria-hidden /> {p.title}
+        {state.permissions.map((p, i) => (
+          <PermissionCard
+            key={p.requestId}
+            title={p.title}
+            toolCall={p.toolCall}
+            options={p.options}
+            shortcuts={i === 0}
+            toLocal={toLocal}
+            onChoose={(optionId) => run((h) => h.replyPermission(p.requestId, optionId))}
+          />
+        ))}
+
+        {state.fileApprovals.map((f) => (
+          <div key={f.requestId} role="group" aria-label="Dostęp do pliku" className="mb-2 rounded border border-lf-accent/60 bg-lf-elevated p-2">
+            <p className="mb-1 text-lf-fg">
+              <span className="codicon codicon-warning align-middle text-lf-accent" aria-hidden /> Agent chce{" "}
+              {f.op === "write" ? "zapisać" : "odczytać"} plik spoza folderu projektu:
             </p>
-            <div className="flex flex-wrap gap-1">
-              {p.options.map((o) => (
-                <button
-                  key={o.optionId}
-                  type="button"
-                  title={o.kind.endsWith("always") ? "Agent zapamięta tę decyzję" : undefined}
-                  onClick={() => run((h) => h.replyPermission(p.requestId, o.optionId))}
-                  className={`rounded px-2 py-0.5 ${
-                    o.kind.startsWith("allow") ? "bg-lf-accent text-lf-accent-fg hover:opacity-90" : "border border-lf-border text-lf-fg hover:bg-lf-hover"
-                  }`}
-                >
-                  {o.name}
-                </button>
-              ))}
+            <code className="mb-1.5 block break-all rounded bg-lf-bg px-2 py-1 font-mono text-[11px]">{f.path}</code>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => decideFile(f.requestId, true)} className="rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg hover:opacity-90">
+                Zezwól
+              </button>
+              <button type="button" onClick={() => decideFile(f.requestId, false)} className="rounded border border-lf-border px-2 py-0.5 text-lf-fg hover:bg-lf-hover">
+                Odmów
+              </button>
             </div>
           </div>
         ))}

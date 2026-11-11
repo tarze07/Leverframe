@@ -7,9 +7,10 @@ use serde::Deserialize;
 use tauri::ipc::Channel;
 use tauri::State;
 
+use super::fs::FsKind;
 use super::{launch_for, AcpEvent, AcpEvents, AcpService};
 use crate::agents::AgentService;
-use crate::profiles::{ProfileKind, ProfileService};
+use crate::profiles::{Profile, ProfileKind, ProfileService};
 use crate::settings::SettingsStore;
 
 struct ChannelEvents(Channel<AcpEvent>);
@@ -31,6 +32,26 @@ pub struct AcpStartRequest {
     pub profile_id: Option<String>,
     /// Project folder on this machine (local and WSL profiles).
     pub cwd: Option<PathBuf>,
+}
+
+/// File access offered to the agent: its own machine or a WSL distribution; none on SSH hosts
+/// (their files are not on this machine – the agent uses its own).
+fn fs_kind(profile: Option<&Profile>) -> Option<FsKind> {
+    match profile.map(|p| p.kind) {
+        Some(ProfileKind::Ssh) => None,
+        Some(ProfileKind::Wsl) => {
+            let p = profile.expect("a WSL profile");
+            let from_args = p
+                .args
+                .iter()
+                .position(|a| a == "-d" || a == "--distribution")
+                .and_then(|i| p.args.get(i + 1))
+                .cloned();
+            let distro = from_args.or_else(|| p.id.strip_prefix("wsl:").map(String::from))?;
+            Some(FsKind::Wsl(distro))
+        }
+        _ => Some(FsKind::Local),
+    }
 }
 
 /// The ACP command line: the explicit command, or the agent's `acp` definition.
@@ -97,7 +118,8 @@ pub fn acp_start(
         remote_dir.as_deref(),
         cfg!(windows),
     );
-    service.start(&launch, Arc::new(ChannelEvents(on_event)))
+    let fs = fs_kind(profile.as_ref());
+    service.start(&launch, Arc::new(ChannelEvents(on_event)), fs)
 }
 
 /// Sends a text prompt; resolves with the stop reason when the turn ends.
@@ -151,6 +173,22 @@ pub async fn acp_set_config_option(
     blocking(move || session.set_config_option(&config_id, value)).await
 }
 
+/// Answers a file request: `content` for a read, nothing for a write, or `error`.
+#[tauri::command]
+pub fn acp_fs_reply(
+    service: State<'_, AcpService>,
+    id: u64,
+    request_id: u64,
+    content: Option<String>,
+    error: Option<String>,
+) -> Result<(), String> {
+    let result = match error {
+        Some(e) => Err(e),
+        None => Ok(content),
+    };
+    service.get(id)?.reply_fs(request_id, result)
+}
+
 #[tauri::command]
 pub async fn acp_authenticate(
     service: State<'_, AcpService>,
@@ -177,6 +215,50 @@ mod tests {
             profile_id: None,
             cwd: None,
         }
+    }
+
+    #[test]
+    fn file_access_depends_on_the_profile() {
+        use crate::profiles::ProfileSource;
+        let profile = |id: &str, kind: ProfileKind, args: &[&str]| Profile {
+            id: id.into(),
+            name: id.into(),
+            kind,
+            command: "x".into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            env: Default::default(),
+            cwd: None,
+            icon: None,
+            description: None,
+            ssh: None,
+            source: ProfileSource::Detected,
+        };
+        assert_eq!(fs_kind(None), Some(FsKind::Local));
+        assert_eq!(
+            fs_kind(Some(&profile("local:bash", ProfileKind::Local, &[]))),
+            Some(FsKind::Local)
+        );
+        assert_eq!(
+            fs_kind(Some(&profile("pwsh", ProfileKind::Powershell, &[]))),
+            Some(FsKind::Local)
+        );
+        assert_eq!(
+            fs_kind(Some(&profile("srv", ProfileKind::Ssh, &[]))),
+            None,
+            "files on the host stay there"
+        );
+        assert_eq!(
+            fs_kind(Some(&profile(
+                "wsl:Debian",
+                ProfileKind::Wsl,
+                &["-d", "Ubuntu-24.04"]
+            ))),
+            Some(FsKind::Wsl("Ubuntu-24.04".into()))
+        );
+        assert_eq!(
+            fs_kind(Some(&profile("wsl:Debian", ProfileKind::Wsl, &[]))),
+            Some(FsKind::Wsl("Debian".into()))
+        );
     }
 
     #[test]

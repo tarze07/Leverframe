@@ -6,6 +6,7 @@ import type {
   ContentBlock,
   ModeState,
   PermissionOption,
+  PermissionToolCall,
   PlanEntry,
   SessionUpdate,
   ToolContent,
@@ -47,7 +48,9 @@ export interface ChatState {
   tools: Record<string, ToolCallState>;
   /** Index of this turn's plan in `items` (a plan is replaced by the agent as a whole). */
   planIndex: number | null;
-  permissions: { requestId: number; title: string; options: PermissionOption[] }[];
+  permissions: { requestId: number; title: string; toolCall: PermissionToolCall; options: PermissionOption[] }[];
+  /** Files outside the session folder the agent wants: waiting for the user's decision. */
+  fileApprovals: { requestId: number; op: "read" | "write"; path: string }[];
   commands: AvailableCommand[];
   modes: ModeState | null;
   configOptions: ConfigOption[];
@@ -70,6 +73,7 @@ export const initialChat: ChatState = {
   tools: {},
   planIndex: null,
   permissions: [],
+  fileApprovals: [],
   commands: [],
   modes: null,
   configOptions: [],
@@ -215,10 +219,18 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
     case "permission":
       return {
         ...state,
-        permissions: [...state.permissions, { requestId: e.requestId, title: e.toolCall.title ?? "Agent prosi o zgodę", options: e.options }],
+        permissions: [
+          ...state.permissions,
+          { requestId: e.requestId, title: e.toolCall.title ?? "Agent prosi o zgodę", toolCall: e.toolCall, options: e.options },
+        ],
       };
     case "permissionClosed":
       return { ...state, permissions: state.permissions.filter((p) => p.requestId !== e.requestId) };
+    case "fsRequest":
+      // Inside the session folder the panel serves requests at once; outside it asks first.
+      return e.inside ? state : { ...state, fileApprovals: [...state.fileApprovals, { requestId: e.requestId, op: e.op, path: e.path }] };
+    case "fsClosed":
+      return { ...state, fileApprovals: state.fileApprovals.filter((f) => f.requestId !== e.requestId) };
     case "log":
       return { ...state, log: [...state.log, e.line].slice(-MAX_LOG) };
     case "error":
@@ -229,6 +241,7 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
         ...state,
         status: "exited",
         permissions: [],
+        fileApprovals: [],
         missingProgram: state.missingProgram || missing,
         error: e.message ?? (state.status === "error" ? state.error : null),
       };

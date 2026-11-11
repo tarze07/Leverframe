@@ -122,6 +122,16 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
       path,
       dirty: false,
       save: () => save(),
+      getText: () => editor.getModel()?.getValue() ?? null,
+      applyText: (text) => {
+        const model = editor.getModel();
+        if (!model) return false;
+        // One undo step, like a paste of the whole file.
+        model.pushStackElement();
+        model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+        model.pushStackElement();
+        return true;
+      },
       ...(markdown ? { setView: changeView, view } : {}),
     });
     if (api.isActive) useEditorStore.getState().setLastActive(api.id);

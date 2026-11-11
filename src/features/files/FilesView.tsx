@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
+import { onFilesChanged } from "../../lib/fileEvents";
 import { useAgentsStore } from "../../store/agents";
 import { useUiStore } from "../../store/ui";
 import { openFile } from "../../workbench/commands";
@@ -39,6 +40,21 @@ export function FilesView() {
     setChildren({});
     void fetchDir(projectDir);
   }, [projectDir, fetchDir]);
+
+  // Files written by an agent (or other tools in the app) appear without a manual refresh.
+  const expandedRef = useRef(expanded);
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
+  useEffect(
+    () =>
+      onFilesChanged(() => {
+        if (!projectDir) return;
+        void fetchDir(projectDir);
+        expandedRef.current.forEach((d) => void fetchDir(d));
+      }),
+    [projectDir, fetchDir],
+  );
 
   if (!isTauri()) {
     return <Placeholder icon="files" title="Pliki" children="Drzewo plików jest dostępne w aplikacji desktopowej." />;

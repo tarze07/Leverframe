@@ -2,6 +2,7 @@
 //! talks JSON-RPC on stdin/stdout; Leverframe is the client. See docs/ACP.md.
 
 pub mod commands;
+pub mod fs;
 pub mod launch;
 pub mod rpc;
 pub mod session;
@@ -21,8 +22,13 @@ pub struct AcpService {
 }
 
 impl AcpService {
-    pub fn start(&self, launch: &AcpLaunch, events: Arc<dyn AcpEvents>) -> Result<u64, String> {
-        let session = AcpSession::start(launch, events)?;
+    pub fn start(
+        &self,
+        launch: &AcpLaunch,
+        events: Arc<dyn AcpEvents>,
+        fs: Option<fs::FsKind>,
+    ) -> Result<u64, String> {
+        let session = AcpSession::start(launch, events, fs)?;
         let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
         self.sessions.lock().unwrap().insert(id, session);
         Ok(id)
