@@ -130,6 +130,28 @@ pub fn acp_permission_reply(
 }
 
 #[tauri::command]
+pub async fn acp_set_mode(
+    service: State<'_, AcpService>,
+    id: u64,
+    mode_id: String,
+) -> Result<(), String> {
+    let session = service.get(id)?;
+    blocking(move || session.set_mode(&mode_id)).await
+}
+
+/// `value`: the option's value id (select) or `true` / `false` (boolean).
+#[tauri::command]
+pub async fn acp_set_config_option(
+    service: State<'_, AcpService>,
+    id: u64,
+    config_id: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    let session = service.get(id)?;
+    blocking(move || session.set_config_option(&config_id, value)).await
+}
+
+#[tauri::command]
 pub async fn acp_authenticate(
     service: State<'_, AcpService>,
     id: u64,

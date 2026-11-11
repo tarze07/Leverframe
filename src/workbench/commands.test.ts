@@ -57,6 +57,14 @@ describe("workbench commands", () => {
     expect(dock.addPanel.mock.calls[1][0]).toMatchObject({ params: { profileId: "wsl:Ubuntu", cwd: null } });
     dockRegistry.set("main", null);
     expect(openAgentChat("gemini")).toBeNull();
+
+    // Next to the terminals: the panel is shown first.
+    const panel = fakeDock();
+    dockRegistry.set("panel", panel);
+    useUiStore.setState({ bottomPanelVisible: false });
+    const third = openAgentChat("gemini", { dock: "panel" });
+    expect(panel.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: third, component: "agentChat" }));
+    expect(useUiStore.getState().bottomPanelVisible).toBe(true);
   });
 
   it("opens a terminal in the bottom panel and shows it", () => {

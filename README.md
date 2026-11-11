@@ -61,7 +61,7 @@ Panel „Agenci” pokazuje, czy program jest zainstalowany. Agent, który wymag
 { "agents": [{ "id": "kilo", "acp": { "command": "kilo", "args": ["acp"] } }] }
 ```
 
-Panel rozmowy pokazuje na razie tekst odpowiedzi; Markdown, wywołania narzędzi, plan i zmiany plików jako diff dojdą w kolejnych etapach ([docs/ACP.md](docs/ACP.md)).
+Panel rozmowy pokazuje odpowiedzi agenta jako Markdown (z rozwijanym rozumowaniem), jego plan, karty wywołań narzędzi (kliknięcie pliku otwiera go w edytorze na właściwej linii), prośby o zgodę oraz zużycie kontekstu. Wpisanie `/` pokazuje komendy agenta; tryb i opcje agenta (np. model) zmienia się nad polem wiadomości; **Stop** przerywa turę. Rozmowę można otworzyć w obszarze edytora (przycisk **Rozmowa**) albo w panelu terminala (paleta: „Rozmowa z … w panelu terminala”). Zmiany plików jako diff i polecenia agenta w terminalach Leverframe dojdą w kolejnych etapach ([docs/ACP.md](docs/ACP.md)).
 
 ## Układ okna
 

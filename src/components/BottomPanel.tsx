@@ -1,12 +1,14 @@
 import { useUiStore } from "../store/ui";
 import { isTauri } from "../lib/tauri";
 import { TerminalPanel } from "../features/terminal/TerminalPanel";
+import { AgentChatPanel } from "../features/acp/AgentChatPanel";
 import { DockArea } from "../workbench/DockArea";
 import { addTerminalPanel, closeActiveTerminal, openTerminal } from "../workbench/commands";
 import { ProfileMenu } from "../features/profiles/ProfileMenu";
 import { Placeholder } from "./Placeholder";
 
-const components = { terminal: TerminalPanel };
+// Conversations with agents can sit next to the terminals too.
+const components = { terminal: TerminalPanel, agentChat: AgentChatPanel };
 
 function EmptyPanel() {
   return (

@@ -263,3 +263,30 @@ body {
   color: var(--lf-fg-subtle);
   font-style: italic;
 }
+
+/* Markdown in agent conversations: denser than the file preview. */
+.lf-chat-md {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.lf-chat-md h1,
+.lf-chat-md h2 {
+  font-size: 1.15em;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.lf-chat-md h3,
+.lf-chat-md h4 {
+  font-size: 1em;
+}
+.lf-chat-md p,
+.lf-chat-md ul,
+.lf-chat-md ol,
+.lf-chat-md pre,
+.lf-chat-md blockquote,
+.lf-chat-md table {
+  margin-bottom: 0.6em;
+}
+.lf-chat-md > :last-child {
+  margin-bottom: 0;
+}

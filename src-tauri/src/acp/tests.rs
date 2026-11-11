@@ -140,6 +140,7 @@ fn a_conversation_from_initialize_to_end_turn() {
     assert_eq!(
         kinds,
         [
+            "available_commands_update", // right after session/new
             "agent_thought_chunk",
             "agent_message_chunk",
             "agent_message_chunk",
@@ -299,5 +300,50 @@ fn stopping_ends_the_process_quietly() {
         }
         _ => unreachable!(),
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn modes_options_and_commands_reach_the_ui() {
+    let (session, events, dir) = start("modes", &[]);
+    match events.wait("session ready", |e| {
+        matches!(e, AcpEvent::SessionReady { .. })
+    }) {
+        AcpEvent::SessionReady {
+            modes,
+            config_options,
+            ..
+        } => {
+            assert_eq!(modes.unwrap()["currentModeId"], "code");
+            assert_eq!(config_options.unwrap()[0]["id"], "model");
+        }
+        _ => unreachable!(),
+    }
+    events.wait("commands", |e| {
+        matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "available_commands_update"
+            && update["availableCommands"][0]["name"] == "review")
+    });
+
+    session.set_mode("ask").unwrap();
+    events.wait("mode", |e| {
+        matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "current_mode_update" && update["currentModeId"] == "ask")
+    });
+
+    // A select takes a value id, a boolean option `true` / `false`; the new state comes back.
+    session
+        .set_config_option("model", Value::from("smart"))
+        .unwrap();
+    events.wait("model", |e| {
+        matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "config_option_update"
+            && update["configOptions"][0]["currentValue"] == "smart")
+    });
+    session.set_config_option("web", Value::from(true)).unwrap();
+    events.wait("web", |e| {
+        matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "config_option_update"
+            && update["configOptions"][1]["currentValue"] == true)
+    });
+
+    assert_eq!(session.prompt("limit").unwrap(), "max_tokens");
+    session.stop();
     let _ = std::fs::remove_dir_all(dir);
 }

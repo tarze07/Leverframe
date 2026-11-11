@@ -425,6 +425,40 @@ impl AcpSession {
             .map_err(|e| e.to_string())
     }
 
+    /// `session/set_mode` (e.g. "code" / "ask"). The UI updates on success; agents may also
+    /// send `current_mode_update`.
+    pub fn set_mode(&self, mode_id: &str) -> Result<(), String> {
+        let session_id = self.session_id().ok_or("Brak sesji")?;
+        self.conn
+            .request(
+                "session/set_mode",
+                json!({ "sessionId": session_id, "modeId": mode_id }),
+                Some(HANDSHAKE_TIMEOUT),
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Nie udało się zmienić trybu: {e}"))
+    }
+
+    /// `session/set_config_option`: a select (value id) or a boolean. The agent answers with
+    /// all options, which go to the UI as a `config_option_update`.
+    pub fn set_config_option(&self, config_id: &str, value: Value) -> Result<(), String> {
+        let session_id = self.session_id().ok_or("Brak sesji")?;
+        let mut params = json!({ "sessionId": session_id, "configId": config_id, "value": value });
+        if value.is_boolean() {
+            params["type"] = json!("boolean");
+        }
+        let response = self
+            .conn
+            .request("session/set_config_option", params, Some(HANDSHAKE_TIMEOUT))
+            .map_err(|e| format!("Nie udało się zmienić ustawienia: {e}"))?;
+        if let Some(options) = response.get("configOptions").filter(|o| o.is_array()) {
+            self.shared.emit(AcpEvent::Update {
+                update: json!({ "sessionUpdate": "config_option_update", "configOptions": options }),
+            });
+        }
+        Ok(())
+    }
+
     /// Ends the agent process.
     pub fn stop(&self) {
         self.shared.stopped.store(true, Ordering::SeqCst);
