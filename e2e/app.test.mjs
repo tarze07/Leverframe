@@ -188,4 +188,36 @@ describe("Leverframe", () => {
     settings = readSettings();
     assert.equal(settings.theme, "dark");
   });
+
+  it("talks to an agent in conversation mode (ACP): prompt, answer, permission, project folder", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const say = async (text) => {
+      await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 20_000);
+      await app.waitFor(`const t = document.querySelector('${chat} textarea'); t.focus(); return document.activeElement === t`);
+      await app.type(`${text}${KEY.enter}`);
+    };
+    const transcript = () => app.exec(`return document.querySelector('${chat} [role=log]').textContent`);
+
+    await showView("Agenci");
+    await app.waitFor("return document.querySelector('li[aria-label=\"Claude Code\"]')?.textContent.includes('tryb rozmowy dostępny')", 20_000);
+    await app.click('li[aria-label="Claude Code"] button', "Rozmowa");
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 30_000);
+    assert.match(await app.exec(`return document.querySelector('${chat} header').textContent`), /fake-acp-agent/);
+
+    await say("Witaj z e2e");
+    await app.waitFor(`return document.querySelector('${chat} [role=log]').textContent.includes('Echo: Witaj z e2e')`);
+
+    // A permission request answered in the panel.
+    await say("permission");
+    await app.waitFor(`return !!document.querySelector('${chat} [role=group][aria-label="Prośba o zgodę"]')`);
+    await app.click(`${chat} [role=group][aria-label="Prośba o zgodę"] button`, "Zezwól");
+    await app.waitFor(`return document.querySelector('${chat} [role=log]').textContent.includes('zgoda: allow')`);
+    assert.equal(await app.exec(`return document.querySelectorAll('${chat} [role=group][aria-label="Prośba o zgodę"]').length`), 0);
+
+    // The agent works in the project folder chosen in the app.
+    await say("pwd");
+    await app.waitFor(`return document.querySelector('${chat} [role=log]').textContent.includes('cwd=')`);
+    const text = await transcript();
+    assert.ok(text.includes(`cwd=${env.project}`), text);
+  });
 });

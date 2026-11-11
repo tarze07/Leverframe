@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { dockRegistry } from "./docks";
-import { logFilePath, openTerminal, shellQuote, terminalPanels, toggleTerminalPanel } from "./commands";
+import { logFilePath, openAgentChat, openTerminal, shellQuote, terminalPanels, toggleTerminalPanel } from "./commands";
+import { useAgentsStore } from "../store/agents";
+import { useProfilesStore } from "../store/profiles";
 
 interface FakePanel {
   id: string;
@@ -32,6 +34,29 @@ describe("workbench commands", () => {
     useUiStore.setState(initial, true);
     dockRegistry.set("panel", null);
     dockRegistry.set("main", null);
+  });
+
+  it("opens each conversation with an agent as a new panel in the editor area", () => {
+    const dock = fakeDock();
+    dockRegistry.set("main", dock);
+    useAgentsStore.setState({ agents: [{ id: "gemini", name: "Gemini CLI", commands: ["gemini"], install: [] }] });
+    useProfilesStore.setState({
+      profiles: [{ id: "wsl:Ubuntu", name: "Ubuntu", kind: "wsl", command: "wsl.exe", args: [], source: "detected" }],
+      defaultProfileId: "wsl:Ubuntu",
+    } as Partial<ReturnType<typeof useProfilesStore.getState>>);
+
+    const first = openAgentChat("gemini", { cwd: "/home/me/app" });
+    const second = openAgentChat("gemini", { profileId: "wsl:Ubuntu" });
+    expect(first).not.toBe(second); // one agent process per panel
+    expect(dock.addPanel).toHaveBeenNthCalledWith(1, {
+      id: first,
+      component: "agentChat",
+      title: "Gemini CLI · rozmowa · Ubuntu",
+      params: { agentId: "gemini", profileId: null, cwd: "/home/me/app" },
+    });
+    expect(dock.addPanel.mock.calls[1][0]).toMatchObject({ params: { profileId: "wsl:Ubuntu", cwd: null } });
+    dockRegistry.set("main", null);
+    expect(openAgentChat("gemini")).toBeNull();
   });
 
   it("opens a terminal in the bottom panel and shows it", () => {

@@ -4,6 +4,14 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Tryb rozmowy (Agent Client Protocol)** ([#36](https://github.com/tarze07/Leverframe/issues/36), [#37](https://github.com/tarze07/Leverframe/issues/37)): przycisk **Rozmowa** w panelu „Agenci” (i polecenie „Rozmowa z …” w palecie) uruchamia agenta w tle i prowadzi rozmowę w panelu Leverframe – z prośbami o zgodę, przerwaniem (Stop), logowaniem i logiem agenta. Działa w profilach lokalnych, WSL i SSH.
+- **Gemini CLI** jako nowy agent (terminal i tryb rozmowy).
+- Tryb rozmowy Claude Code i Codex przez oficjalne adaptery (`claude-agent-acp`, `codex-acp`); panel „Agenci” pokazuje, czy są zainstalowane, i podpowiada instalację. Pole `acp` w `agents.json`.
+
+### Zmienione
+- Przycisk uruchamiający agenta w terminalu nazywa się teraz **Terminal**.
+
 ### Poprawione
 - Po otwarciu pliku (np. z drzewa „Pliki”) kursor czasem nie trafiał do edytora i pisanie nic nie dawało, dopóki nie kliknęło się w tekst. Edytor ponawia teraz przejęcie fokusu, gdy panel na chwilę jest ukryty podczas przeliczania układu.
 

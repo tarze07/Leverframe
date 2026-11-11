@@ -8,6 +8,7 @@ use tauri::ipc::Channel;
 use tauri::State;
 
 use super::{launch_for, AcpEvent, AcpEvents, AcpService};
+use crate::agents::AgentService;
 use crate::profiles::{ProfileKind, ProfileService};
 use crate::settings::SettingsStore;
 
@@ -22,12 +23,38 @@ impl AcpEvents for ChannelEvents {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcpStartRequest {
-    /// Agent program and arguments in ACP mode, e.g. `["gemini", "--acp"]`.
-    pub command: Vec<String>,
+    /// Agent from the catalog; its `acp` definition gives the command.
+    pub agent_id: Option<String>,
+    /// Explicit program and arguments in ACP mode (instead of `agent_id`), e.g. `["gemini", "--acp"]`.
+    pub command: Option<Vec<String>>,
     /// Terminal profile to run it in (`None` = the default profile).
     pub profile_id: Option<String>,
     /// Project folder on this machine (local and WSL profiles).
     pub cwd: Option<PathBuf>,
+}
+
+/// The ACP command line: the explicit command, or the agent's `acp` definition.
+fn resolve_command(
+    request: &AcpStartRequest,
+    agents: &AgentService,
+) -> Result<Vec<String>, String> {
+    let command = match (&request.agent_id, &request.command) {
+        (_, Some(command)) => command.clone(),
+        (Some(id), None) => {
+            let agent = agents
+                .find(id)
+                .ok_or_else(|| format!("Agent „{id}” nie istnieje"))?;
+            agent
+                .acp
+                .ok_or_else(|| format!("{} nie ma trybu rozmowy (ACP)", agent.name))?
+                .command_line()
+        }
+        (None, None) => Vec::new(),
+    };
+    if command.first().map_or(true, |p| p.trim().is_empty()) {
+        return Err("Brak komendy agenta".into());
+    }
+    Ok(command)
 }
 
 async fn blocking<T: Send + 'static>(
@@ -44,17 +71,12 @@ async fn blocking<T: Send + 'static>(
 pub fn acp_start(
     service: State<'_, AcpService>,
     profiles: State<'_, ProfileService>,
+    agents: State<'_, AgentService>,
     settings: State<'_, SettingsStore>,
     request: AcpStartRequest,
     on_event: Channel<AcpEvent>,
 ) -> Result<u64, String> {
-    if request
-        .command
-        .first()
-        .map_or(true, |p| p.trim().is_empty())
-    {
-        return Err("Brak komendy agenta".into());
-    }
+    let command = resolve_command(&request, &agents)?;
     let profile = match &request.profile_id {
         Some(id) => Some(
             profiles
@@ -70,7 +92,7 @@ pub fn acp_start(
     let local_cwd = request.cwd.or_else(crate::pty::home_dir);
     let launch = launch_for(
         profile.as_ref(),
-        &request.command,
+        &command,
         local_cwd.as_deref(),
         remote_dir.as_deref(),
         cfg!(windows),
@@ -120,4 +142,42 @@ pub async fn acp_authenticate(
 #[tauri::command]
 pub fn acp_stop(service: State<'_, AcpService>, id: u64) {
     service.stop(id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(agent_id: Option<&str>, command: Option<&[&str]>) -> AcpStartRequest {
+        AcpStartRequest {
+            agent_id: agent_id.map(String::from),
+            command: command.map(|c| c.iter().map(|s| s.to_string()).collect()),
+            profile_id: None,
+            cwd: None,
+        }
+    }
+
+    #[test]
+    fn the_command_comes_from_the_agent_or_the_request() {
+        let agents = AgentService::new(&std::env::temp_dir().join("lf-acp-cmd-none"));
+        assert_eq!(
+            resolve_command(&request(Some("gemini"), None), &agents).unwrap(),
+            ["gemini", "--acp"]
+        );
+        assert_eq!(
+            resolve_command(&request(Some("claude"), None), &agents).unwrap(),
+            ["claude-agent-acp"]
+        );
+        assert_eq!(
+            resolve_command(&request(Some("gemini"), Some(&["fake", "-x"])), &agents).unwrap(),
+            ["fake", "-x"],
+            "an explicit command wins (tests, custom setups)"
+        );
+        assert!(resolve_command(&request(Some("kilo"), None), &agents)
+            .unwrap_err()
+            .contains("nie ma trybu rozmowy"));
+        assert!(resolve_command(&request(Some("nope"), None), &agents).is_err());
+        assert!(resolve_command(&request(None, None), &agents).is_err());
+        assert!(resolve_command(&request(None, Some(&[" "])), &agents).is_err());
+    }
 }

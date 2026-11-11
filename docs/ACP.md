@@ -107,7 +107,7 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
 | Etap | Zakres | Wynik |
 |---|---|---|
 | **A1** ([#36](https://github.com/tarze07/Leverframe/issues/36)) | Klient ACP w Rust: uruchamianie wg profilu, `initialize`, `session/new`, `session/prompt`, `session/cancel`, routing `session/update`, logowanie, błędy procesu; atrapa agenta do testów | rozmowa z agentem z poziomu testów |
-| **A2** ([#37](https://github.com/tarze07/Leverframe/issues/37)) | Agenci ACP w `agents.json` (pole `acp`), wykrywanie, wskazówki instalacji, wybór „Terminal / Rozmowa” w panelu „Agenci” | agent startuje w trybie ACP jednym kliknięciem |
+| **A2** ([#37](https://github.com/tarze07/Leverframe/issues/37)) | Agenci ACP w `agents.json` (pole `acp`), wykrywanie, wskazówki instalacji, wybór „Terminal / Rozmowa” w panelu „Agenci”; prosty panel rozmowy (tekst, zgody, logowanie, Stop, log) | agent startuje w trybie ACP jednym kliknięciem |
 | **A3** ([#38](https://github.com/tarze07/Leverframe/issues/38)) | Panel rozmowy: strumień odpowiedzi (Markdown), myśli, plan, karty narzędzi (klik → plik i linia), pole promptu, Stop, komendy `/…`, tryby | pełna rozmowa w UI |
 | **A4** ([#39](https://github.com/tarze07/Leverframe/issues/39)) | Zgody (`session/request_permission`), diffy w edytorze (Monaco diff), `fs/read_text_file` z niezapisanych edytorów, `fs/write_text_file` z obsługą konfliktów | agent zmienia pliki pod kontrolą użytkownika |
 | **A5** ([#40](https://github.com/tarze07/Leverframe/issues/40)) | Terminale agenta (`terminal/*`) na istniejącym `PtyManager`, podgląd wyjścia w karcie narzędzia | agent uruchamia polecenia przez Leverframe |

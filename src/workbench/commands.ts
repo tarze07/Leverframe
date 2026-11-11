@@ -68,6 +68,25 @@ export function openAgent(agentId: string, options: { profileId?: string | null;
   return id;
 }
 
+let chatCounter = 0;
+
+/** Opens a conversation with an agent in ACP mode, in the editor area (a new agent process). */
+export function openAgentChat(agentId: string, options: { profileId?: string | null; cwd?: string | null } = {}) {
+  const api = dockRegistry.get("main");
+  if (!api) return null;
+  const agent = useAgentsStore.getState().agentById(agentId);
+  const profile = useProfilesStore.getState().byId(options.profileId ?? useProfilesStore.getState().defaultProfileId);
+  const id = `chat-${agentId}-${Date.now()}-${++chatCounter}`;
+  api.addPanel({
+    id,
+    component: "agentChat",
+    // "rozmowa" tells it apart from the same agent in a terminal tab.
+    title: [agent?.name ?? agentId, "rozmowa", profile?.name].filter(Boolean).join(" · "),
+    params: { agentId, profileId: options.profileId ?? null, cwd: options.cwd ?? null },
+  });
+  return id;
+}
+
 /** Opens (or focuses) the player for a recorded session in the editor area. */
 export function openSessionPlayer(session: SessionRecord, query?: string) {
   const api = dockRegistry.get("main");

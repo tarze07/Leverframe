@@ -45,6 +45,24 @@ Pliki Markdown (`.md`) mają trzy widoki, przełączane na pasku: sam tekst, tek
 
 Panel „Agenci” uruchamia agenta CLI w nowym terminalu wybranego profilu. Folder, w którym startuje, wybierasz nad listą agentów (ikona zegara pokazuje ostatnio używane foldery); ten sam folder jest korzeniem panelu „Pliki”. W profilach WSL można wskazać też folder z dysku dystrybucji (w oknie wyboru: Linux → dystrybucja). Dla profili SSH wpisuje się katalog na serwerze – osobno dla każdego hosta.
 
+### Tryb rozmowy (ACP)
+
+Agenci obsługujący [Agent Client Protocol](https://agentclientprotocol.com) mają obok przycisku **Terminal** przycisk **Rozmowa**: agent działa wtedy w tle, a rozmowa toczy się w panelu Leverframe (zgody na działania agenta w oknach aplikacji). Wymaga programu ACP w tym samym profilu:
+
+| Agent | Program trybu rozmowy | Instalacja |
+|---|---|---|
+| Claude Code | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` (Node.js 22+) |
+| Codex | `codex-acp` | `npm install -g @agentclientprotocol/codex-acp` |
+| Gemini CLI | `gemini --acp` | `npm install -g @google/gemini-cli` |
+
+Panel „Agenci” pokazuje, czy program jest zainstalowany. Agent, który wymaga zalogowania, pokaże metody logowania; zawsze można też zalogować się raz w trybie terminalowym. W `agents.json` pole `acp` (`command`, `args`, `install`) dodaje lub zmienia tryb rozmowy, a `"acp": null` go wyłącza, np.:
+
+```json
+{ "agents": [{ "id": "kilo", "acp": { "command": "kilo", "args": ["acp"] } }] }
+```
+
+Panel rozmowy pokazuje na razie tekst odpowiedzi; Markdown, wywołania narzędzi, plan i zmiany plików jako diff dojdą w kolejnych etapach ([docs/ACP.md](docs/ACP.md)).
+
 ## Układ okna
 
 Panel terminala może być pod edytorem albo obok niego (przycisk w nagłówku panelu, ustawienia lub paleta poleceń: „Przenieś panel terminala obok edytora”). Przycisk maksymalizacji w nagłówku panelu (Ctrl+Shift+M) ukrywa edytor, a ten sam przycisk na pasku zakładek edytora ukrywa terminal; ponowne kliknięcie przywraca układ. Przeciągnięcie separatora do końca działa tak samo. Uruchomione terminale działają dalej przy każdej zmianie układu.

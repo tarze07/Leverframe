@@ -1,9 +1,12 @@
 // Builds an isolated HOME for the app: fake agent CLIs, a project, sample agent logs, settings.
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const fixtures = new URL("../src-tauri/src/sessions/logs/fixtures/", import.meta.url);
+// Scripted ACP agent (src-tauri/examples/fake_acp_agent.rs): `cargo build --example fake_acp_agent`.
+const fakeAcpAgent =
+  process.env.LEVERFRAME_FAKE_ACP ?? new URL("../src-tauri/target/debug/examples/fake_acp_agent", import.meta.url).pathname;
 
 export function makeHome() {
   const home = mkdtempSync(join(tmpdir(), "lf-e2e-"));
@@ -18,6 +21,12 @@ export function makeHome() {
     `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9 (e2e)"; exit 0; fi\npwd > "$HOME/claude-ran.txt"\nprintf 'E2E-AGENT-OUTPUT refactor done\\n'\n`,
   );
   chmodSync(join(bin, "claude"), 0o755);
+  // Conversation mode: the fake ACP agent stands in for Claude's adapter.
+  if (!existsSync(fakeAcpAgent)) {
+    throw new Error(`${fakeAcpAgent} is missing: run \`cargo build --example fake_acp_agent\` in src-tauri`);
+  }
+  copyFileSync(fakeAcpAgent, join(bin, "claude-agent-acp"));
+  chmodSync(join(bin, "claude-agent-acp"), 0o755);
   // PATH only via .bashrc – like nvm – to check that detection uses the login shell's PATH.
   writeFileSync(join(home, ".bashrc"), 'export PATH="$HOME/bin:$PATH"\n');
   writeFileSync(join(home, ".profile"), "[ -f ~/.bashrc ] && . ~/.bashrc\n");

@@ -10,14 +10,26 @@ const writeText = vi.fn(async (text: string) => void text);
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: (t: string) => writeText(t) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
 const openAgent = vi.fn();
-vi.mock("../../workbench/commands", () => ({ openAgent: (...a: unknown[]) => openAgent(...a) }));
+const openAgentChat = vi.fn();
+vi.mock("../../workbench/commands", () => ({
+  openAgent: (...a: unknown[]) => openAgent(...a),
+  openAgentChat: (...a: unknown[]) => openAgentChat(...a),
+}));
 
 import { AgentsView } from "./AgentsView";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
 
 const agents = [
-  { id: "claude", name: "Claude Code", description: "Agent", commands: ["claude"], docsUrl: "https://x", install: [{ platform: "unix", command: "curl -fsSL https://claude.ai/install.sh | bash" }] },
+  {
+    id: "claude",
+    name: "Claude Code",
+    description: "Agent",
+    commands: ["claude"],
+    docsUrl: "https://x",
+    install: [{ platform: "unix", command: "curl -fsSL https://claude.ai/install.sh | bash" }],
+    acp: { command: "claude-agent-acp", args: [], install: [{ platform: "any", command: "npm install -g @agentclientprotocol/claude-agent-acp" }] },
+  },
   { id: "kilo", name: "Kilo Code", commands: ["kilo", "kilocode"], install: [{ platform: "any", command: "npm install -g @kilocode/cli" }] },
 ];
 const profiles = [
@@ -54,6 +66,7 @@ describe("AgentsView", () => {
   beforeEach(() => {
     invoke.mockReset();
     openAgent.mockReset();
+    openAgentChat.mockReset();
     useAgentsStore.setState({
       agents: [],
       errors: [],
@@ -84,7 +97,7 @@ describe("AgentsView", () => {
     render(<AgentsView />);
     await screen.findByText("2.1.0");
     const card = screen.getByRole("listitem", { name: "Claude Code" });
-    fireEvent.click(within(card).getByText("Uruchom"));
+    fireEvent.click(within(card).getByText("Terminal"));
     expect(openAgent).toHaveBeenCalledWith("claude", { profileId: "local:bash", cwd: "/home/me/projects/app", split: undefined });
     fireEvent.click(within(card).getByLabelText("Uruchom Claude Code w podziale"));
     expect(openAgent).toHaveBeenLastCalledWith("claude", expect.objectContaining({ split: "right" }));
@@ -97,7 +110,7 @@ describe("AgentsView", () => {
     fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "user-1" } });
     expect(await screen.findByText("remote 1.0")).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledWith("agents_detect", { profileId: "user-1", force: false });
-    fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Uruchom"));
+    fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Terminal"));
     expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "user-1", cwd: null }));
   });
 
@@ -133,6 +146,38 @@ describe("AgentsView", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_project_dir", { path: "/home/me/projects/api" }));
     expect(await screen.findByText("api")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Ostatnie foldery" })).not.toBeInTheDocument();
+  });
+
+  it("offers a conversation (ACP) for agents that have it", async () => {
+    mockBackend((p) => [
+      { id: "claude", installed: true, command: "claude", version: "2.1.0", acp: p === "local:bash" },
+      { id: "kilo", installed: true, command: "kilo", version: "7.8", acp: null },
+    ]);
+    render(<AgentsView />);
+    const claude = await screen.findByRole("listitem", { name: "Claude Code" });
+    expect(await within(claude).findByText("tryb rozmowy dostępny")).toBeInTheDocument();
+    const kilo = screen.getByRole("listitem", { name: "Kilo Code" });
+    expect(within(kilo).queryByText("Rozmowa")).not.toBeInTheDocument(); // terminal only
+    fireEvent.click(within(claude).getByText("Rozmowa"));
+    expect(openAgentChat).toHaveBeenCalledWith("claude", { profileId: "local:bash", cwd: "/home/me/projects/app" });
+    expect(openAgent).not.toHaveBeenCalled();
+
+    // On SSH the local folder is not passed (the backend uses the directory on the server).
+    fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "user-1" } });
+    const remote = await screen.findByRole("listitem", { name: "Claude Code" });
+    expect(await within(remote).findByText("tryb rozmowy: brak programu claude-agent-acp")).toBeInTheDocument();
+    fireEvent.click(within(remote).getByText("Rozmowa"));
+    expect(openAgentChat).toHaveBeenLastCalledWith("claude", { profileId: "user-1", cwd: null });
+  });
+
+  it("shows how to install a missing ACP adapter", async () => {
+    mockBackend(() => [{ id: "claude", installed: true, command: "claude", version: "2.1.0", acp: false }]);
+    render(<AgentsView />);
+    const card = await screen.findByRole("listitem", { name: "Claude Code" });
+    fireEvent.click(await within(card).findByText("Jak zainstalować?"));
+    expect(within(card).getByText("npm install -g @agentclientprotocol/claude-agent-acp")).toBeInTheDocument();
+    expect(within(card).queryByText(/install\.sh/)).not.toBeInTheDocument(); // the CLI itself is installed
+    expect(within(card).getByText(/potrzebny jest Node\.js/)).toBeInTheDocument();
   });
 
   it("shows install commands for missing agents and copies them", async () => {
@@ -184,7 +229,7 @@ describe("AgentsView", () => {
     expect(detectCalls("local:bash")).toHaveLength(1);
 
     // Agents can still be launched without detection.
-    fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Uruchom"));
+    fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Terminal"));
     expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "user-1" }));
 
     fireEvent.click(screen.getByLabelText("Sprawdź ponownie"));

@@ -1,5 +1,5 @@
 {
-  "$comment": "Built-in agent definitions. Override or extend them in <config dir>/agents.json (same format; entries are merged by id, \"disabled\": true hides one).",
+  "$comment": "Built-in agent definitions. Override or extend them in <config dir>/agents.json (same format; entries are merged by id, \"disabled\": true hides one). \"acp\" starts the agent in conversation mode (Agent Client Protocol); \"acp\": null turns it off.",
   "agents": [
     {
       "id": "claude",
@@ -10,7 +10,11 @@
       "install": [
         { "platform": "unix", "command": "curl -fsSL https://claude.ai/install.sh | bash" },
         { "platform": "windows", "command": "irm https://claude.ai/install.ps1 | iex" }
-      ]
+      ],
+      "acp": {
+        "command": "claude-agent-acp",
+        "install": [{ "platform": "any", "command": "npm install -g @agentclientprotocol/claude-agent-acp" }]
+      }
     },
     {
       "id": "codex",
@@ -18,7 +22,20 @@
       "description": "Agent programistyczny OpenAI",
       "commands": ["codex"],
       "docsUrl": "https://developers.openai.com/codex/cli",
-      "install": [{ "platform": "any", "command": "npm i -g @openai/codex" }]
+      "install": [{ "platform": "any", "command": "npm i -g @openai/codex" }],
+      "acp": {
+        "command": "codex-acp",
+        "install": [{ "platform": "any", "command": "npm install -g @agentclientprotocol/codex-acp" }]
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "description": "Agent programistyczny Google",
+      "commands": ["gemini"],
+      "docsUrl": "https://github.com/google-gemini/gemini-cli",
+      "install": [{ "platform": "any", "command": "npm install -g @google/gemini-cli" }],
+      "acp": { "command": "gemini", "args": ["--acp"] }
     },
     {
       "id": "agy",
