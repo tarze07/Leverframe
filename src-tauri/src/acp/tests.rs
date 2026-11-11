@@ -10,6 +10,7 @@ use serde_json::Value;
 use super::fs::FsKind;
 use super::launch::launch_for;
 use super::session::{AcpEvent, AcpEvents, AcpSession};
+use crate::pty::PtyManager;
 
 const WAIT: Duration = Duration::from_secs(30);
 
@@ -91,7 +92,8 @@ fn start_with(
     command.extend(extra.iter().map(|s| s.to_string()));
     let launch = launch_for(None, &command, Some(&dir), None, cfg!(windows));
     let events = Arc::new(Collector::default());
-    let session = AcpSession::start(&launch, events.clone(), fs).unwrap();
+    let session =
+        AcpSession::start(&launch, events.clone(), fs, Arc::new(PtyManager::new())).unwrap();
     (session, events, dir)
 }
 
@@ -489,6 +491,170 @@ fn modes_options_and_commands_reach_the_ui() {
     });
 
     assert_eq!(session.prompt("limit").unwrap(), "max_tokens");
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A command request of the agent newer than `after`: (id, command line, cwd).
+fn terminal_request(events: &Collector, after: u64) -> (u64, String, Option<String>) {
+    match events.wait(
+        "command request",
+        |e| matches!(e, AcpEvent::TerminalRequest { request_id, .. } if *request_id > after),
+    ) {
+        AcpEvent::TerminalRequest {
+            request_id,
+            command,
+            cwd,
+        } => (request_id, command, cwd),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn commands_run_through_leverframe_after_the_user_allows_them() {
+    let (session, events, dir) = start("run", &[]);
+    let session_cwd = ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("run"));
+    let (request, command, cwd) = terminal_request(&events, 0);
+    assert!(command.contains("hello-from-agent"), "{command}");
+    assert_eq!(cwd.as_deref(), Some(session_cwd.as_str()));
+    session.reply_terminal(request, true).unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    let text = events.message_text();
+    assert!(
+        text.contains("wynik: kod 3 sygnał null obcięte false wyjście ["),
+        "{text}"
+    );
+    assert!(
+        text.contains("hello-from-agent] po zwolnieniu -32602"),
+        "{text}"
+    );
+    // The UI saw the command start, its output and its end.
+    let terminal_id =
+        match events.wait("started", |e| matches!(e, AcpEvent::TerminalStarted { .. })) {
+            AcpEvent::TerminalStarted { terminal_id, .. } => terminal_id,
+            _ => unreachable!(),
+        };
+    events.wait("output", |e| {
+        matches!(e, AcpEvent::TerminalOutput { terminal_id: t, data } if *t == terminal_id && data.contains("hello-from-agent"))
+    });
+    events.wait("exit", |e| {
+        *e == AcpEvent::TerminalExit {
+            terminal_id: terminal_id.clone(),
+            exit_code: Some(3),
+            signal: None,
+        }
+    });
+    assert!(
+        session.reply_terminal(request, true).is_err(),
+        "answered once"
+    );
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_refused_command_does_not_run() {
+    let (session, events, dir) = start("runno", &[]);
+    ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("run"));
+    let (request, ..) = terminal_request(&events, 0);
+    session.reply_terminal(request, false).unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert!(events
+        .message_text()
+        .ends_with("polecenie: odmowa (Użytkownik nie zezwolił na uruchomienie polecenia)"));
+    assert!(!events
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| matches!(e, AcpEvent::TerminalStarted { .. })));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn commands_can_be_killed_and_their_output_is_limited() {
+    let (session, events, dir) = start("runkill", &[]);
+    ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("runkill"));
+    let (request, ..) = terminal_request(&events, 0);
+    session.reply_terminal(request, true).unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    let text = events.message_text();
+    assert!(
+        text.contains("wynik: kod null sygnał \"SIGKILL\""),
+        "{text}"
+    );
+
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("runlimit"));
+    let (request, ..) = terminal_request(&events, request);
+    session.reply_terminal(request, true).unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    // The last 10 bytes of the output. A login shell may add a line break of its own to the
+    // terminal (it depends on the user's shell setup), so only the end of the text is fixed.
+    let text = events.message_text();
+    let shown = text
+        .rsplit("obcięte true wyjście [")
+        .next()
+        .and_then(|t| t.split(']').next())
+        .unwrap_or_default();
+    assert!(
+        shown.len() >= 8 && "0123456789ABCDEF".ends_with(shown),
+        "{text}"
+    );
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn commands_end_with_the_agent_and_wait_for_the_user_no_longer_after_a_cancel() {
+    let (session, events, dir) = start("runstop", &[]);
+    ready(&events);
+    // Cancelling the turn drops a command request the user has not answered.
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("run"));
+    let (request, ..) = terminal_request(&events, 0);
+    session.cancel().unwrap();
+    events.wait("closed", |e| {
+        *e == AcpEvent::TerminalRequestClosed {
+            request_id: request,
+        }
+    });
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert!(events
+        .message_text()
+        .ends_with("polecenie: odmowa (Przerwano)"));
+
+    // Stopping the agent ends its running commands.
+    let s = session.clone();
+    let _turn = std::thread::spawn(move || s.prompt("runkill"));
+    let (request, ..) = terminal_request(&events, request);
+    session.reply_terminal(request, true).unwrap();
+    let id = match events.wait("started", |e| matches!(e, AcpEvent::TerminalStarted { .. })) {
+        AcpEvent::TerminalStarted { terminal_id, .. } => terminal_id,
+        _ => unreachable!(),
+    };
+    session.stop();
+    events.wait("killed", |e| {
+        matches!(e, AcpEvent::TerminalExit { terminal_id, signal: Some(_), .. } if *terminal_id == id)
+    });
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn no_commands_without_access_to_the_machine() {
+    let (session, events, dir) = start_with("noterm", &[], None);
+    ready(&events);
+    assert_eq!(session.prompt("run").unwrap(), "end_turn");
+    assert!(events
+        .message_text()
+        .ends_with("polecenie: klient nie udostępnia terminali"));
     session.stop();
     let _ = std::fs::remove_dir_all(dir);
 }

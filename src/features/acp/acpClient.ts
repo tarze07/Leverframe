@@ -10,6 +10,11 @@ export type AcpEvent =
   | { type: "permissionClosed"; requestId: number }
   | { type: "fsRequest"; requestId: number; op: "read" | "write"; path: string; inside: boolean; content: string | null }
   | { type: "fsClosed"; requestId: number }
+  | { type: "terminalRequest"; requestId: number; command: string; cwd: string | null }
+  | { type: "terminalRequestClosed"; requestId: number }
+  | { type: "terminalStarted"; terminalId: string; command: string; cwd: string | null }
+  | { type: "terminalOutput"; terminalId: string; data: string }
+  | { type: "terminalExit"; terminalId: string; exitCode: number | null; signal: string | null }
   | { type: "log"; line: string }
   | { type: "error"; message: string }
   | { type: "exited"; code: number | null; message: string | null };
@@ -121,6 +126,8 @@ export interface AcpHandle {
   replyPermission(requestId: number, optionId: string | null): Promise<void>;
   /** Answers a file request: the text read, nothing for a write, or an error. */
   replyFs(requestId: number, reply: { content?: string; error?: string }): Promise<void>;
+  /** Runs (`allow`) or refuses a command the agent asked for. */
+  replyTerminal(requestId: number, allow: boolean): Promise<void>;
   authenticate(methodId: string): Promise<void>;
   setMode(modeId: string): Promise<void>;
   /** A select takes the value id, a boolean option `true` / `false`. */
@@ -142,6 +149,7 @@ export async function startAcp(request: AcpStartRequest, onEvent: (event: AcpEve
     replyPermission: (requestId, optionId) => invoke("acp_permission_reply", { id, requestId, optionId }),
     replyFs: (requestId, reply) =>
       invoke("acp_fs_reply", { id, requestId, content: reply.content ?? null, error: reply.error ?? null }),
+    replyTerminal: (requestId, allow) => invoke("acp_terminal_reply", { id, requestId, allow }),
     authenticate: (methodId) => invoke("acp_authenticate", { id, methodId }),
     setMode: (modeId) => invoke("acp_set_mode", { id, modeId }),
     setConfigOption: (configId, value) => invoke("acp_set_config_option", { id, configId, value }),

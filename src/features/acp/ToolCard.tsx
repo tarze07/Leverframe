@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { ToolContent, ToolKind, ToolStatus } from "./acpClient";
 import { blockText, type ToolCallState } from "./chatState";
-import { openFile } from "../../workbench/commands";
+import { openAgentTerminal, openFile } from "../../workbench/commands";
+import { useAgentTerminalsStore } from "../../store/agentTerminals";
+import { AgentTerminalView } from "./AgentTerminalView";
+import { exitText } from "./AgentTerminalPanel";
 import { DiffSummary } from "./DiffSummary";
 
 const KIND_ICONS: Record<ToolKind, string> = {
@@ -31,11 +34,14 @@ export function ToolCard({
   tool,
   toLocal,
   awaitingPermission = false,
+  terminalKey,
 }: {
   tool: ToolCallState;
   toLocal: (path: string) => string | null;
   /** A permission request shows this call's changes right now: not repeated here. */
   awaitingPermission?: boolean;
+  /** Key of an agent command's output in the shared terminal store. */
+  terminalKey?: (terminalId: string) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS[tool.status] ?? STATUS.pending;
@@ -45,7 +51,7 @@ export function ToolCard({
     .join("\n");
   const long = output.length > MAX_OUTPUT;
   const changes = tool.content.filter((c): c is Extract<ToolContent, { type: "diff" }> => c.type === "diff");
-  const terminals = tool.content.filter((c) => c.type === "terminal");
+  const terminals = tool.content.filter((c): c is Extract<ToolContent, { type: "terminal" }> => c.type === "terminal");
 
   return (
     <div role="group" aria-label={`Narzędzie: ${tool.title}`} className="mb-2 rounded border border-lf-border bg-lf-sidebar">
@@ -86,7 +92,11 @@ export function ToolCard({
           <DiffSummary key={`${c.path}:${i}`} path={toLocal(c.path) ?? c.path} oldText={c.oldText} newText={c.newText} />
         ))
       )}
-      {terminals.length > 0 && <p className="px-2 pb-1 text-[11px] text-lf-muted">Polecenie w terminalu agenta</p>}
+      {terminals.map((t) =>
+        terminalKey ? (
+          <CommandOutput key={t.terminalId} storeKey={terminalKey(t.terminalId)} title={tool.title} />
+        ) : null,
+      )}
       {output && (
         <div className="border-t border-lf-border px-2 py-1">
           <pre className={`overflow-auto whitespace-pre-wrap font-mono text-[11px] text-lf-muted ${expanded ? "max-h-96" : "max-h-24"}`}>
@@ -99,6 +109,25 @@ export function ToolCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A command's live output in the card, and the way to see it full size. */
+function CommandOutput({ storeKey, title }: { storeKey: string; title: string }) {
+  const t = useAgentTerminalsStore((s) => s.terminals[storeKey]);
+  return (
+    <div className="border-t border-lf-border px-2 py-1" aria-label="Wyjście polecenia">
+      <div className="mb-1 flex items-center gap-2 text-[11px]">
+        <code className="min-w-0 flex-1 truncate font-mono text-lf-fg" title={t?.command}>
+          {t?.command ?? ""}
+        </code>
+        <span className="text-lf-subtle">{exitText(t?.exit ?? null)}</span>
+        <button type="button" onClick={() => openAgentTerminal(storeKey, title)} className="text-lf-accent hover:underline">
+          Otwórz jako terminal
+        </button>
+      </div>
+      <AgentTerminalView storeKey={storeKey} rows={8} />
     </div>
   );
 }

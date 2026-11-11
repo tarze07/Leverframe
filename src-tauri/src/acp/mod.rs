@@ -6,6 +6,7 @@ pub mod fs;
 pub mod launch;
 pub mod rpc;
 pub mod session;
+pub mod terminal;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +20,8 @@ pub use session::{AcpEvent, AcpEvents, AcpSession};
 pub struct AcpService {
     sessions: Mutex<HashMap<u64, Arc<AcpSession>>>,
     next_id: AtomicU64,
+    /// PTYs of agents' commands (`terminal/*`), apart from the user's terminals.
+    ptys: Arc<crate::pty::PtyManager>,
 }
 
 impl AcpService {
@@ -28,7 +31,7 @@ impl AcpService {
         events: Arc<dyn AcpEvents>,
         fs: Option<fs::FsKind>,
     ) -> Result<u64, String> {
-        let session = AcpSession::start(launch, events, fs)?;
+        let session = AcpSession::start(launch, events, fs, self.ptys.clone())?;
         let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
         self.sessions.lock().unwrap().insert(id, session);
         Ok(id)

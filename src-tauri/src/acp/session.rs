@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 use super::fs::{is_inside, lexical, slice_lines, to_local, FsKind};
 use super::launch::{AcpLaunch, CWD_MARKER};
 use super::rpc::{CallError, Connection, Incoming, RpcError};
+use super::terminal::{spawn_options, AgentTerminal, CommandRequest, ExitStatus};
+use crate::pty::{PtyEvents, PtyManager};
 
 /// The ACP version Leverframe speaks (stable v1).
 pub const PROTOCOL_VERSION: u64 = 1;
@@ -82,6 +84,34 @@ pub enum AcpEvent {
     FsClosed {
         request_id: u64,
     },
+    /// The agent wants to run a command; answer with `reply_terminal` (the UI asks the user,
+    /// unless commands are allowed without asking).
+    TerminalRequest {
+        request_id: u64,
+        /// The command line, quoted for display.
+        command: String,
+        /// Working directory (the agent's path; the session folder when it gives none).
+        cwd: Option<String>,
+    },
+    /// A command request was answered or dropped (turn cancelled).
+    TerminalRequestClosed {
+        request_id: u64,
+    },
+    /// A command started; its output and end follow.
+    TerminalStarted {
+        terminal_id: String,
+        command: String,
+        cwd: Option<String>,
+    },
+    TerminalOutput {
+        terminal_id: String,
+        data: String,
+    },
+    TerminalExit {
+        terminal_id: String,
+        exit_code: Option<u32>,
+        signal: Option<String>,
+    },
     /// A line from the agent's stderr (or non-protocol output).
     Log {
         line: String,
@@ -108,6 +138,11 @@ struct State {
     permissions: HashMap<u64, Value>,
     /// File requests waiting for the UI.
     fs_requests: HashMap<u64, PendingFs>,
+    /// Commands waiting for the user: our id → (the agent's JSON-RPC id, the command).
+    terminal_requests: HashMap<u64, (Value, CommandRequest)>,
+    /// Running or finished commands the agent has not released.
+    terminals: HashMap<String, Arc<AgentTerminal>>,
+    next_terminal: u64,
     next_permission: u64,
     auth_methods: Vec<Value>,
 }
@@ -129,6 +164,12 @@ struct Shared {
     reported_cwd: (Mutex<Option<String>>, Condvar),
     stderr_tail: Mutex<VecDeque<String>>,
     stopped: AtomicBool,
+    /// PTYs of the agent's commands (separate from the user's terminals).
+    ptys: Arc<PtyManager>,
+    /// For answers sent later from other threads (`terminal/wait_for_exit`).
+    conn: std::sync::OnceLock<std::sync::Weak<Connection>>,
+    /// This value itself, for PTY events that must not keep the session alive.
+    me: std::sync::Weak<Shared>,
 }
 
 impl Shared {
@@ -213,8 +254,10 @@ impl Incoming for Handler {
                 inside,
                 content,
             });
+        } else if self.0.fs.is_some() && method.starts_with("terminal/") {
+            self.0.terminal_request(conn, id, method, &params);
         } else {
-            // Terminals are not offered yet (initialize says so).
+            // Not offered (initialize says so), e.g. files and commands on SSH hosts.
             let _ = conn.respond(
                 id,
                 Err(RpcError::new(
@@ -262,6 +305,7 @@ impl AcpSession {
         launch: &AcpLaunch,
         events: Arc<dyn AcpEvents>,
         fs: Option<FsKind>,
+        ptys: Arc<PtyManager>,
     ) -> Result<Arc<AcpSession>, String> {
         let mut command = Command::new(&launch.program);
         command.args(&launch.args);
@@ -287,7 +331,10 @@ impl AcpSession {
             .spawn()
             .map_err(|e| format!("Nie można uruchomić {}: {e}", launch.program))?;
 
-        let shared = Arc::new(Shared {
+        let shared = Arc::new_cyclic(|me| Shared {
+            me: me.clone(),
+            ptys,
+            conn: std::sync::OnceLock::new(),
             fs,
             events,
             state: Mutex::new(State::default()),
@@ -300,6 +347,7 @@ impl AcpSession {
         let stderr = child.stderr.take().expect("piped stderr");
         spawn_stderr_reader(stderr, shared.clone());
         let conn = Connection::start(stdout, stdin, Arc::new(Handler(shared.clone())));
+        let _ = shared.conn.set(Arc::downgrade(&conn));
         let session = Arc::new(AcpSession {
             shared,
             conn,
@@ -320,7 +368,7 @@ impl AcpSession {
             "protocolVersion": PROTOCOL_VERSION,
             "clientCapabilities": {
                 "fs": { "readTextFile": self.shared.fs.is_some(), "writeTextFile": self.shared.fs.is_some() },
-                "terminal": false
+                "terminal": self.shared.fs.is_some()
             },
             "clientInfo": { "name": "leverframe", "title": "Leverframe", "version": env!("CARGO_PKG_VERSION") }
         });
@@ -499,6 +547,45 @@ impl AcpSession {
             );
             self.shared.emit(AcpEvent::FsClosed { request_id });
         }
+        let commands: Vec<(u64, (Value, CommandRequest))> = self
+            .shared
+            .state
+            .lock()
+            .unwrap()
+            .terminal_requests
+            .drain()
+            .collect();
+        for (request_id, (id, _)) in commands {
+            let _ = self.conn.respond(
+                id,
+                Err(RpcError::new(RpcError::INTERNAL_ERROR, "Przerwano")),
+            );
+            self.shared
+                .emit(AcpEvent::TerminalRequestClosed { request_id });
+        }
+    }
+
+    /// Answers a command request: run it (`allow`) or refuse it.
+    pub fn reply_terminal(&self, request_id: u64, allow: bool) -> Result<(), String> {
+        let (id, req) = self
+            .shared
+            .state
+            .lock()
+            .unwrap()
+            .terminal_requests
+            .remove(&request_id)
+            .ok_or("Ta prośba o polecenie jest już nieaktualna")?;
+        self.shared
+            .emit(AcpEvent::TerminalRequestClosed { request_id });
+        let response = if allow {
+            self.shared.run_command(&req)
+        } else {
+            Err(RpcError::new(
+                RpcError::INTERNAL_ERROR,
+                "Użytkownik nie zezwolił na uruchomienie polecenia",
+            ))
+        };
+        self.conn.respond(id, response).map_err(|e| e.to_string())
     }
 
     /// Answers a file request: `Ok(Some(text))` for a read (the whole file; the requested lines
@@ -592,6 +679,7 @@ impl AcpSession {
     /// Ends the agent process.
     pub fn stop(&self) {
         self.shared.stopped.store(true, Ordering::SeqCst);
+        self.shared.kill_terminals();
         kill_tree(&mut self.child.lock().unwrap());
     }
 
@@ -602,7 +690,224 @@ impl AcpSession {
 
 impl Drop for AcpSession {
     fn drop(&mut self) {
+        self.shared.kill_terminals();
         kill_tree(&mut self.child.lock().unwrap());
+    }
+}
+
+/// Output and end of one agent command, from the PTY to the agent's buffer and the UI.
+struct TerminalEvents {
+    id: String,
+    term: Arc<AgentTerminal>,
+    shared: std::sync::Weak<Shared>,
+}
+
+impl PtyEvents for TerminalEvents {
+    fn data(&self, bytes: Vec<u8>) {
+        self.term.output.lock().unwrap().push(&bytes);
+        let data = self.term.ui_text.lock().unwrap().decode(&bytes);
+        if let (Some(shared), false) = (self.shared.upgrade(), data.is_empty()) {
+            shared.emit(AcpEvent::TerminalOutput {
+                terminal_id: self.id.clone(),
+                data,
+            });
+        }
+    }
+
+    fn exit(&self, code: Option<u32>) {
+        let killed = self.term.killed.load(Ordering::SeqCst);
+        let status = ExitStatus {
+            code: if killed { None } else { code },
+            signal: killed.then(|| "SIGKILL".to_string()),
+        };
+        *self.term.exit.lock().unwrap() = Some(status.clone());
+        self.term.exited.notify_all();
+        if let Some(shared) = self.shared.upgrade() {
+            shared.emit(AcpEvent::TerminalExit {
+                terminal_id: self.id.clone(),
+                exit_code: status.code,
+                signal: status.signal,
+            });
+        }
+    }
+}
+
+fn exit_json(status: &ExitStatus) -> Value {
+    json!({ "exitCode": status.code, "signal": status.signal })
+}
+
+impl Shared {
+    /// `terminal/*` from the agent. `create` waits for the user (`reply_terminal`); the others
+    /// answer at once, except `wait_for_exit`, which answers from its own thread.
+    fn terminal_request(&self, conn: &Connection, id: Value, method: &str, params: &Value) {
+        let invalid = |m: String| Err(RpcError::new(RpcError::INVALID_PARAMS, m));
+        if method == "terminal/create" {
+            let req = CommandRequest {
+                command: params["command"].as_str().unwrap_or_default().to_string(),
+                args: params["args"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                env: params["env"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| {
+                                Some((
+                                    v["name"].as_str()?.to_string(),
+                                    v["value"].as_str()?.to_string(),
+                                ))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                cwd: params["cwd"].as_str().map(String::from),
+                output_byte_limit: params["outputByteLimit"].as_u64(),
+            };
+            let kind = self.fs.as_ref().expect("terminals only with file access");
+            let session_cwd = self.state.lock().unwrap().session_cwd.clone();
+            // Checked before asking the user: a command that cannot start is refused at once.
+            if let Err(e) = spawn_options(kind, &req, session_cwd.as_deref(), cfg!(windows)) {
+                let _ = conn.respond(id, invalid(e));
+                return;
+            }
+            let mut st = self.state.lock().unwrap();
+            st.next_permission += 1;
+            let request_id = st.next_permission;
+            let command = req.display();
+            let cwd = req.cwd.clone().or(session_cwd);
+            st.terminal_requests.insert(request_id, (id, req));
+            drop(st);
+            self.emit(AcpEvent::TerminalRequest {
+                request_id,
+                command,
+                cwd,
+            });
+            return;
+        }
+        let terminal_id = params["terminalId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let term = self
+            .state
+            .lock()
+            .unwrap()
+            .terminals
+            .get(&terminal_id)
+            .cloned();
+        let Some(term) = term else {
+            let _ = conn.respond(id, invalid(format!("Nieznany terminal: {terminal_id}")));
+            return;
+        };
+        match method {
+            "terminal/output" => {
+                let (output, truncated) = term.output.lock().unwrap().snapshot();
+                let exit = term.exit.lock().unwrap().clone();
+                let _ = conn.respond(
+                    id,
+                    Ok(json!({ "output": output, "truncated": truncated, "exitStatus": exit.as_ref().map(exit_json) })),
+                );
+            }
+            "terminal/wait_for_exit" => {
+                let conn = self.conn.get().cloned();
+                let _ = std::thread::Builder::new()
+                    .name("acp-terminal-wait".into())
+                    .spawn(move || {
+                        let status = term.wait();
+                        if let Some(conn) = conn.and_then(|c| c.upgrade()) {
+                            let _ = conn.respond(id, Ok(exit_json(&status)));
+                        }
+                    });
+            }
+            "terminal/kill" => {
+                self.kill_terminal(&term);
+                let _ = conn.respond(id, Ok(json!({})));
+            }
+            "terminal/release" => {
+                self.kill_terminal(&term);
+                self.state.lock().unwrap().terminals.remove(&terminal_id);
+                let _ = conn.respond(id, Ok(json!({})));
+            }
+            _ => {
+                let _ = conn.respond(
+                    id,
+                    Err(RpcError::new(
+                        RpcError::METHOD_NOT_FOUND,
+                        format!("Nieznana metoda {method}"),
+                    )),
+                );
+            }
+        }
+    }
+
+    /// Starts an allowed command; the answer to `terminal/create`.
+    fn run_command(self: &Shared, req: &CommandRequest) -> Result<Value, RpcError> {
+        let fail = |m: String| RpcError::new(RpcError::INTERNAL_ERROR, m);
+        let kind = self
+            .fs
+            .as_ref()
+            .ok_or_else(|| fail("Brak dostępu do poleceń".into()))?;
+        let session_cwd = self.state.lock().unwrap().session_cwd.clone();
+        let opts = spawn_options(kind, req, session_cwd.as_deref(), cfg!(windows)).map_err(fail)?;
+        let term = Arc::new(AgentTerminal::new(req.output_byte_limit));
+        let terminal_id = {
+            let mut st = self.state.lock().unwrap();
+            st.next_terminal += 1;
+            let id = format!("term-{}", st.next_terminal);
+            st.terminals.insert(id.clone(), term.clone());
+            id
+        };
+        // Registered before the PTY starts, so no output is lost.
+        self.emit(AcpEvent::TerminalStarted {
+            terminal_id: terminal_id.clone(),
+            command: req.display(),
+            cwd: req.cwd.clone().or(session_cwd),
+        });
+        let events = TerminalEvents {
+            id: terminal_id.clone(),
+            term: term.clone(),
+            shared: self.me.clone(),
+        };
+        match self.ptys.spawn(opts, Arc::new(events)) {
+            Ok(spawned) => {
+                *term.pty_id.lock().unwrap() = Some(spawned.id);
+                Ok(json!({ "terminalId": terminal_id }))
+            }
+            Err(e) => {
+                self.state.lock().unwrap().terminals.remove(&terminal_id);
+                Err(fail(e))
+            }
+        }
+    }
+
+    fn kill_terminal(&self, term: &AgentTerminal) {
+        if term.exit.lock().unwrap().is_some() {
+            return;
+        }
+        term.killed.store(true, Ordering::SeqCst);
+        if let Some(pty) = *term.pty_id.lock().unwrap() {
+            let _ = self.ptys.kill(pty);
+        }
+    }
+
+    /// Ends every command of the session (agent stopped, panel closed, app exit).
+    fn kill_terminals(&self) {
+        let all: Vec<Arc<AgentTerminal>> = self
+            .state
+            .lock()
+            .unwrap()
+            .terminals
+            .drain()
+            .map(|(_, t)| t)
+            .collect();
+        for t in all {
+            self.kill_terminal(&t);
+        }
     }
 }
 

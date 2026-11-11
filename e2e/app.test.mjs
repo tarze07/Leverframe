@@ -360,5 +360,32 @@ describe("Leverframe", () => {
     // Double click: automatic again.
     await app.exec(`document.querySelector('${chat} [role=separator]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
     await app.waitFor(`return Math.abs(document.querySelector('${chat} textarea').getBoundingClientRect().height - ${grown}) < 2`);
+    // Leave the box empty for the next test.
+    await app.exec(`const t = document.querySelector('${chat} textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true }))`);
+    await app.waitFor(`return document.querySelector('${chat} textarea').value === ''`);
+  });
+
+  it("runs the agent's command after asking: live output in the card and as a terminal, result to the agent", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const has = (text) => `return document.querySelector('${chat} [role=log]')?.textContent.includes(${JSON.stringify(text)})`;
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 20_000);
+    await app.waitFor(`const t = document.querySelector('${chat} textarea'); t.focus(); return document.activeElement === t`);
+    await app.type(`run${KEY.enter}`);
+
+    const ask = `${chat} [role=group][aria-label="Polecenie agenta"]`;
+    await app.waitFor(`return document.querySelector('${ask}')?.textContent.includes('hello-from-agent')`);
+    assert.match(await app.exec(`return document.querySelector('${ask}').textContent`), new RegExp(env.project.replaceAll("/", "\\/")));
+    await app.click(`${ask} button`, "Uruchom");
+
+    // The agent got the output and the exit code; the card shows the live terminal.
+    await app.waitFor(has("wynik: kod 3"), 20_000);
+    assert.match(await app.exec(`return document.querySelector('${chat} [role=log]').textContent`), /hello-from-agent\] po zwolnieniu/);
+    const output = `${chat} [aria-label="Wyjście polecenia"]`;
+    await app.waitFor(`return document.querySelector('${output}')?.textContent.includes('kod 3')`);
+    await app.waitFor(`return document.querySelector('${output} .xterm-rows')?.textContent.includes('hello-from-agent')`);
+
+    // Full size in the terminal panel.
+    await app.click(`${output} button`, "Otwórz jako terminal");
+    await app.waitFor(`return [...document.querySelectorAll('section[aria-label="Panel terminala"] .xterm-rows')].some(r => r.textContent.includes('hello-from-agent'))`);
   });
 });

@@ -12,6 +12,12 @@ vi.mock("../../workbench/commands", async (original) => ({
   ...(await original<typeof import("../../workbench/commands")>()),
   openAgent: (...a: unknown[]) => openAgent(...a),
   openFile: (...a: unknown[]) => openFile(...a),
+  openAgentTerminal: (...a: unknown[]) => openAgentTerminal(...a),
+}));
+const openAgentTerminal = vi.fn();
+// xterm does not run in jsdom: the live view is replaced by its key.
+vi.mock("./AgentTerminalView", () => ({
+  AgentTerminalView: ({ storeKey }: { storeKey: string }) => <div data-testid="terminal-view">{storeKey}</div>,
 }));
 const openUrl = vi.fn(async (u: string) => void u);
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (u: string) => openUrl(u) }));
@@ -24,6 +30,7 @@ const handle = {
   cancel: vi.fn(async () => undefined),
   replyPermission: vi.fn(async () => undefined),
   replyFs: vi.fn(async () => undefined),
+  replyTerminal: vi.fn(async () => undefined),
   authenticate: vi.fn(async () => undefined),
   setMode: vi.fn(async () => undefined),
   setConfigOption: vi.fn(async () => undefined),
@@ -37,7 +44,7 @@ vi.mock("./acpClient", () => ({ startAcp: (req: unknown, onEvent: (e: AcpEvent) 
 
 import { AgentChatPanel, type AgentChatParams } from "./AgentChatPanel";
 
-const panelApi = { title: "Claude Code · rozmowa", setTitle: vi.fn() };
+const panelApi = { id: "chat-7", title: "Claude Code · rozmowa", setTitle: vi.fn() };
 const props = (params: AgentChatParams) => ({ params, api: panelApi }) as unknown as IDockviewPanelProps<AgentChatParams>;
 const update = (u: SessionUpdate) => act(() => emit({ type: "update", update: u }));
 const ready = async () => {
@@ -275,6 +282,61 @@ describe("AgentChatPanel", () => {
     act(() => emit({ type: "fsClosed", requestId: 6 }));
     expect(screen.queryByRole("group", { name: "Dostęp do pliku" })).not.toBeInTheDocument();
     editors.useEditorStore.setState({ editors: {} });
+  });
+
+  it("asks before the agent runs a command; 'always' covers the same command later", async () => {
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    act(() => emit({ type: "terminalRequest", requestId: 9, command: "npm test", cwd: "/home/me/app" }));
+    const card = screen.getByRole("group", { name: "Polecenie agenta" });
+    expect(card).toHaveTextContent("Agent chce uruchomić polecenie w /home/me/app:");
+    expect(card).toHaveTextContent("npm test");
+    expect(panelApi.setTitle).toHaveBeenLastCalledWith("⚑ Claude Code · rozmowa");
+    fireEvent.click(within(card).getByText("Zawsze dla tego polecenia"));
+    expect(handle.replyTerminal).toHaveBeenCalledWith(9, true);
+    act(() => emit({ type: "terminalRequestClosed", requestId: 9 }));
+    expect(screen.queryByRole("group", { name: "Polecenie agenta" })).not.toBeInTheDocument();
+
+    // The same command again: no question. Another one: a question, refused.
+    act(() => emit({ type: "terminalRequest", requestId: 10, command: "npm test", cwd: null }));
+    expect(handle.replyTerminal).toHaveBeenLastCalledWith(10, true);
+    expect(screen.queryByRole("group", { name: "Polecenie agenta" })).not.toBeInTheDocument();
+    act(() => emit({ type: "terminalRequest", requestId: 11, command: "rm -rf build", cwd: null }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Polecenie agenta" })).getByText("Odmów"));
+    expect(handle.replyTerminal).toHaveBeenLastCalledWith(11, false);
+  });
+
+  it("runs commands without asking when that is turned off in the settings", async () => {
+    const settings = await import("../../store/settings");
+    settings.useSettingsStore.setState({ values: { acpConfirmCommands: false } });
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    act(() => emit({ type: "terminalRequest", requestId: 12, command: "cargo build", cwd: null }));
+    expect(handle.replyTerminal).toHaveBeenCalledWith(12, true);
+    expect(screen.queryByRole("group", { name: "Polecenie agenta" })).not.toBeInTheDocument();
+    settings.useSettingsStore.setState({ values: {} });
+  });
+
+  it("shows a command's output in its tool card and full size on request", async () => {
+    const { useAgentTerminalsStore } = await import("../../store/agentTerminals");
+    useAgentTerminalsStore.setState({ terminals: {} });
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    update({ sessionUpdate: "tool_call", toolCallId: "r1", title: "Uruchamiam testy", kind: "execute", status: "in_progress" });
+    act(() => {
+      emit({ type: "terminalStarted", terminalId: "term-1", command: "npm test", cwd: "/home/me/app" });
+      emit({ type: "terminalOutput", terminalId: "term-1", data: "3 passed\r\n" });
+    });
+    update({ sessionUpdate: "tool_call_update", toolCallId: "r1", content: [{ type: "terminal", terminalId: "term-1" }] });
+    const output = screen.getByLabelText("Wyjście polecenia");
+    expect(output).toHaveTextContent("npm test");
+    expect(output).toHaveTextContent("działa…");
+    expect(within(output).getByTestId("terminal-view")).toHaveTextContent("chat-7/term-1");
+    expect(useAgentTerminalsStore.getState().terminals["chat-7/term-1"].data).toBe("3 passed\r\n");
+    act(() => emit({ type: "terminalExit", terminalId: "term-1", exitCode: 0, signal: null }));
+    expect(output).toHaveTextContent("kod 0");
+    fireEvent.click(within(output).getByText("Otwórz jako terminal"));
+    expect(openAgentTerminal).toHaveBeenCalledWith("chat-7/term-1", "Uruchamiam testy");
   });
 
   it("does not offer to open files of an SSH host", async () => {

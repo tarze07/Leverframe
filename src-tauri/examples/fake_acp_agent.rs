@@ -12,6 +12,10 @@
 //!   the folder; an absolute path on every system)
 //! - `edit`       – reads README.md through the client, proposes a change (diff) with a
 //!   permission request and writes it through the client when allowed
+//! - `run`        – runs a command through the client (prints a line, exits with 3) and reports
+//!   its output and exit code
+//! - `runkill`    – starts a long command, kills it and reports how it ended
+//! - `runlimit`   – a command printing 16 characters with an output limit of 10 bytes
 //! - anything else – a thought, an echo of the prompt and a plan
 //!
 //! Flags: `--need-auth` (session/new fails with -32000 until `authenticate`),
@@ -32,6 +36,8 @@ struct Agent {
     web: bool,
     /// The client offered `fs/read_text_file` and `fs/write_text_file`.
     client_fs: bool,
+    /// The client offered `terminal/*`.
+    client_terminal: bool,
 }
 
 impl Agent {
@@ -187,6 +193,102 @@ impl Agent {
                     ),
                 };
                 self.chunk(&session, "agent_message_chunk", &result);
+                "end_turn"
+            }
+            "run" | "runkill" | "runlimit" if !self.client_terminal => {
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    "polecenie: klient nie udostępnia terminali",
+                );
+                "end_turn"
+            }
+            "run" | "runkill" | "runlimit" => {
+                let (command, args, limit): (&str, Vec<&str>, Option<u64>) =
+                    match (text.as_str(), cfg!(windows)) {
+                        ("run", false) => ("sh", vec!["-c", "echo hello-from-agent; exit 3"], None),
+                        ("run", true) => {
+                            ("cmd", vec!["/c", "echo hello-from-agent& exit /b 3"], None)
+                        }
+                        ("runkill", false) => ("sleep", vec!["30"], None),
+                        ("runkill", true) => ("ping", vec!["-n", "30", "127.0.0.1"], None),
+                        (_, false) => ("printf", vec!["0123456789ABCDEF"], Some(10)),
+                        (_, true) => ("cmd", vec!["/c", "<nul set /p =0123456789ABCDEF"], Some(10)),
+                    };
+                self.next_id += 1;
+                let tool = format!("run-{}", self.next_id);
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "tool_call", "toolCallId": tool, "title": format!("Uruchamiam {command}"),
+                            "kind": "execute", "status": "in_progress" }),
+                );
+                let created = self
+                    .call(
+                        "terminal/create",
+                        json!({ "sessionId": session, "command": command, "args": args, "cwd": self.cwd,
+                                "env": [{ "name": "LF_FROM_AGENT", "value": "1" }], "outputByteLimit": limit }),
+                    )
+                    .unwrap_or(Value::Null);
+                let Some(terminal) = created["result"]["terminalId"].as_str().map(String::from)
+                else {
+                    self.update(&session, json!({ "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "failed" }));
+                    self.chunk(
+                        &session,
+                        "agent_message_chunk",
+                        &format!(
+                            "polecenie: odmowa ({})",
+                            created["error"]["message"].as_str().unwrap_or("?")
+                        ),
+                    );
+                    return self.respond(id, json!({ "stopReason": "end_turn" }));
+                };
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "tool_call_update", "toolCallId": tool,
+                            "content": [{ "type": "terminal", "terminalId": terminal }] }),
+                );
+                if text == "runkill" {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    let _ = self.call(
+                        "terminal/kill",
+                        json!({ "sessionId": session, "terminalId": terminal }),
+                    );
+                }
+                let exit = self
+                    .call(
+                        "terminal/wait_for_exit",
+                        json!({ "sessionId": session, "terminalId": terminal }),
+                    )
+                    .unwrap_or(Value::Null);
+                let output = self
+                    .call(
+                        "terminal/output",
+                        json!({ "sessionId": session, "terminalId": terminal }),
+                    )
+                    .unwrap_or(Value::Null);
+                let _ = self.call(
+                    "terminal/release",
+                    json!({ "sessionId": session, "terminalId": terminal }),
+                );
+                let after_release = self
+                    .call(
+                        "terminal/output",
+                        json!({ "sessionId": session, "terminalId": terminal }),
+                    )
+                    .unwrap_or(Value::Null);
+                self.update(&session, json!({ "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "completed" }));
+                self.chunk(
+                    &session,
+                    "agent_message_chunk",
+                    &format!(
+                        "wynik: kod {} sygnał {} obcięte {} wyjście [{}] po zwolnieniu {}",
+                        exit["result"]["exitCode"],
+                        exit["result"]["signal"],
+                        output["result"]["truncated"],
+                        output["result"]["output"].as_str().unwrap_or("").trim(),
+                        after_release["error"]["code"]
+                    ),
+                );
                 "end_turn"
             }
             "edit" if !self.client_fs => {
@@ -374,6 +476,7 @@ fn main() {
         model: "fast".into(),
         web: false,
         client_fs: false,
+        client_terminal: false,
     };
     eprintln!("fake agent: start");
     while let Some(msg) = agent.read() {
@@ -382,6 +485,7 @@ fn main() {
         match msg.get("method").and_then(Value::as_str) {
             Some("initialize") => {
                 agent.client_fs = params["clientCapabilities"]["fs"]["readTextFile"] == true;
+                agent.client_terminal = params["clientCapabilities"]["terminal"] == true;
                 agent.respond(
                 &id,
                 json!({

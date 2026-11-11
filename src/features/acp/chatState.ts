@@ -51,6 +51,8 @@ export interface ChatState {
   permissions: { requestId: number; title: string; toolCall: PermissionToolCall; options: PermissionOption[] }[];
   /** Files outside the session folder the agent wants: waiting for the user's decision. */
   fileApprovals: { requestId: number; op: "read" | "write"; path: string }[];
+  /** Commands the agent wants to run: waiting for the user's decision. */
+  commandApprovals: { requestId: number; command: string; cwd: string | null }[];
   commands: AvailableCommand[];
   modes: ModeState | null;
   configOptions: ConfigOption[];
@@ -74,6 +76,7 @@ export const initialChat: ChatState = {
   planIndex: null,
   permissions: [],
   fileApprovals: [],
+  commandApprovals: [],
   commands: [],
   modes: null,
   configOptions: [],
@@ -231,6 +234,14 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
       return e.inside ? state : { ...state, fileApprovals: [...state.fileApprovals, { requestId: e.requestId, op: e.op, path: e.path }] };
     case "fsClosed":
       return { ...state, fileApprovals: state.fileApprovals.filter((f) => f.requestId !== e.requestId) };
+    case "terminalRequest":
+      return { ...state, commandApprovals: [...state.commandApprovals, { requestId: e.requestId, command: e.command, cwd: e.cwd }] };
+    case "terminalRequestClosed":
+      return { ...state, commandApprovals: state.commandApprovals.filter((c) => c.requestId !== e.requestId) };
+    case "terminalStarted":
+    case "terminalOutput":
+    case "terminalExit":
+      return state; // kept in the shared terminal store (the panel forwards them)
     case "log":
       return { ...state, log: [...state.log, e.line].slice(-MAX_LOG) };
     case "error":
@@ -242,6 +253,7 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
         status: "exited",
         permissions: [],
         fileApprovals: [],
+        commandApprovals: [],
         missingProgram: state.missingProgram || missing,
         error: e.message ?? (state.status === "error" ? state.error : null),
       };
