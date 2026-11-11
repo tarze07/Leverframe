@@ -8,7 +8,7 @@ import { useUiStore, type ViewId } from "../store/ui";
 import { THEMES, themeById } from "../theme/themes";
 import { currentEditor, saveAllEditors } from "../store/editor";
 import { dockRegistry } from "./docks";
-import { closeActiveTerminal, openAgent, openFile, openProfile, openTerminal, toggleTerminalPanel } from "./commands";
+import { closeActiveTerminal, openAgent, openAgentChat, openFile, openProfile, openTerminal, toggleTerminalPanel } from "./commands";
 
 export interface AppCommand {
   id: string;
@@ -151,10 +151,18 @@ export function allCommands(): AppCommand[] {
   for (const a of agents.agents) {
     cmds.push({
       id: `agents.launch.${a.id}`,
-      title: `Uruchom ${a.name}`,
+      title: `Uruchom ${a.name} w terminalu`,
       category: "Agenci",
       run: () => void openAgent(a.id, { profileId: agents.profileId, cwd: agents.projectDir }),
     });
+    if (a.acp) {
+      cmds.push({
+        id: `agents.chat.${a.id}`,
+        title: `Rozmowa z ${a.name}`,
+        category: "Agenci",
+        run: () => void openAgentChat(a.id, { profileId: agents.profileId, cwd: agents.projectDir }),
+      });
+    }
   }
   return cmds;
 }

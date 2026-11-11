@@ -5,6 +5,7 @@ import { SessionPlayer } from "../features/sessions/SessionPlayer";
 import { AgentLogPanel } from "../features/sessions/AgentLogPanel";
 import { EditorPanel } from "../features/editor/EditorPanel";
 import { EditorTab } from "../features/editor/EditorTab";
+import { AgentChatPanel } from "../features/acp/AgentChatPanel";
 import { DockArea } from "../workbench/DockArea";
 import { useUiStore } from "../store/ui";
 
@@ -15,6 +16,7 @@ const components = {
   session: SessionPlayer,
   agentLog: AgentLogPanel,
   editor: EditorPanel,
+  agentChat: AgentChatPanel,
 };
 
 const tabComponents = { editor: EditorTab };

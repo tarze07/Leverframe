@@ -21,7 +21,12 @@ pub struct AgentStatus {
     pub command: Option<String>,
     /// First line of `<command> --version`.
     pub version: Option<String>,
+    /// Whether the ACP program (adapter or agent) is available; `None` for agents without ACP mode.
+    pub acp: Option<bool>,
 }
+
+/// Id of the marked line that reports an agent's ACP program.
+const ACP_SUFFIX: &str = ":acp";
 
 /// Shell family used to run the detection script.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +58,10 @@ pub fn posix_script(agents: &[AgentDef]) -> String {
   done
   printf '@@LF@@\t%s\t0\t\t\n' "$lf_id"
 }
+lf_has() {
+  if command -v "$2" >/dev/null 2>&1; then printf '@@LF@@\t%s\t1\t%s\t\n' "$1" "$2"
+  else printf '@@LF@@\t%s\t0\t\t\n' "$1"; fi
+}
 "#,
     );
     for a in agents {
@@ -62,6 +71,10 @@ pub fn posix_script(agents: &[AgentDef]) -> String {
             a.version_args.join(" "),
             a.commands.join(" ")
         ));
+        // Only whether the ACP program exists: run without a client it would wait on stdin.
+        if let Some(acp) = &a.acp {
+            s.push_str(&format!("lf_has {}{ACP_SUFFIX} {}\n", a.id, acp.command));
+        }
     }
     s
 }
@@ -88,6 +101,13 @@ pub fn powershell_script(agents: &[AgentDef]) -> String {
              if ($c) {{ $v = (& $c.Source @({args}) 2>$null | Select-Object -First 1) -replace \"`t\", ' '; Write-Output \"{MARK}`t{id}`t1`t$cn`t$v\" }} else {{ Write-Output \"{MARK}`t{id}`t0`t`t\" }}\n",
             id = a.id
         ));
+        if let Some(acp) = &a.acp {
+            s.push_str(&format!(
+                "if (Get-Command -Name '{cmd}' -CommandType Application,ExternalScript) {{ Write-Output \"{MARK}`t{id}{ACP_SUFFIX}`t1`t{cmd}`t\" }} else {{ Write-Output \"{MARK}`t{id}{ACP_SUFFIX}`t0`t`t\" }}\n",
+                cmd = acp.command,
+                id = a.id
+            ));
+        }
     }
     s
 }
@@ -113,13 +133,14 @@ pub fn parse_output(output: &str, agents: &[AgentDef]) -> Vec<AgentStatus> {
                 installed,
                 command,
                 version,
+                acp: None,
             })
         })
         .collect();
     agents
         .iter()
         .map(|a| {
-            found
+            let mut status = found
                 .iter()
                 .find(|s| s.id == a.id)
                 .cloned()
@@ -128,7 +149,13 @@ pub fn parse_output(output: &str, agents: &[AgentDef]) -> Vec<AgentStatus> {
                     installed: false,
                     command: None,
                     version: None,
-                })
+                    acp: None,
+                });
+            if a.acp.is_some() {
+                let acp_id = format!("{}{ACP_SUFFIX}", a.id);
+                status.acp = Some(found.iter().any(|s| s.id == acp_id && s.installed));
+            }
+            status
         })
         .collect()
 }
@@ -339,22 +366,48 @@ mod tests {
                 id: "claude".into(),
                 installed: true,
                 command: Some("claude".into()),
-                version: Some("2.1.0 (Claude Code)".into())
+                version: Some("2.1.0 (Claude Code)".into()),
+                acp: Some(false),
             }
         );
         assert!(!s[1].installed);
         assert!(!s[2].installed, "missing line = not installed");
-        assert_eq!(s[3].command.as_deref(), Some("kilocode"));
-        assert_eq!(s[3].version, None);
+        assert_eq!(s[4].command.as_deref(), Some("kilocode"));
+        assert_eq!(s[4].version, None);
+        assert_eq!(s[4].acp, None, "no ACP mode defined");
+    }
+
+    #[test]
+    fn reports_whether_the_acp_program_exists() {
+        let out = "@@LF@@\tclaude\t1\tclaude\t2.1.0\n@@LF@@\tclaude:acp\t0\t\t\n                   @@LF@@\tcodex\t0\t\t\n@@LF@@\tcodex:acp\t1\tcodex-acp\t\n                   @@LF@@\tgemini\t1\tgemini\t0.68.0\n@@LF@@\tgemini:acp\t1\tgemini\t\n";
+        let s = parse_output(out, &agents());
+        let acp: Vec<_> = s.iter().map(|x| (x.id.as_str(), x.acp)).collect();
+        assert_eq!(
+            acp,
+            [
+                ("claude", Some(false)),
+                ("codex", Some(true)), // the adapter can be there without the CLI
+                ("gemini", Some(true)),
+                ("agy", None),
+                ("kilo", None)
+            ]
+        );
+        assert_eq!(s.len(), 5, "':acp' lines are not agents of their own");
     }
 
     #[test]
     fn builds_scripts_for_every_agent() {
         let posix = posix_script(&agents());
         assert!(posix.contains("lf_check kilo '--version' kilo kilocode\n"));
+        // ACP programs: presence only, never started.
+        assert!(posix.contains("lf_has claude:acp claude-agent-acp\n"));
+        assert!(posix.contains("lf_has gemini:acp gemini\n"));
+        assert!(!posix.contains("lf_has kilo"));
         let ps = powershell_script(&agents());
         assert!(ps.contains("@('kilo','kilocode')"));
         assert!(ps.contains("@@LF@@`tclaude`t1"));
+        assert!(ps.contains("Get-Command -Name 'codex-acp'"));
+        assert!(ps.contains("`tcodex:acp`t1`tcodex-acp`t"));
     }
 
     #[test]

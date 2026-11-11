@@ -105,6 +105,9 @@ jobs:
         run: cargo install tauri-driver --locked
       - name: Build the app (debug)
         run: npm run tauri -- build --debug --no-bundle
+      - name: Build the fake ACP agent
+        run: cargo build --example fake_acp_agent
+        working-directory: src-tauri
       - name: Run end-to-end tests
         run: xvfb-run -a npm run e2e
         env:

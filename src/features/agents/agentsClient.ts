@@ -12,6 +12,15 @@ export interface Agent {
   commands: string[];
   docsUrl?: string | null;
   install: InstallHint[];
+  /** Conversation mode (Agent Client Protocol), if the agent has one. */
+  acp?: AcpInfo | null;
+}
+
+export interface AcpInfo {
+  command: string;
+  args: string[];
+  /** Adapter install hints for this platform. */
+  install: InstallHint[];
 }
 
 export interface AgentsState {
@@ -25,6 +34,8 @@ export interface AgentStatus {
   installed: boolean;
   command: string | null;
   version: string | null;
+  /** Whether the ACP program is available; null/undefined for agents without ACP mode. */
+  acp?: boolean | null;
 }
 
 export const agentsClient = {

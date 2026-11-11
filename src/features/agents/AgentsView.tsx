@@ -6,7 +6,7 @@ import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
-import { openAgent } from "../../workbench/commands";
+import { openAgent, openAgentChat } from "../../workbench/commands";
 import { groupProfiles, KIND_LABELS } from "../profiles/profilesClient";
 import { folderName, type Agent, type AgentStatus } from "./agentsClient";
 
@@ -195,6 +195,8 @@ export function AgentsView() {
                 split,
               })
             }
+            // On SSH the backend uses the profile's directory on the server instead.
+            onChat={() => openAgentChat(a.id, { profileId: effectiveProfileId, cwd: profile?.kind === "ssh" ? null : projectDir })}
           />
         ))}
       </ul>
@@ -267,10 +269,17 @@ function AgentCard(props: {
   status?: AgentStatus;
   checking: boolean;
   onLaunch: (split?: "right") => void;
+  onChat: () => void;
 }) {
   const { agent, status } = props;
   const [showInstall, setShowInstall] = useState(false);
   const installed = status?.installed ?? false;
+  const acp = agent.acp;
+  const acpMissing = !!acp && status?.acp === false;
+  const hints = [
+    ...(status && !installed ? agent.install.map((h) => ({ ...h, label: agent.name })) : []),
+    ...(acp && acpMissing ? acp.install.map((h) => ({ ...h, label: `${acp.command} – tryb rozmowy` })) : []),
+  ];
 
   let badge: React.ReactNode;
   if (props.checking && !status) badge = <span className="text-lf-subtle">sprawdzanie…</span>;
@@ -299,19 +308,24 @@ function AgentCard(props: {
           </div>
           {agent.description && <p className="truncate text-[11px] text-lf-muted">{agent.description}</p>}
           <div className="mt-0.5 text-[11px]">{badge}</div>
+          {acp && status && (
+            <div className="text-[11px] text-lf-subtle">
+              {status.acp ? "tryb rozmowy dostępny" : `tryb rozmowy: brak programu ${acp.command}`}
+            </div>
+          )}
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-1">
+      <div className="mt-2 flex flex-wrap items-center gap-1">
         <button
           type="button"
           onClick={() => props.onLaunch()}
-          title={installed ? `Uruchom ${agent.name}` : `Uruchom ${agent.name} (nie wykryto – może nie zadziałać)`}
+          title={installed ? `Uruchom ${agent.name} w terminalu` : `Uruchom ${agent.name} w terminalu (nie wykryto – może nie zadziałać)`}
           className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
             installed ? "bg-lf-accent text-lf-accent-fg hover:opacity-90" : "border border-lf-border text-lf-muted hover:text-lf-fg"
           }`}
         >
-          <span className="codicon codicon-play" aria-hidden />
-          Uruchom
+          <span className="codicon codicon-terminal" aria-hidden />
+          Terminal
         </button>
         <button
           type="button"
@@ -322,7 +336,24 @@ function AgentCard(props: {
         >
           <span className="codicon codicon-split-horizontal" aria-hidden />
         </button>
-        {status && !installed && (agent.install.length > 0 || agent.docsUrl) && (
+        {acp && (
+          <button
+            type="button"
+            onClick={props.onChat}
+            title={
+              acpMissing
+                ? `Rozmowa z ${agent.name} w Leverframe (nie wykryto ${acp.command} – może nie zadziałać)`
+                : `Rozmowa z ${agent.name} w Leverframe (Agent Client Protocol)`
+            }
+            className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
+              status?.acp ? "bg-lf-accent text-lf-accent-fg hover:opacity-90" : "border border-lf-border text-lf-muted hover:text-lf-fg"
+            }`}
+          >
+            <span className="codicon codicon-comment-discussion" aria-hidden />
+            Rozmowa
+          </button>
+        )}
+        {status && (hints.length > 0 || (!installed && agent.docsUrl)) && (
           <button
             type="button"
             onClick={() => setShowInstall((v) => !v)}
@@ -335,8 +366,8 @@ function AgentCard(props: {
       </div>
       {showInstall && (
         <div className="mt-2 flex flex-col gap-1">
-          {agent.install.map((hint) => (
-            <div key={hint.command} className="flex items-center gap-1 rounded bg-lf-bg p-1">
+          {hints.map((hint) => (
+            <div key={hint.command} title={hint.label} className="flex items-center gap-1 rounded bg-lf-bg p-1">
               <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-lf-fg" title={hint.command}>
                 {hint.command}
               </code>
@@ -353,6 +384,7 @@ function AgentCard(props: {
           ))}
           <p className="text-[11px] text-lf-subtle">
             Wklej komendę w terminalu tego profilu. Leverframe niczego nie instaluje sam.
+            {acpMissing && acp.install.length > 0 && " Programy trybu rozmowy instaluje npm – potrzebny jest Node.js (dla Claude: 22 lub nowszy)."}
           </p>
           {agent.docsUrl && (
             <button

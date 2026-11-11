@@ -13,6 +13,19 @@ pub struct InstallHint {
     pub command: String,
 }
 
+/// How to start the agent in ACP mode (Agent Client Protocol over stdio), see docs/ACP.md.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpDef {
+    /// Program speaking ACP: the agent itself (`gemini` + `--acp`) or an adapter (`claude-agent-acp`).
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Install commands for the adapter – shown, never executed.
+    #[serde(default)]
+    pub install: Vec<InstallHint>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDef {
@@ -29,6 +42,9 @@ pub struct AgentDef {
     /// Official install commands – shown to the user, never executed by the app.
     #[serde(default)]
     pub install: Vec<InstallHint>,
+    /// ACP mode; `None` = terminal only.
+    #[serde(default)]
+    pub acp: Option<AcpDef>,
 }
 
 fn default_version_args() -> Vec<String> {
@@ -46,8 +62,20 @@ struct AgentEntry {
     version_args: Option<Vec<String>>,
     docs_url: Option<String>,
     install: Option<Vec<InstallHint>>,
+    /// Missing = keep the built-in value; `null` = remove ACP mode; object = replace it.
+    #[serde(default, deserialize_with = "present")]
+    acp: Option<Option<AcpDef>>,
     #[serde(default)]
     disabled: bool,
+}
+
+/// Tells a field set to `null` (`Some(None)`) from a missing one (`None`).
+fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -89,15 +117,38 @@ impl AgentDef {
         if !self.version_args.iter().all(|a| is_safe_token(a)) {
             return Err(format!("Agent {}: nieprawidłowe argumenty wersji", self.id));
         }
+        if let Some(acp) = &self.acp {
+            // The command also goes into the detection script, the arguments into the launch script.
+            if !is_safe_command(&acp.command) || !acp.args.iter().all(|a| is_safe_token(a)) {
+                return Err(format!(
+                    "Agent {}: nieprawidłowa komenda ACP {:?} {:?}",
+                    self.id, acp.command, acp.args
+                ));
+            }
+        }
         Ok(())
     }
 
     /// Install hints for the current platform.
     pub fn install_for(&self, windows: bool) -> Vec<&InstallHint> {
-        let platform = if windows { "windows" } else { "unix" };
-        self.install
-            .iter()
-            .filter(|h| h.platform == "any" || h.platform == platform)
+        hints_for(&self.install, windows)
+    }
+}
+
+/// Install hints that apply on this platform (`any` everywhere).
+pub fn hints_for(hints: &[InstallHint], windows: bool) -> Vec<&InstallHint> {
+    let platform = if windows { "windows" } else { "unix" };
+    hints
+        .iter()
+        .filter(|h| h.platform == "any" || h.platform == platform)
+        .collect()
+}
+
+impl AcpDef {
+    /// Program and arguments for `acp_start`.
+    pub fn command_line(&self) -> Vec<String> {
+        std::iter::once(self.command.clone())
+            .chain(self.args.iter().cloned())
             .collect()
     }
 }
@@ -119,6 +170,10 @@ fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<St
                     version_args: e.version_args.unwrap_or_else(|| base.version_args.clone()),
                     docs_url: e.docs_url.or_else(|| base.docs_url.clone()),
                     install: e.install.unwrap_or_else(|| base.install.clone()),
+                    acp: match e.acp {
+                        None => base.acp.clone(),
+                        Some(acp) => acp,
+                    },
                 }
             }
             None => AgentDef {
@@ -129,6 +184,7 @@ fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<St
                 version_args: e.version_args.unwrap_or_else(default_version_args),
                 docs_url: e.docs_url,
                 install: e.install.unwrap_or_default(),
+                acp: e.acp.flatten(),
             },
         };
         if let Err(err) = def.validate() {
@@ -180,10 +236,68 @@ mod tests {
         let c = load_catalog(BUILTIN_AGENTS_JSON, None);
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         let ids: Vec<_> = c.agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, ["claude", "codex", "agy", "kilo"]);
-        let kilo = &c.agents[3];
+        assert_eq!(ids, ["claude", "codex", "gemini", "agy", "kilo"]);
+        let kilo = &c.agents[4];
         assert_eq!(kilo.commands, ["kilo", "kilocode"]);
         assert_eq!(kilo.version_args, ["--version"]);
+        // ACP mode: adapters for Claude and Codex, Gemini CLI itself; not confirmed for Agy and Kilo.
+        let acp: Vec<_> = c
+            .agents
+            .iter()
+            .map(|a| a.acp.as_ref().map(|x| x.command_line().join(" ")))
+            .collect();
+        assert_eq!(
+            acp,
+            [
+                Some("claude-agent-acp".to_string()),
+                Some("codex-acp".to_string()),
+                Some("gemini --acp".to_string()),
+                None,
+                None
+            ]
+        );
+        assert!(c.agents[0].acp.as_ref().unwrap().install[0]
+            .command
+            .contains("@agentclientprotocol/claude-agent-acp"));
+    }
+
+    #[test]
+    fn acp_mode_can_be_added_replaced_or_removed_by_the_user() {
+        let user = r#"{ "agents": [
+            { "id": "kilo", "acp": { "command": "kilo", "args": ["acp"] } },
+            { "id": "codex", "name": "Codex (beta)" },
+            { "id": "claude", "acp": null },
+            { "id": "gemini", "acp": { "command": "gemini", "args": ["--experimental-acp"] } }
+        ] }"#;
+        let c = load_catalog(BUILTIN_AGENTS_JSON, Some(user));
+        assert!(c.errors.is_empty(), "{:?}", c.errors);
+        let by_id = |id: &str| c.agents.iter().find(|a| a.id == id).unwrap();
+        assert_eq!(
+            by_id("kilo").acp.as_ref().unwrap().command_line(),
+            ["kilo", "acp"]
+        );
+        assert_eq!(
+            by_id("codex").acp.as_ref().unwrap().command,
+            "codex-acp",
+            "kept when not mentioned"
+        );
+        assert_eq!(by_id("claude").acp, None, "null removes it");
+        assert_eq!(
+            by_id("gemini").acp.as_ref().unwrap().args,
+            ["--experimental-acp"]
+        );
+    }
+
+    #[test]
+    fn unsafe_acp_commands_are_rejected() {
+        let user = r#"{ "agents": [
+            { "id": "a", "commands": ["a"], "acp": { "command": "a; rm -rf ~" } },
+            { "id": "b", "commands": ["b"], "acp": { "command": "b", "args": ["$(id)"] } },
+            { "id": "c", "commands": ["c"], "acp": { "command": "c-acp", "args": ["--port=0"] } }
+        ] }"#;
+        let c = load_catalog(BUILTIN_AGENTS_JSON, Some(user));
+        assert_eq!(c.errors.len(), 2, "{:?}", c.errors);
+        assert!(c.agents.iter().any(|a| a.id == "c"));
     }
 
     #[test]
@@ -196,7 +310,7 @@ mod tests {
         let c = load_catalog(BUILTIN_AGENTS_JSON, Some(user));
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         let ids: Vec<_> = c.agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, ["claude", "codex", "kilo", "aider"]);
+        assert_eq!(ids, ["claude", "codex", "gemini", "kilo", "aider"]);
         let codex = c.agents.iter().find(|a| a.id == "codex").unwrap();
         assert_eq!(codex.commands, ["codex-beta"]);
         assert_eq!(
@@ -221,7 +335,7 @@ mod tests {
     #[test]
     fn broken_user_file_is_reported() {
         let c = load_catalog(BUILTIN_AGENTS_JSON, Some("{ nope"));
-        assert_eq!(c.agents.len(), 4);
+        assert_eq!(c.agents.len(), 5);
         assert_eq!(c.errors.len(), 1);
     }
 

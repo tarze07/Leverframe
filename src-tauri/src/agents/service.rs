@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 
 use super::detect::AgentStatus;
-use super::model::{load_catalog_from_dir, AgentCatalog, AgentDef, InstallHint};
+use super::model::{hints_for, load_catalog_from_dir, AgentCatalog, AgentDef, InstallHint};
 
 /// What the UI needs about an agent; install hints already filtered for this platform.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -16,6 +16,17 @@ pub struct AgentView {
     pub description: Option<String>,
     pub commands: Vec<String>,
     pub docs_url: Option<String>,
+    pub install: Vec<InstallHint>,
+    /// ACP mode (conversation in Leverframe), if the agent has one.
+    pub acp: Option<AcpView>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpView {
+    pub command: String,
+    pub args: Vec<String>,
+    /// Adapter install hints for this platform.
     pub install: Vec<InstallHint>,
 }
 
@@ -59,6 +70,14 @@ impl AgentService {
                     commands: a.commands.clone(),
                     docs_url: a.docs_url.clone(),
                     install: a.install_for(cfg!(windows)).into_iter().cloned().collect(),
+                    acp: a.acp.as_ref().map(|acp| AcpView {
+                        command: acp.command.clone(),
+                        args: acp.args.clone(),
+                        install: hints_for(&acp.install, cfg!(windows))
+                            .into_iter()
+                            .cloned()
+                            .collect(),
+                    }),
                 })
                 .collect(),
             errors: catalog.errors,
@@ -111,6 +130,7 @@ mod tests {
                 installed: true,
                 command: Some("kilocode".into()),
                 version: None,
+                acp: None,
             }],
         );
         assert_eq!(svc.command_for(&kilo, Some("local:bash")), "kilocode");
@@ -121,7 +141,7 @@ mod tests {
     fn state_lists_agents_with_platform_install_hints() {
         let svc = AgentService::new(&std::env::temp_dir().join("lf-agents-none"));
         let state = svc.state();
-        assert_eq!(state.agents.len(), 4);
+        assert_eq!(state.agents.len(), 5);
         let claude = &state.agents[0];
         let expected = if cfg!(windows) {
             "install.ps1"
