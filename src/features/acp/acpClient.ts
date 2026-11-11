@@ -6,8 +6,10 @@ export type AcpEvent =
   | { type: "authRequired"; authMethods: AuthMethod[]; message: string }
   | { type: "sessionReady"; sessionId: string; cwd: string; modes: ModeState | null; configOptions: ConfigOption[] | null }
   | { type: "update"; update: SessionUpdate }
-  | { type: "permission"; requestId: number; toolCall: { title?: string; kind?: string } & Record<string, unknown>; options: PermissionOption[] }
+  | { type: "permission"; requestId: number; toolCall: PermissionToolCall; options: PermissionOption[] }
   | { type: "permissionClosed"; requestId: number }
+  | { type: "fsRequest"; requestId: number; op: "read" | "write"; path: string; inside: boolean; content: string | null }
+  | { type: "fsClosed"; requestId: number }
   | { type: "log"; line: string }
   | { type: "error"; message: string }
   | { type: "exited"; code: number | null; message: string | null };
@@ -19,6 +21,16 @@ export interface AuthMethod {
   /** `terminal`: the user logs in by running the agent in a terminal. */
   type?: string;
 }
+
+/** What the agent wants to do: a tool call, possibly with diffs and its raw input (e.g. a command). */
+export type PermissionToolCall = {
+  toolCallId?: string;
+  title?: string | null;
+  kind?: ToolKind | null;
+  content?: ToolContent[] | null;
+  rawInput?: unknown;
+  locations?: ToolLocation[] | null;
+};
 
 export interface PermissionOption {
   optionId: string;
@@ -107,6 +119,8 @@ export interface AcpHandle {
   prompt(text: string): Promise<string>;
   cancel(): Promise<void>;
   replyPermission(requestId: number, optionId: string | null): Promise<void>;
+  /** Answers a file request: the text read, nothing for a write, or an error. */
+  replyFs(requestId: number, reply: { content?: string; error?: string }): Promise<void>;
   authenticate(methodId: string): Promise<void>;
   setMode(modeId: string): Promise<void>;
   /** A select takes the value id, a boolean option `true` / `false`. */
@@ -126,6 +140,8 @@ export async function startAcp(request: AcpStartRequest, onEvent: (event: AcpEve
     prompt: (text) => invoke<string>("acp_prompt", { id, text }),
     cancel: () => invoke("acp_cancel", { id }),
     replyPermission: (requestId, optionId) => invoke("acp_permission_reply", { id, requestId, optionId }),
+    replyFs: (requestId, reply) =>
+      invoke("acp_fs_reply", { id, requestId, content: reply.content ?? null, error: reply.error ?? null }),
     authenticate: (methodId) => invoke("acp_authenticate", { id, methodId }),
     setMode: (modeId) => invoke("acp_set_mode", { id, modeId }),
     setConfigOption: (configId, value) => invoke("acp_set_config_option", { id, configId, value }),

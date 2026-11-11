@@ -4,6 +4,7 @@ import { useProfilesStore } from "../store/profiles";
 import { useAgentsStore } from "../store/agents";
 import { editorPanelId } from "../store/editor";
 import { baseName, joinPath } from "../features/editor/fsClient";
+import { diffStore } from "../features/editor/diffStore";
 import { isWindows } from "../features/terminal/keys";
 import type { SessionRecord } from "../features/sessions/sessionsClient";
 import { LOG_AGENT_NAMES, type LogSummary } from "../features/sessions/agentLogsClient";
@@ -65,6 +66,16 @@ export function openAgent(agentId: string, options: { profileId?: string | null;
   if (id && agent) {
     dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(profile ? `${agent.name} · ${profile.name}` : agent.name);
   }
+  return id;
+}
+
+/** Opens a read-only side-by-side view of a change (e.g. one an agent proposes). */
+export function openDiff(change: { path: string; oldText: string | null; newText: string }) {
+  const api = dockRegistry.get("main");
+  if (!api) return null;
+  const diffId = diffStore.put({ oldText: change.oldText, newText: change.newText });
+  const id = `diff-${diffId}`;
+  api.addPanel({ id, component: "diff", title: `Zmiana: ${baseName(change.path)}`, params: { diffId, path: change.path } });
   return id;
 }
 

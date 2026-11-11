@@ -11,6 +11,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 - **Pełny panel rozmowy** ([#38](https://github.com/tarze07/Leverframe/issues/38)): odpowiedzi jako Markdown (oczyszczany jak podgląd plików; linki otwierają się w przeglądarce lub edytorze), rozwijane rozumowanie, plan agenta ze statusem kroków, karty wywołań narzędzi (rodzaj, status, wynik, pliki z numerem linii – otwierane w edytorze, także z WSL), komendy agenta po wpisaniu `/`, wybór trybu i opcji agenta (np. modelu), zużycie kontekstu i koszt, przyczyna nietypowego końca tury, podpowiedź instalacji, gdy brakuje programu agenta. Rozmowę można otworzyć także w panelu terminala.
 
+- **Zmiany plików pod kontrolą** ([#39](https://github.com/tarze07/Leverframe/issues/39)): agent czyta i zapisuje pliki przez Leverframe – z niezapisanymi zmianami z otwartych edytorów, z zapisem jako jedna zmiana do cofnięcia i z wykrywaniem konfliktów. Prośba o zgodę pokazuje polecenie i zmianę jako diff (+/− linii, fragment, „Otwórz zmianę” – widok obok siebie); opcje wybiera się też klawiszami 1–9; zakładka czekającej rozmowy ma znacznik ⚑. Dostęp bez pytania tylko w folderze projektu (`..` i dowiązania symboliczne sprawdzane); o pliki spoza niego Leverframe pyta. Drzewo „Pliki” odświeża się po zapisie agenta.
+
 ### Zmienione
 - Przycisk uruchamiający agenta w terminalu nazywa się teraz **Terminal**.
 

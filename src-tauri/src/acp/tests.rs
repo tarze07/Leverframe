@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use super::fs::FsKind;
 use super::launch::launch_for;
 use super::session::{AcpEvent, AcpEvents, AcpSession};
 
@@ -77,13 +78,38 @@ fn temp_dir(name: &str) -> PathBuf {
 }
 
 fn start(name: &str, extra: &[&str]) -> (Arc<AcpSession>, Arc<Collector>, PathBuf) {
+    start_with(name, extra, Some(FsKind::Local))
+}
+
+fn start_with(
+    name: &str,
+    extra: &[&str],
+    fs: Option<FsKind>,
+) -> (Arc<AcpSession>, Arc<Collector>, PathBuf) {
     let dir = temp_dir(name);
     let mut command = vec![fake_agent().to_string_lossy().into_owned()];
     command.extend(extra.iter().map(|s| s.to_string()));
     let launch = launch_for(None, &command, Some(&dir), None, cfg!(windows));
     let events = Arc::new(Collector::default());
-    let session = AcpSession::start(&launch, events.clone()).unwrap();
+    let session = AcpSession::start(&launch, events.clone(), fs).unwrap();
     (session, events, dir)
+}
+
+/// A file request of the agent newer than `after` (request ids grow): (id, path, inside, content).
+fn fs_request(events: &Collector, op: &str, after: u64) -> (u64, String, bool, Option<String>) {
+    let op = op.to_string();
+    match events.wait("file request", |e| {
+        matches!(e, AcpEvent::FsRequest { op: o, request_id, .. } if *o == op && *request_id > after)
+    }) {
+        AcpEvent::FsRequest {
+            request_id,
+            path,
+            inside,
+            content,
+            ..
+        } => (request_id, path, inside, content),
+        _ => unreachable!(),
+    }
 }
 
 fn ready(events: &Collector) -> String {
@@ -229,9 +255,124 @@ fn bad_output_and_unsupported_requests_do_not_break_the_session() {
         |e| matches!(e, AcpEvent::Log { line } if line == "[stdout] to nie jest JSON"),
     );
     assert!(events.message_text().ends_with("Echo: garbage"));
-    // No fs capability yet: the client refuses with "method not found".
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_agent_edits_a_file_through_leverframe() {
+    let (session, events, dir) = start("edit", &[]);
+    ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("edit"));
+
+    // Read: inside the session folder; the UI answers (from an open editor or the disk).
+    let (read_id, path, inside, _) = fs_request(&events, "read", 0);
+    assert!(inside, "{path}");
+    assert!(path.ends_with("README.md"), "{path}");
+    session
+        .reply_fs(
+            read_id,
+            Ok(Some("# Sklep\nniezapisane w edytorze\n".into())),
+        )
+        .unwrap();
+    events.wait("read closed", |e| {
+        *e == AcpEvent::FsClosed {
+            request_id: read_id,
+        }
+    });
+
+    // The change comes as a diff with a permission request.
+    let (perm, _) = permission(&events);
+    events.wait("diff", |e| {
+        matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "tool_call"
+            && update["content"][0]["type"] == "diff"
+            && update["content"][0]["oldText"] == "# Sklep\nniezapisane w edytorze\n")
+    });
+    session.reply_permission(perm, Some("allow")).unwrap();
+
+    let (write_id, _, inside, content) = fs_request(&events, "write", 0);
+    assert!(inside);
+    assert_eq!(
+        content.as_deref(),
+        Some("# Sklep\nniezapisane w edytorze\nDopisane przez agenta.\n")
+    );
+    session.reply_fs(write_id, Ok(None)).unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert!(events.message_text().ends_with("zapisano"));
+    assert!(
+        session.reply_fs(write_id, Ok(None)).is_err(),
+        "answered once"
+    );
+
+    // A failed write reaches the agent as an error.
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("edit"));
+    let (read_id, ..) = fs_request(&events, "read", write_id);
+    session.reply_fs(read_id, Ok(Some("x".into()))).unwrap();
+    let perm = match events.wait(
+        "second permission",
+        |e| matches!(e, AcpEvent::Permission { request_id, .. } if *request_id > read_id),
+    ) {
+        AcpEvent::Permission { request_id, .. } => request_id,
+        _ => unreachable!(),
+    };
+    session.reply_permission(perm, Some("allow")).unwrap();
+    let (write_id, ..) = fs_request(&events, "write", perm);
+    session
+        .reply_fs(write_id, Err("Plik zmienił się na dysku".into()))
+        .unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert!(events
+        .message_text()
+        .ends_with("błąd zapisu: Plik zmienił się na dysku"));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn files_outside_the_folder_are_flagged_and_can_be_refused() {
+    let (session, events, dir) = start("outside", &[]);
+    ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("fs"));
+    let (id, path, inside, _) = fs_request(&events, "read", 0);
+    assert!(!inside, "{path} is outside the session folder");
+    session
+        .reply_fs(id, Err("Użytkownik nie zezwolił".into()))
+        .unwrap();
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert!(events.message_text().ends_with("fs: -32603"));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn without_file_access_the_agent_is_told_so() {
+    // SSH profiles: no fs capability; requests are refused with "method not found".
+    let (session, events, dir) = start_with("nofs", &[], None);
+    ready(&events);
+    assert_eq!(session.prompt("edit").unwrap(), "end_turn");
+    assert!(events
+        .message_text()
+        .ends_with("edit: klient nie udostępnia plików"));
     assert_eq!(session.prompt("fs").unwrap(), "end_turn");
     assert!(events.message_text().ends_with("fs: -32601"));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn cancelling_drops_open_file_requests() {
+    let (session, events, dir) = start("fscancel", &[]);
+    ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("fs"));
+    let (id, ..) = fs_request(&events, "read", 0);
+    session.cancel().unwrap();
+    events.wait("closed", |e| *e == AcpEvent::FsClosed { request_id: id });
+    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert!(events.message_text().ends_with("fs: -32603"));
     session.stop();
     let _ = std::fs::remove_dir_all(dir);
 }

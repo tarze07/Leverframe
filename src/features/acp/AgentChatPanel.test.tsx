@@ -23,6 +23,7 @@ const handle = {
   prompt: vi.fn<(text: string) => Promise<string>>(async () => "end_turn"),
   cancel: vi.fn(async () => undefined),
   replyPermission: vi.fn(async () => undefined),
+  replyFs: vi.fn(async () => undefined),
   authenticate: vi.fn(async () => undefined),
   setMode: vi.fn(async () => undefined),
   setConfigOption: vi.fn(async () => undefined),
@@ -36,7 +37,8 @@ vi.mock("./acpClient", () => ({ startAcp: (req: unknown, onEvent: (e: AcpEvent) 
 
 import { AgentChatPanel, type AgentChatParams } from "./AgentChatPanel";
 
-const props = (params: AgentChatParams) => ({ params, api: {} }) as unknown as IDockviewPanelProps<AgentChatParams>;
+const panelApi = { title: "Claude Code · rozmowa", setTitle: vi.fn() };
+const props = (params: AgentChatParams) => ({ params, api: panelApi }) as unknown as IDockviewPanelProps<AgentChatParams>;
 const update = (u: SessionUpdate) => act(() => emit({ type: "update", update: u }));
 const ready = async () => {
   await waitFor(() => expect(startAcp).toHaveBeenCalled());
@@ -194,11 +196,85 @@ describe("AgentChatPanel", () => {
       }),
     );
     expect(screen.getByRole("group", { name: "Prośba o zgodę" })).toHaveTextContent("Uruchom npm test");
-    expect(screen.getByText("Zawsze")).toHaveAttribute("title", "Agent zapamięta tę decyzję");
+    expect(screen.getByText("Zawsze").closest("button")).toHaveAttribute("title", "Agent zapamięta tę decyzję · Klawisz 2");
     fireEvent.click(screen.getByText("Zezwól raz"));
     expect(handle.replyPermission).toHaveBeenCalledWith(3, "yes");
     act(() => emit({ type: "permissionClosed", requestId: 3 }));
     expect(screen.queryByRole("group", { name: "Prośba o zgodę" })).not.toBeInTheDocument();
+  });
+
+  it("shows the command and the change, takes number keys, and marks the tab while waiting", async () => {
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    act(() =>
+      emit({
+        type: "permission",
+        requestId: 4,
+        toolCall: {
+          toolCallId: "e1",
+          title: "Edytuj README.md",
+          kind: "edit",
+          rawInput: { command: ["npm", "test"] },
+          content: [{ type: "diff", path: "/home/me/app/README.md", oldText: "# Sklep\n", newText: "# Sklep\nNowa linia\n" }],
+        },
+        options: [
+          { optionId: "yes", name: "Zezwól", kind: "allow_once" },
+          { optionId: "no", name: "Odmów", kind: "reject_once" },
+        ],
+      }),
+    );
+    update({
+      sessionUpdate: "tool_call",
+      toolCallId: "e1",
+      title: "Edytuj README.md",
+      kind: "edit",
+      content: [{ type: "diff", path: "/home/me/app/README.md", oldText: "# Sklep\n", newText: "# Sklep\nNowa linia\n" }],
+    });
+    const card = screen.getByRole("group", { name: "Prośba o zgodę" });
+    expect(card).toHaveTextContent("npm test");
+    // The change is shown once: in the permission request, not again in the tool card.
+    expect(screen.getAllByLabelText("Zmiana: README.md")).toHaveLength(1);
+    expect(screen.getByRole("group", { name: "Narzędzie: Edytuj README.md" })).toHaveTextContent("czeka na Twoją zgodę");
+    const change = within(card).getByLabelText("Zmiana: README.md");
+    expect(change).toHaveTextContent("+1");
+    expect(change).toHaveTextContent("−0");
+    expect(change).toHaveTextContent("+ Nowa linia");
+    expect(panelApi.setTitle).toHaveBeenLastCalledWith("⚑ Claude Code · rozmowa");
+
+    // Typing a message: digits are text, not choices.
+    fireEvent.change(box(), { target: { value: "2" } });
+    fireEvent.keyDown(box(), { key: "2" });
+    expect(handle.replyPermission).not.toHaveBeenCalled();
+    fireEvent.change(box(), { target: { value: "" } });
+    fireEvent.keyDown(box(), { key: "2" });
+    expect(handle.replyPermission).toHaveBeenCalledWith(4, "no");
+    act(() => emit({ type: "permissionClosed", requestId: 4 }));
+    expect(panelApi.setTitle).toHaveBeenLastCalledWith("Claude Code · rozmowa");
+  });
+
+  it("serves file requests in the project folder at once and asks for others", async () => {
+    const editors = await import("../../store/editor");
+    editors.useEditorStore.setState({
+      editors: {
+        e1: { path: "/home/me/app/a.ts", dirty: true, save: async () => true, getText: () => "niezapisane" },
+      },
+    });
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    await act(async () => emit({ type: "fsRequest", requestId: 5, op: "read", path: "/home/me/app/a.ts", inside: true, content: null }));
+    await waitFor(() => expect(handle.replyFs).toHaveBeenCalledWith(5, { content: "niezapisane" }));
+    expect(screen.queryByRole("group", { name: "Dostęp do pliku" })).not.toBeInTheDocument();
+
+    act(() => emit({ type: "fsRequest", requestId: 6, op: "read", path: "/etc/hostname", inside: false, content: null }));
+    const ask = screen.getByRole("group", { name: "Dostęp do pliku" });
+    expect(ask).toHaveTextContent("Agent chce odczytać plik spoza folderu projektu:");
+    expect(ask).toHaveTextContent("/etc/hostname");
+    expect(handle.replyFs).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(ask).getByText("Odmów"));
+    expect(handle.replyFs).toHaveBeenLastCalledWith(6, { error: expect.stringContaining("nie zezwolił") });
+    act(() => emit({ type: "fsClosed", requestId: 6 }));
+    expect(screen.queryByRole("group", { name: "Dostęp do pliku" })).not.toBeInTheDocument();
+    editors.useEditorStore.setState({ editors: {} });
   });
 
   it("does not offer to open files of an SSH host", async () => {

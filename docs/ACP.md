@@ -90,8 +90,10 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
 
 ## 5. Bezpieczeństwo
 
-- Agent może poprosić o **dowolny** plik. Leverframe pozwala bez pytania tylko w folderze sesji (`cwd` i katalogi
-  dodatkowe); poza nim – zgoda użytkownika.
+- Agent może poprosić o **dowolny** plik. Leverframe pozwala bez pytania tylko w folderze sesji (`cwd`); poza nim –
+  zgoda użytkownika. Sprawdzenie robi backend (`src-tauri/src/acp/fs.rs`) po przetłumaczeniu ścieżki agenta
+  (WSL: `/home/…` → `\\wsl.localhost\<dystrybucja>\…`, `/mnt/c/…` → `C:\…`), rozwinięciu `..` i dowiązań
+  symbolicznych (także części ścieżki, która jeszcze nie istnieje); UI dostaje gotową flagę `inside`.
 - `fs/write_text_file` idzie przez istniejący zapis z wykrywaniem konfliktów; otwarty edytor dostaje nową treść
   (z cofaniem, Ctrl+Z).
 - `terminal/create`: o zgodę na polecenie agent pyta sam (`session/request_permission`), ale klient nie może
