@@ -104,8 +104,10 @@ describe("Leverframe", () => {
 
     await app.exec(`${bar}.querySelector('button[aria-label^="Tylko podgląd"]').click()`);
     const preview = `${bar}.parentElement.querySelector('[data-testid=markdown-preview]')`;
-    await app.waitFor(`return ${preview}?.querySelector('h1')?.innerText === 'Sklep'`);
-    assert.match(await app.exec(`return ${preview}.innerText`), /Dopisane w e2e\./);
+    // textContent, not innerText: the latter is empty while dockview briefly hides the panel's
+    // overlay during a layout pass (editors use renderer "always").
+    await app.waitFor(`return ${preview}?.querySelector('h1')?.textContent === 'Sklep'`);
+    await app.waitFor(`return ${preview}.textContent.includes('Dopisane w e2e.')`);
     // The local image is read through the backend and shown.
     await app.waitFor(`const img = ${preview}.querySelector('img[alt=logo]'); return img && img.src.startsWith('blob:') && img.complete && img.naturalWidth === 2`);
     // A web link must not navigate the app window.

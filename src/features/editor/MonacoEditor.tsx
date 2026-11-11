@@ -100,11 +100,22 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
       markDirty();
     };
 
+    // Takes the keyboard focus. Dockview may hide the panel's overlay for a moment while it lays
+    // out (renderer "always"); focus() on a hidden editor silently does nothing, so try again on
+    // the next frames until the editor has it or the tab is no longer active.
+    let focusFrame = 0;
+    const focusEditor = (attempt = 0) => {
+      cancelAnimationFrame(focusFrame);
+      if (disposed || !api.isActive) return;
+      editor.focus();
+      if (!editor.hasTextFocus() && attempt < 20) focusFrame = requestAnimationFrame(() => focusEditor(attempt + 1));
+    };
+
     const changeView = (next: EditorView) => {
       setViewState(next);
       api.updateParameters({ ...params, view: next });
       useEditorStore.getState().setView(api.id, next);
-      if (next !== "preview") requestAnimationFrame(() => editor.focus());
+      if (next !== "preview") requestAnimationFrame(() => focusEditor());
     };
     setViewRef.current = changeView;
     useEditorStore.getState().register(api.id, {
@@ -163,7 +174,7 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
         return;
       }
       useEditorStore.getState().setLastActive(api.id);
-      if (useEditorStore.getState().editors[api.id]?.view !== "preview") editor.focus();
+      if (useEditorStore.getState().editors[api.id]?.view !== "preview") focusEditor();
     });
 
     fsClient
@@ -181,12 +192,13 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
           editor.revealLineInCenter(params.line);
           editor.setPosition({ lineNumber: params.line, column: 1 });
         }
-        if (api.isActive) editor.focus();
+        if (api.isActive) focusEditor();
       })
       .catch((e: unknown) => !disposed && setLoadError(errorMessage(e)));
 
     return () => {
       disposed = true;
+      cancelAnimationFrame(focusFrame);
       clearTimeout(previewTimer);
       clearTimeout(autoSaveTimer);
       changeSub.dispose();
