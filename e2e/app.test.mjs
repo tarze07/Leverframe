@@ -298,7 +298,8 @@ describe("Leverframe", () => {
     const cardText = await app.exec(`return document.querySelector('${card}').textContent`);
     assert.match(cardText, /Niezapisane z e2e\./, "the agent got the unsaved text");
     assert.match(cardText, /\+1.*−0/);
-    assert.match(await app.exec("return document.querySelector('.dv-tab.dv-active-tab')?.textContent ?? ''"), /⚑/, "the tab shows a decision is waiting");
+    // The tab shows a decision is waiting.
+    await app.waitFor("return (document.querySelector('.dv-tab.dv-active-tab')?.textContent ?? '').includes('⚑')");
 
     // The full change in the editor area.
     await app.click(`${card} button`, "Otwórz zmianę");
@@ -399,6 +400,13 @@ describe("Leverframe", () => {
     assert.match(await app.exec(`return document.querySelector('${listed}').textContent`), /Gotowy/, "the agent still runs");
     await app.click(`${listed} button`, "fake-acp-agent");
     await app.waitFor("return document.querySelector('[data-testid=agent-chat] [role=log]')?.textContent.includes('Echo: Witaj z e2e')");
+    // Shown from its end; scrolled up, a click on its tab goes back to the end.
+    const atEnd = "const l = document.querySelector('[data-testid=agent-chat] [role=log]'); return l.scrollHeight - l.scrollTop - l.clientHeight < 4";
+    await app.waitFor(atEnd);
+    await app.exec("document.querySelector('[data-testid=agent-chat] [role=log]').scrollTop = 0");
+    assert.equal(await app.exec(atEnd.replace("return ", "return !(") + ")"), true, "scrolled up");
+    await app.click(".dv-tab [data-testid=dockview-dv-default-tab]", "rozmowa");
+    await app.waitFor(atEnd);
 
     // Ending it in the list stops the agent and closes its tab.
     await app.click(`${listed} button[aria-label="Zakończ rozmowę"]`);

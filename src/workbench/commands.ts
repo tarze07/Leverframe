@@ -11,7 +11,7 @@ import { LOG_AGENT_NAMES, type LogSummary } from "../features/sessions/agentLogs
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
-import { chatById, chatForHistory, createChat, endChat, type ChatEntry } from "../store/chats";
+import { chatById, chatForHistory, createChat, endChat, requestChatScroll, type ChatEntry } from "../store/chats";
 
 let counter = 0;
 const newPanelId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${++counter}`;
@@ -132,13 +132,15 @@ export function openChatPanel(chatId: string, dock: DockId = "main") {
     if (existing) {
       if (d === "panel") useUiStore.getState().setBottomPanelVisible(true);
       existing.api.setActive();
+      requestChatScroll(chatId);
       return chatId;
     }
   }
   if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
   const api = dockRegistry.get(dock);
   if (!api) return null;
-  api.addPanel({ id: chatId, component: "agentChat", title: chatTitle(chat), params: { chatId } });
+  api.addPanel({ id: chatId, component: "agentChat", tabComponent: "chat", title: chatTitle(chat), params: { chatId } });
+  requestChatScroll(chatId);
   return chatId;
 }
 

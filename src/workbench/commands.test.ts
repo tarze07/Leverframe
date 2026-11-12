@@ -60,6 +60,7 @@ describe("workbench commands", () => {
     expect(dock.addPanel).toHaveBeenNthCalledWith(1, {
       id: first,
       component: "agentChat",
+      tabComponent: "chat", // a click on the tab shows the end of the conversation
       title: "Gemini CLI · rozmowa · Ubuntu",
       params: { chatId: first },
     });
@@ -72,8 +73,10 @@ describe("workbench commands", () => {
     dock.getPanel(first)!.api.close();
     expect(openChatPanel(first)).toBe(first);
     expect(dock.addPanel).toHaveBeenCalledTimes(3);
+    const seq = useChatsStore.getState().chats[first].scrollSeq;
     expect(openChatPanel(first)).toBe(first);
     expect(dock.addPanel).toHaveBeenCalledTimes(3);
+    expect(useChatsStore.getState().chats[first].scrollSeq).toBe(seq + 1); // shown from its end
     // Ending it closes the tab and removes it from the list.
     endAgentChat(first);
     expect(dock.getPanel(first)).toBeUndefined();

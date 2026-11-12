@@ -36,6 +36,8 @@ export interface ChatEntry {
   historyLoading: boolean;
   historyError: string | null;
   createdAt: number;
+  /** Grows when the conversation should be shown from its end (tab clicked, switched to). */
+  scrollSeq: number;
 }
 
 interface ChatsStore {
@@ -79,6 +81,11 @@ export function dispatchChat(id: string, action: ChatAction) {
   patch(id, (e) => ({ state: chatReducer(e.state, action) }));
 }
 
+/** Shows the end of the conversation in its tab. */
+export function requestChatScroll(id: string) {
+  patch(id, (e) => ({ scrollSeq: e.scrollSeq + 1 }));
+}
+
 export const chatById = (id: string): ChatEntry | undefined => useChatsStore.getState().chats[id];
 export const chatHandle = (id: string): AcpHandle | null => runtimes.get(id)?.handle ?? null;
 
@@ -105,6 +112,7 @@ export function createChat(params: ChatParams): string {
     historyLoading: params.historyId != null,
     historyError: null,
     createdAt: Date.now(),
+    scrollSeq: 0,
   };
   useChatsStore.setState((s) => ({ chats: { ...s.chats, [id]: entry }, order: [...s.order, id] }));
   if (params.historyId != null) loadHistory(id, params.historyId);

@@ -87,6 +87,7 @@ export function AgentChatPanel(props: IDockviewPanelProps<AgentChatParams>) {
 function Chat({ chat, api }: { chat: ChatEntry; api: IDockviewPanelProps<AgentChatParams>["api"] }) {
   const { id: chatId, params, state, historyLoading, historyError } = chat;
   const bottom = useRef<HTMLDivElement>(null);
+  const log = useRef<HTMLDivElement>(null);
   const agent = useAgentsStore((s) => s.agentById(params.agentId));
   const profile = useProfilesStore((s) => s.byId(params.profileId ?? s.defaultProfileId));
   const [showSessions, setShowSessions] = useState(false);
@@ -105,6 +106,40 @@ function Chat({ chat, api }: { chat: ChatEntry; api: IDockviewPanelProps<AgentCh
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
   }, [state.items, state.tools, state.permissions, state.fileApprovals, state.commandApprovals]);
+
+  // A click on the tab, a switch from the "Rozmowy" view or the tab becoming active: show the end.
+  // A tab that was hidden or just opened gets its size and content over a few frames, so the end
+  // is kept in view until the height stops changing (or the user scrolls).
+  const scrollFrame = useRef(0);
+  const scrollToEnd = useCallback(() => {
+    cancelAnimationFrame(scrollFrame.current);
+    let last = -1;
+    let stable = 0;
+    let placed = -1;
+    const step = (frame: number) => {
+      const el = log.current;
+      if (!el) return;
+      // The user scrolled up meanwhile: leave it there. (A tab growing taller also lowers
+      // scrollTop, but then the view is still at the end.)
+      const fromEnd = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (placed >= 0 && el.scrollTop < placed - 4 && fromEnd > 4) return;
+      el.scrollTop = el.scrollHeight;
+      placed = el.scrollTop;
+      stable = el.clientHeight > 0 && el.scrollHeight === last ? stable + 1 : 0;
+      last = el.scrollHeight;
+      if (stable < 3 && frame < 60) scrollFrame.current = requestAnimationFrame(() => step(frame + 1));
+    };
+    scrollFrame.current = requestAnimationFrame(() => step(0));
+  }, []);
+  useEffect(() => () => cancelAnimationFrame(scrollFrame.current), []);
+  useEffect(() => {
+    if (chat.scrollSeq > 0) scrollToEnd();
+  }, [chat.scrollSeq, scrollToEnd]);
+  useEffect(() => {
+    if (typeof api?.onDidActiveChange !== "function") return;
+    const sub = api.onDidActiveChange((e) => e.isActive && scrollToEnd());
+    return () => sub.dispose();
+  }, [api, scrollToEnd]);
 
   // The tab shows when the agent waits for a decision (the panel may be in the background).
   const waiting = isWaiting(state);
@@ -180,7 +215,7 @@ function Chat({ chat, api }: { chat: ChatEntry; api: IDockviewPanelProps<AgentCh
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-2" aria-label="Rozmowa" role="log">
+      <div ref={log} className="min-h-0 flex-1 overflow-auto px-3 py-2" aria-label="Rozmowa" role="log">
         {historyError && (
           <p role="alert" className="mb-2 rounded border border-lf-danger/50 p-2 text-lf-danger">
             Nie udało się wczytać rozmowy: {historyError}

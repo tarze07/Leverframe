@@ -7,6 +7,10 @@ import { DockArea } from "../workbench/DockArea";
 import { addTerminalPanel, closeActiveTerminal, openTerminal } from "../workbench/commands";
 import { ProfileMenu } from "../features/profiles/ProfileMenu";
 import { Placeholder } from "./Placeholder";
+import { ChatTab } from "../features/acp/ChatTab";
+
+/** Conversations here too: a click on their tab shows the end. */
+const tabComponents = { chat: ChatTab };
 
 // Conversations with agents can sit next to the terminals too.
 const components = { terminal: TerminalPanel, agentChat: AgentChatPanel, agentTerminal: AgentTerminalPanel };
@@ -54,6 +58,7 @@ export function BottomPanel() {
         <DockArea
           id="panel"
           components={components}
+          tabComponents={tabComponents}
           addDefaultPanels={(api) => {
             if (isTauri() && useUiStore.getState().bottomPanelVisible) addTerminalPanel(api, { dock: "panel" });
           }}

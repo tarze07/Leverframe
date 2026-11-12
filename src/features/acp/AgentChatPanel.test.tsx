@@ -56,7 +56,7 @@ const startAcp = vi.fn(async (_req: unknown, onEvent: (e: AcpEvent) => void) => 
 vi.mock("./acpClient", () => ({ startAcp: (req: unknown, onEvent: (e: AcpEvent) => void) => startAcp(req, onEvent) }));
 
 import { AgentChatPanel, type AgentChatParams } from "./AgentChatPanel";
-import { createChat, endAllChats, endChat, useChatsStore, type ChatParams } from "../../store/chats";
+import { createChat, endAllChats, endChat, requestChatScroll, useChatsStore, type ChatParams } from "../../store/chats";
 
 const panelApi = { id: "chat-7", title: "Claude Code · rozmowa", setTitle: vi.fn() };
 /** A new conversation (as the Agenci view starts it) shown in a tab. */
@@ -522,6 +522,16 @@ describe("AgentChatPanel", () => {
     expect(clean.reload).toHaveBeenCalledTimes(1);
     expect(dirty.reload).not.toHaveBeenCalled(); // unsaved changes stay; saving shows the conflict
     useEditorStore.setState({ editors: {} });
+  });
+
+  it("shows the end of the conversation when its tab is clicked or it is switched to", async () => {
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    const log = screen.getByRole("log");
+    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
+    log.scrollTop = 100; // the user scrolled up
+    act(() => requestChatScroll(useChatsStore.getState().order[0]));
+    await waitFor(() => expect(log.scrollTop).toBe(900));
   });
 
   it("has no list of saved sessions when the agent does not offer one", async () => {
