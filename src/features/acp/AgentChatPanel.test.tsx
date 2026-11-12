@@ -4,6 +4,7 @@ import type { IDockviewPanelProps } from "dockview-react";
 import type { AcpEvent, AcpHandle, SessionUpdate } from "./acpClient";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
+import { useEditorStore } from "../../store/editor";
 
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 const openAgent = vi.fn();
@@ -55,9 +56,11 @@ const startAcp = vi.fn(async (_req: unknown, onEvent: (e: AcpEvent) => void) => 
 vi.mock("./acpClient", () => ({ startAcp: (req: unknown, onEvent: (e: AcpEvent) => void) => startAcp(req, onEvent) }));
 
 import { AgentChatPanel, type AgentChatParams } from "./AgentChatPanel";
+import { createChat, endAllChats, endChat, requestChatScroll, useChatsStore, type ChatParams } from "../../store/chats";
 
 const panelApi = { id: "chat-7", title: "Claude Code · rozmowa", setTitle: vi.fn() };
-const props = (params: AgentChatParams) => ({ params, api: panelApi }) as unknown as IDockviewPanelProps<AgentChatParams>;
+/** A new conversation (as the Agenci view starts it) shown in a tab. */
+const props = (params: ChatParams) => ({ params: { chatId: createChat(params) }, api: panelApi }) as unknown as IDockviewPanelProps<AgentChatParams>;
 const update = (u: SessionUpdate) => act(() => emit({ type: "update", update: u }));
 const ready = async () => {
   await waitFor(() => expect(startAcp).toHaveBeenCalled());
@@ -83,6 +86,7 @@ const send = (text: string) => {
 
 describe("AgentChatPanel", () => {
   beforeEach(() => {
+    endAllChats();
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
     useAgentsStore.setState({
@@ -343,12 +347,13 @@ describe("AgentChatPanel", () => {
     const output = screen.getByLabelText("Wyjście polecenia");
     expect(output).toHaveTextContent("npm test");
     expect(output).toHaveTextContent("działa…");
-    expect(within(output).getByTestId("terminal-view")).toHaveTextContent("chat-7/term-1");
-    expect(useAgentTerminalsStore.getState().terminals["chat-7/term-1"].data).toBe("3 passed\r\n");
+    const key = `${useChatsStore.getState().order[0]}/term-1`; // by conversation, not by tab
+    expect(within(output).getByTestId("terminal-view")).toHaveTextContent(key);
+    expect(useAgentTerminalsStore.getState().terminals[key].data).toBe("3 passed\r\n");
     act(() => emit({ type: "terminalExit", terminalId: "term-1", exitCode: 0, signal: null }));
     expect(output).toHaveTextContent("kod 0");
     fireEvent.click(within(output).getByText("Otwórz jako terminal"));
-    expect(openAgentTerminal).toHaveBeenCalledWith("chat-7/term-1", "Uruchamiam testy");
+    expect(openAgentTerminal).toHaveBeenCalledWith(key, "Uruchamiam testy");
   });
 
   it("does not offer to open files of an SSH host", async () => {
@@ -393,7 +398,7 @@ describe("AgentChatPanel", () => {
     expect(box()).toBeDisabled();
   });
 
-  it("shows other errors with the agent's log and stops the agent when closed", async () => {
+  it("shows other errors with the agent's log; closing the tab keeps the agent, ending the conversation stops it", async () => {
     const view = render(<AgentChatPanel {...props({ agentId: "claude" })} />);
     await waitFor(() => expect(startAcp).toHaveBeenCalled());
     act(() => {
@@ -404,7 +409,11 @@ describe("AgentChatPanel", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Nie udało się rozpocząć sesji");
     expect(screen.getByText("Log agenta (1)")).toBeInTheDocument();
     view.unmount();
+    expect(handle.stop).not.toHaveBeenCalled();
+    const [id] = useChatsStore.getState().order;
+    endChat(id);
     expect(handle.stop).toHaveBeenCalled();
+    expect(useChatsStore.getState().order).toEqual([]);
   });
 
   it("reports a failed start", async () => {
@@ -499,6 +508,30 @@ describe("AgentChatPanel", () => {
     expect(screen.queryByText("Cześć")).toBeNull(); // the replay of the other session starts over
     update({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "Napraw testy" } });
     expect(screen.getByText("Napraw testy")).toBeInTheDocument();
+  });
+
+  it("reloads open editors without unsaved changes after the agent edits files itself", async () => {
+    const clean = { path: "/home/me/app/a.ts", dirty: false, save: vi.fn(), reload: vi.fn(async () => undefined) };
+    const dirty = { path: "/home/me/app/b.ts", dirty: true, save: vi.fn(), reload: vi.fn(async () => undefined) };
+    useEditorStore.setState({ editors: { "editor:a": clean, "editor:b": dirty } });
+    render(<AgentChatPanel {...props({ agentId: "claude", profileId: "local:bash" })} />);
+    await ready();
+    update({ sessionUpdate: "tool_call", toolCallId: "e1", title: "Edit", kind: "edit", status: "in_progress", locations: [{ path: "/home/me/app/a.ts" }, { path: "/home/me/app/b.ts" }] });
+    expect(clean.reload).not.toHaveBeenCalled();
+    update({ sessionUpdate: "tool_call_update", toolCallId: "e1", status: "completed" });
+    expect(clean.reload).toHaveBeenCalledTimes(1);
+    expect(dirty.reload).not.toHaveBeenCalled(); // unsaved changes stay; saving shows the conflict
+    useEditorStore.setState({ editors: {} });
+  });
+
+  it("shows the end of the conversation when its tab is clicked or it is switched to", async () => {
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    const log = screen.getByRole("log");
+    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
+    log.scrollTop = 100; // the user scrolled up
+    act(() => requestChatScroll(useChatsStore.getState().order[0]));
+    await waitFor(() => expect(log.scrollTop).toBe(900));
   });
 
   it("has no list of saved sessions when the agent does not offer one", async () => {

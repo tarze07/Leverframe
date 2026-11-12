@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { safeStorage } from "../lib/storage";
 
-export type ViewId = "terminals" | "agents" | "sessions" | "files" | "settings";
+export type ViewId = "terminals" | "agents" | "chats" | "sessions" | "files" | "settings";
 
 export const DEFAULT_FONT_MONO = '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace';
 export const DEFAULT_FONT_SIZE = 13;

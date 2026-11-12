@@ -16,6 +16,8 @@
 //!   its output and exit code
 //! - `runkill`    – starts a long command, kills it and reports how it ended
 //! - `runlimit`   – a command printing 16 characters with an output limit of 10 bytes
+//! - `selfedit`   – changes README.md itself (not through the client, like Claude's own Edit
+//!   tool) and reports it as a completed edit
 //! - `runquery`   – a command asking for the cursor position and waiting for the answer (as
 //!   Windows' console does before every command)
 //! - anything else – a thought, an echo of the prompt and a plan
@@ -444,6 +446,27 @@ impl Agent {
                     "agent_message_chunk",
                     "Gotowe: **1 test** nie przeszedł. Zobacz [dokumentację](https://example.com/docs).",
                 );
+                "end_turn"
+            }
+            "selfedit" => {
+                let path = format!("{}/README.md", self.cwd);
+                self.next_id += 1;
+                let tool = format!("selfedit-{}", self.next_id);
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "tool_call", "toolCallId": tool, "title": "Edit README.md",
+                            "kind": "edit", "status": "in_progress", "locations": [{ "path": path }] }),
+                );
+                let old = std::fs::read_to_string(&path).unwrap_or_default();
+                let _ = std::fs::write(
+                    &path,
+                    format!("{}\nZmienione bezpośrednio przez agenta.\n", old.trim_end()),
+                );
+                self.update(
+                    &session,
+                    json!({ "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "completed" }),
+                );
+                self.chunk(&session, "agent_message_chunk", "zmieniono bezpośrednio");
                 "end_turn"
             }
             "pwd" => {

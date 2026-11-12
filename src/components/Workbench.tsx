@@ -5,6 +5,7 @@ import { SessionPlayer } from "../features/sessions/SessionPlayer";
 import { AgentLogPanel } from "../features/sessions/AgentLogPanel";
 import { EditorPanel } from "../features/editor/EditorPanel";
 import { EditorTab } from "../features/editor/EditorTab";
+import { ChatTab } from "../features/acp/ChatTab";
 import { AgentChatPanel } from "../features/acp/AgentChatPanel";
 import { DiffPanel } from "../features/editor/DiffPanel";
 import { DockArea } from "../workbench/DockArea";
@@ -21,7 +22,7 @@ const components = {
   diff: DiffPanel,
 };
 
-const tabComponents = { editor: EditorTab };
+const tabComponents = { editor: EditorTab, chat: ChatTab };
 
 /** Shown at the right of the editor tab bar: editor over the whole center (terminal panel hidden) and back. */
 function MaximizeEditorAction({ group }: IDockviewHeaderActionsProps) {

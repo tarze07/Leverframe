@@ -841,3 +841,299 @@ fn the_agents_sessions_are_listed_opened_and_deleted() {
     session.stop();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Manual check with real agents (they need accounts, so CI does not run it):
+///
+/// ```text
+/// LEVERFRAME_REAL_ACP='claude-agent-acp|codex-acp|gemini --acp' \
+/// cargo test --lib real_acp_agents -- --ignored --nocapture
+/// ```
+///
+/// For each command (`|`-separated): `initialize` (agent, capabilities, login methods), then
+/// `session/new` – ready or login required. When ready, in a new folder with `notatka.txt`: a
+/// task that reads the file, writes it and runs a command through Leverframe (permissions,
+/// files and commands are allowed and served like the panel does), then the session is resumed
+/// in a new agent process (`session/resume` / `session/load`) and asked about the task, and
+/// `session/list` must find it. `LEVERFRAME_REAL_ACP_PROMPT` replaces the task,
+/// `LEVERFRAME_REAL_ACP_MODE` chooses a mode first (e.g. `default`: Claude asks for permission).
+#[test]
+#[ignore]
+fn real_acp_agents() {
+    let commands = std::env::var("LEVERFRAME_REAL_ACP").expect("set LEVERFRAME_REAL_ACP");
+    for command in commands.split('|').map(str::trim).filter(|c| !c.is_empty()) {
+        println!("\n=== {command}");
+        let words: Vec<String> = command.split_whitespace().map(String::from).collect();
+        let cwd = temp_dir(&format!(
+            "real-{}",
+            words[0].rsplit(['/', '\\']).next().unwrap_or("agent")
+        ));
+        std::fs::write(cwd.join("notatka.txt"), "Kolor: zielony\n").unwrap();
+        let Some((session, events)) = real_start(&words, &cwd, None) else {
+            continue;
+        };
+        let Some(session_id) = session.session_id() else {
+            session.stop();
+            continue;
+        };
+        if let Ok(mode) = std::env::var("LEVERFRAME_REAL_ACP_MODE") {
+            println!("tryb {mode}: {:?}", session.set_mode(&mode));
+        }
+        let task = std::env::var("LEVERFRAME_REAL_ACP_PROMPT").unwrap_or_else(|_| {
+            "Przeczytaj plik notatka.txt, dopisz na jego końcu linię `Sprawdzone przez agenta`, \
+             potem uruchom polecenie `ls` i podaj jednym słowem kolor z notatki."
+                .into()
+        });
+        real_turn(&session, &events, &task);
+        let note = std::fs::read_to_string(cwd.join("notatka.txt")).unwrap_or_default();
+        println!("notatka.txt po turze: {note:?}");
+        session.stop();
+
+        // A new process continues the conversation.
+        println!("--- wznowienie {session_id}");
+        let Some((resumed, events)) = real_start(&words, &cwd, Some(&session_id)) else {
+            continue;
+        };
+        let replayed = events
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "agent_message_chunk"))
+            .count();
+        println!("odtworzone fragmenty odpowiedzi (powinno być 0 – ukryte): {replayed}");
+        real_turn(
+            &resumed,
+            &events,
+            "Jaki kolor podałeś w poprzedniej odpowiedzi? Odpowiedz jednym słowem.",
+        );
+        match resumed.list_sessions(None) {
+            Ok(list) => {
+                let ids: Vec<&str> = list["sessions"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|s| s["sessionId"].as_str()).collect())
+                    .unwrap_or_default();
+                println!(
+                    "session/list: {} sesji, ta na liście: {}",
+                    ids.len(),
+                    ids.contains(&session_id.as_str())
+                );
+            }
+            Err(e) => println!("session/list: {e}"),
+        }
+        resumed.stop();
+    }
+}
+
+/// Starts a real agent and prints its handshake; `Some` when the session is ready.
+fn real_start(
+    words: &[String],
+    cwd: &std::path::Path,
+    resume: Option<&str>,
+) -> Option<(Arc<AcpSession>, Arc<Collector>)> {
+    let launch = launch_for(None, words, Some(cwd), None, cfg!(windows));
+    let events = Arc::new(Collector::default());
+    let session = match AcpSession::start(
+        &launch,
+        events.clone(),
+        Some(FsKind::Local),
+        Arc::new(PtyManager::new()),
+        resume.map(String::from),
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("start: {e}");
+            return None;
+        }
+    };
+    let outcome = events.wait("handshake", |e| {
+        matches!(
+            e,
+            AcpEvent::SessionReady { .. }
+                | AcpEvent::AuthRequired { .. }
+                | AcpEvent::Error { .. }
+                | AcpEvent::Exited { .. }
+        )
+    });
+    if resume.is_none() {
+        for e in events.events.lock().unwrap().iter() {
+            if let AcpEvent::Initialized {
+                agent_info,
+                agent_capabilities,
+                auth_methods,
+            } = e
+            {
+                println!("agent: {}", agent_info.clone().unwrap_or(Value::Null));
+                println!(
+                    "loadSession: {}, sessionCapabilities: {}",
+                    agent_capabilities["loadSession"], agent_capabilities["sessionCapabilities"]
+                );
+                let names: Vec<String> = auth_methods
+                    .iter()
+                    .map(|m| format!("{} ({})", m["name"], m["id"]))
+                    .collect();
+                println!("logowanie: {}", names.join(", "));
+            }
+        }
+    }
+    match outcome {
+        AcpEvent::SessionReady {
+            session_id,
+            modes,
+            config_options,
+            ..
+        } => {
+            println!("sesja gotowa: {session_id}");
+            if resume.is_none() {
+                let mode_ids: Vec<String> = modes
+                    .as_ref()
+                    .and_then(|m| m["availableModes"].as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|m| m["id"].as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                println!("tryby: {mode_ids:?}");
+                let ids: Vec<String> = config_options
+                    .as_ref()
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|o| o["id"].as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                println!("opcje: {ids:?}");
+            }
+            return Some((session, events));
+        }
+        AcpEvent::AuthRequired { message, .. } => println!("wymaga logowania: {message}"),
+        AcpEvent::Error { message } => println!("błąd: {message}"),
+        AcpEvent::Exited { code, message } => println!(
+            "zakończył się: kod {code:?} {}",
+            message.unwrap_or_default()
+        ),
+        _ => unreachable!(),
+    }
+    session.stop();
+    None
+}
+
+/// One turn with a real agent; its requests are allowed and served like the panel does.
+fn real_turn(session: &Arc<AcpSession>, events: &Arc<Collector>, text: &str) {
+    let start = events.events.lock().unwrap().len();
+    let s = session.clone();
+    let text = text.to_string();
+    let turn = std::thread::spawn(move || s.prompt(&text));
+    let mut answered = std::collections::HashSet::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(300);
+    while !turn.is_finished() && std::time::Instant::now() < deadline {
+        let pending: Vec<AcpEvent> = events.events.lock().unwrap().clone();
+        for e in pending {
+            match e {
+                AcpEvent::Permission {
+                    request_id,
+                    options,
+                    tool_call,
+                } if answered.insert(("p", request_id)) => {
+                    let content: Vec<String> = tool_call["content"]
+                        .as_array()
+                        .map(|c| {
+                            c.iter()
+                                .map(|x| match x["type"].as_str() {
+                                    Some("diff") => format!(
+                                        "diff {} (+{} znaków)",
+                                        x["path"].as_str().unwrap_or("?"),
+                                        x["newText"].as_str().map_or(0, str::len)
+                                    ),
+                                    other => other.unwrap_or("?").to_string(),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    println!("  prośba o zgodę: {} {content:?}", tool_call["title"]);
+                    let allow = options
+                        .iter()
+                        .find(|o| o["kind"] == "allow_once")
+                        .or(options.first())
+                        .and_then(|o| o["optionId"].as_str())
+                        .map(String::from);
+                    println!("  zgoda: {allow:?}");
+                    let _ = session.reply_permission(request_id, allow.as_deref());
+                }
+                AcpEvent::FsRequest {
+                    request_id,
+                    op,
+                    path,
+                    inside,
+                    content,
+                } if answered.insert(("f", request_id)) => {
+                    println!("  plik ({op}, w folderze: {inside}): {path}");
+                    let result = if op == "read" {
+                        std::fs::read_to_string(&path)
+                            .map(Some)
+                            .map_err(|e| e.to_string())
+                    } else {
+                        std::fs::write(&path, content.unwrap_or_default())
+                            .map(|_| None)
+                            .map_err(|e| e.to_string())
+                    };
+                    let _ = session.reply_fs(request_id, result);
+                }
+                AcpEvent::TerminalRequest {
+                    request_id,
+                    command,
+                    ..
+                } if answered.insert(("t", request_id)) => {
+                    println!("  polecenie: {command}");
+                    let _ = session.reply_terminal(request_id, true);
+                }
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if turn.is_finished() {
+        println!("koniec tury: {:?}", turn.join().unwrap());
+    } else {
+        println!("brak końca tury po 300 s");
+        let _ = session.cancel();
+    }
+    let all = events.events.lock().unwrap();
+    let new = &all[start..];
+    let kinds: std::collections::BTreeSet<String> = new
+        .iter()
+        .filter_map(|e| match e {
+            AcpEvent::Update { update } => update["sessionUpdate"].as_str().map(String::from),
+            _ => None,
+        })
+        .collect();
+    let tools: Vec<String> = new
+        .iter()
+        .filter_map(|e| match e {
+            AcpEvent::Update { update } if update["sessionUpdate"] == "tool_call" => Some(format!(
+                "{} [{}]",
+                update["title"].as_str().unwrap_or("?"),
+                update["kind"].as_str().unwrap_or("?")
+            )),
+            _ => None,
+        })
+        .collect();
+    let terminals = new
+        .iter()
+        .filter(|e| matches!(e, AcpEvent::TerminalExit { .. }))
+        .count();
+    let answer: String = new
+        .iter()
+        .filter_map(|e| match e {
+            AcpEvent::Update { update } if update["sessionUpdate"] == "agent_message_chunk" => {
+                update["content"]["text"].as_str().map(String::from)
+            }
+            _ => None,
+        })
+        .collect();
+    println!("  aktualizacje: {kinds:?}");
+    println!("  narzędzia: {tools:?}");
+    println!("  polecenia zakończone w terminalach Leverframe: {terminals}");
+    println!("  odpowiedź: {}", answer.trim());
+}

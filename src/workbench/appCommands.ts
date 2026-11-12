@@ -103,6 +103,7 @@ export function allCommands(): AppCommand[] {
     },
     { id: "view.terminals", title: "Pokaż terminale", category: "Widok", run: () => showView("terminals") },
     { id: "view.agents", title: "Pokaż agentów", category: "Widok", run: () => showView("agents") },
+    { id: "view.chats", title: "Pokaż rozmowy", category: "Widok", run: () => showView("chats") },
     { id: "view.sessions", title: "Pokaż sesje", category: "Widok", run: () => showView("sessions") },
     { id: "view.files", title: "Pokaż pliki", category: "Widok", run: () => showView("files") },
     { id: "view.settings", title: "Pokaż ustawienia", category: "Widok", run: () => showView("settings") },

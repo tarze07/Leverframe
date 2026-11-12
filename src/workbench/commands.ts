@@ -11,6 +11,7 @@ import { LOG_AGENT_NAMES, type LogSummary } from "../features/sessions/agentLogs
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
+import { chatById, chatForHistory, createChat, endChat, requestChatScroll, type ChatEntry } from "../store/chats";
 
 let counter = 0;
 const newPanelId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${++counter}`;
@@ -94,57 +95,74 @@ export function openAgentTerminal(storeKey: string, title: string) {
   return id;
 }
 
-let chatCounter = 0;
-
 /**
- * Opens a conversation with an agent in ACP mode (a new agent process), in the editor area or
- * in the terminal panel.
+ * Starts a conversation with an agent in conversation mode (ACP) and opens its tab in the editor
+ * area (or, with `dock: "panel"`, next to the terminals). The conversation is listed in the
+ * "Rozmowy" view; closing the tab keeps it running. Returns the conversation id.
  */
 export function openAgentChat(
   agentId: string,
   options: { profileId?: string | null; cwd?: string | null; dock?: DockId } = {},
 ) {
   const dock = options.dock ?? "main";
+  if (!dockRegistry.get(dock)) return null;
+  const id = createChat({ agentId, profileId: options.profileId ?? null, cwd: options.cwd ?? null });
+  openChatPanel(id, dock);
+  return id;
+}
+
+/** Title of a conversation's tab: agent, "rozmowa" (apart from the agent in a terminal), profile or date. */
+export function chatTitle(chat: ChatEntry): string {
+  const agent = useAgentsStore.getState().agentById(chat.params.agentId);
+  const profiles = useProfilesStore.getState();
+  const profile = profiles.byId(chat.params.profileId ?? profiles.defaultProfileId);
+  const extra =
+    chat.params.historyId != null
+      ? new Date(chat.createdAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })
+      : profile?.name;
+  return [agent?.name ?? chat.params.agentId, "rozmowa", extra].filter(Boolean).join(" · ");
+}
+
+/** Shows a conversation's tab: focuses it where it is, or opens it again in `dock`. */
+export function openChatPanel(chatId: string, dock: DockId = "main") {
+  const chat = chatById(chatId);
+  if (!chat) return null;
+  for (const d of ["main", "panel"] as DockId[]) {
+    const existing = dockRegistry.get(d)?.getPanel(chatId);
+    if (existing) {
+      if (d === "panel") useUiStore.getState().setBottomPanelVisible(true);
+      existing.api.setActive();
+      requestChatScroll(chatId);
+      return chatId;
+    }
+  }
   if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
   const api = dockRegistry.get(dock);
   if (!api) return null;
-  const agent = useAgentsStore.getState().agentById(agentId);
-  const profile = useProfilesStore.getState().byId(options.profileId ?? useProfilesStore.getState().defaultProfileId);
-  const id = `chat-${agentId}-${Date.now()}-${++chatCounter}`;
-  api.addPanel({
-    id,
-    component: "agentChat",
-    // "rozmowa" tells it apart from the same agent in a terminal tab.
-    title: [agent?.name ?? agentId, "rozmowa", profile?.name].filter(Boolean).join(" · "),
-    params: { agentId, profileId: options.profileId ?? null, cwd: options.cwd ?? null },
-  });
-  return id;
+  api.addPanel({ id: chatId, component: "agentChat", tabComponent: "chat", title: chatTitle(chat), params: { chatId } });
+  requestChatScroll(chatId);
+  return chatId;
+}
+
+/** Ends a conversation (stops its agent) and closes its tab. */
+export function endAgentChat(chatId: string) {
+  endChat(chatId);
+  for (const d of ["main", "panel"] as DockId[]) dockRegistry.get(d)?.getPanel(chatId)?.api.close();
 }
 
 /** Opens (or focuses) a conversation from the history, read only until the user resumes it. */
 export function openAgentChatHistory(session: SessionRecord) {
-  const api = dockRegistry.get("main");
-  if (!api || !session.agentId) return null;
-  const id = `chat-history-${session.id}`;
-  const existing = api.getPanel(id);
-  if (existing) {
-    existing.api.setActive();
-    return id;
-  }
-  const when = new Date(session.startedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
-  api.addPanel({
-    id,
-    component: "agentChat",
-    title: [session.agentName ?? session.agentId, "rozmowa", when].join(" · "),
-    params: {
+  if (!dockRegistry.get("main") || !session.agentId) return null;
+  const id =
+    chatForHistory(session.id) ??
+    createChat({
       agentId: session.agentId,
       profileId: session.profileId,
       cwd: session.cwd,
       historyId: session.id,
       acpSessionId: session.acpSessionId,
-    },
-  });
-  return id;
+    });
+  return openChatPanel(id);
 }
 
 /** Opens (or focuses) the player for a recorded session in the editor area. */

@@ -15,6 +15,8 @@ export interface EditorEntry {
   getText?: () => string | null;
   /** Replaces the whole text as one change the user can undo (Ctrl+Z); false if not loaded. */
   applyText?: (text: string) => boolean;
+  /** Reads the file again from disk (after a change by someone else), as one undoable change. */
+  reload?: () => Promise<void>;
 }
 
 interface EditorStore {

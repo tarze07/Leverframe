@@ -132,6 +132,20 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
         model.pushStackElement();
         return true;
       },
+      reload: async () => {
+        const file = await fsClient.readText(path);
+        const model = editor.getModel();
+        if (!model || disposed) return;
+        if (model.getValue() !== file.content) {
+          model.pushStackElement();
+          model.pushEditOperations([], [{ range: model.getFullModelRange(), text: file.content }], () => null);
+          model.pushStackElement();
+        }
+        mtime.current = file.mtime;
+        savedVersion.current = model.getAlternativeVersionId();
+        setBanner(null);
+        markDirty();
+      },
       ...(markdown ? { setView: changeView, view } : {}),
     });
     if (api.isActive) useEditorStore.getState().setLastActive(api.id);

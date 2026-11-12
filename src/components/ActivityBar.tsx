@@ -1,4 +1,5 @@
 import { useUiStore } from "../store/ui";
+import { isWaiting, useChatsStore } from "../store/chats";
 import { VIEWS, type ViewDef } from "./views";
 
 export function ActivityBar() {
@@ -15,6 +16,8 @@ export function ActivityBar() {
 function ActivityButton({ view }: { view: ViewDef }) {
   const active = useUiStore((s) => s.activeView === view.id && s.sidebarVisible);
   const selectView = useUiStore((s) => s.selectView);
+  // Conversations waiting for a decision (their tab may be closed).
+  const waiting = useChatsStore((s) => (view.id === "chats" ? Object.values(s.chats).filter((c) => isWaiting(c.state)).length : 0));
   return (
     <button
       type="button"
@@ -28,6 +31,14 @@ function ActivityButton({ view }: { view: ViewDef }) {
     >
       {active && <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-lf-accent" aria-hidden />}
       <span className={`codicon codicon-${view.icon}`} style={{ fontSize: 22 }} aria-hidden />
+      {waiting > 0 && (
+        <span
+          className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-lf-accent px-1 text-center text-[10px] font-semibold leading-4 text-lf-accent-fg"
+          title={`Rozmowy czekające na decyzję: ${waiting}`}
+        >
+          {waiting}
+        </span>
+      )}
     </button>
   );
 }

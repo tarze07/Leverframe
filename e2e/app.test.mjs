@@ -298,7 +298,8 @@ describe("Leverframe", () => {
     const cardText = await app.exec(`return document.querySelector('${card}').textContent`);
     assert.match(cardText, /Niezapisane z e2e\./, "the agent got the unsaved text");
     assert.match(cardText, /\+1.*−0/);
-    assert.match(await app.exec("return document.querySelector('.dv-tab.dv-active-tab')?.textContent ?? ''"), /⚑/, "the tab shows a decision is waiting");
+    // The tab shows a decision is waiting.
+    await app.waitFor("return (document.querySelector('.dv-tab.dv-active-tab')?.textContent ?? '').includes('⚑')");
 
     // The full change in the editor area.
     await app.click(`${card} button`, "Otwórz zmianę");
@@ -390,9 +391,27 @@ describe("Leverframe", () => {
   });
 
   it("finds an ACP conversation in the history by a word from the answer and resumes it", async () => {
-    // End the conversation of the previous tests (closing its tab stops the agent).
+    // Closing the tab keeps the conversation: it is in the "Rozmowy" view and opens again as it was.
     await app.exec(`[...document.querySelectorAll('.dv-tab')].filter(t => t.textContent.includes('rozmowa')).forEach(t => t.querySelector('.dv-default-tab-action')?.click())`);
     await app.waitFor("return !document.querySelector('[data-testid=agent-chat]')");
+    await showView("Rozmowy");
+    const listed = 'ul[aria-label="Otwarte rozmowy"] li';
+    await app.waitFor(`return document.querySelector('${listed}')?.textContent.includes('Witaj z e2e')`);
+    assert.match(await app.exec(`return document.querySelector('${listed}').textContent`), /Gotowy/, "the agent still runs");
+    await app.click(`${listed} button`, "fake-acp-agent");
+    await app.waitFor("return document.querySelector('[data-testid=agent-chat] [role=log]')?.textContent.includes('Echo: Witaj z e2e')");
+    // Shown from its end; scrolled up, a click on its tab goes back to the end.
+    const atEnd = "const l = document.querySelector('[data-testid=agent-chat] [role=log]'); return l.scrollHeight - l.scrollTop - l.clientHeight < 4";
+    await app.waitFor(atEnd);
+    await app.exec("document.querySelector('[data-testid=agent-chat] [role=log]').scrollTop = 0");
+    assert.equal(await app.exec(atEnd.replace("return ", "return !(") + ")"), true, "scrolled up");
+    await app.click(".dv-tab [data-testid=dockview-dv-default-tab]", "rozmowa");
+    await app.waitFor(atEnd);
+
+    // Ending it in the list stops the agent and closes its tab.
+    await app.click(`${listed} button[aria-label="Zakończ rozmowę"]`);
+    await app.waitFor("return !document.querySelector('[data-testid=agent-chat]')");
+    await app.waitFor(`return !document.querySelector('${listed}')`);
 
     await showView("Sesje");
     await app.click('[role="tab"]', "Historia");
@@ -425,5 +444,44 @@ describe("Leverframe", () => {
     await app.waitFor(`const t = document.querySelector('${chat} textarea[aria-label="Wiadomość do agenta"]'); t.focus(); return document.activeElement === t`);
     await app.type(`dalej po przerwie${KEY.enter}`);
     await app.waitFor(`return document.querySelector('${chat} [role=log]').textContent.includes('Echo: dalej po przerwie')`);
+  });
+
+  it("leaves the file as it was when the change is refused, and reports a crash of the agent", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const box = `${chat} textarea[aria-label="Wiadomość do agenta"]`;
+    const has = (text) => `return document.querySelector('${chat} [role=log]')?.textContent.includes(${JSON.stringify(text)})`;
+    const say = async (text) => {
+      await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 20_000);
+      await app.waitFor(`const t = document.querySelector('${box}'); t.focus(); return document.activeElement === t`);
+      await app.type(`${text}${KEY.enter}`);
+    };
+
+    // The diff refused: the agent reports it, the file stays unchanged.
+    const before = readFileSync(join(env.project, "README.md"), "utf8");
+    await say("edit");
+    const card = `${chat} [role=group][aria-label="Prośba o zgodę"]`;
+    await app.waitFor(`return document.querySelector('${card}')?.textContent.includes('+ Dopisane przez agenta.')`);
+    await app.click(`${card} button`, "Odmów");
+    await app.waitFor(has("odmowa"));
+    assert.equal(readFileSync(join(env.project, "README.md"), "utf8"), before);
+
+    // A change the agent makes with its own tool (like Claude's Edit): the open editor shows it.
+    const readmeBar = `[...document.querySelectorAll('[aria-label="Pasek edytora"]')].find(b => b.querySelector('span[title$="README.md"]'))`;
+    await say("selfedit");
+    await app.waitFor(has("zmieniono bezpośrednio"));
+    await app.waitFor(`return ${readmeBar}?.parentElement.querySelector('.view-lines')?.textContent.replaceAll('\\u00a0', ' ').includes('Zmienione bezpośrednio przez agenta.')`, 20_000);
+    assert.ok(!(await app.exec("return [...document.querySelectorAll('.dv-tab')].some(t => t.textContent.includes('● README.md'))")), "not unsaved");
+
+    // The agent crashes: its last words and the end are shown; nothing more can be sent.
+    await say("crash");
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Agent zakończył działanie'`, 20_000);
+    assert.match(await app.exec(`return document.querySelector('${chat} [role=alert]')?.textContent ?? ''`), /awaria podczas pracy/);
+    assert.equal(await app.exec(`return document.querySelector('${box}').disabled`), true);
+
+    // The history keeps the conversation with its exit code.
+    await app.exec(
+      "const i=document.querySelector('input[placeholder^=\"Szukaj w nagraniach\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'dalej po przerwie'); i.dispatchEvent(new Event('input',{bubbles:true}));",
+    );
+    await app.waitFor("return document.querySelector('li[aria-label^=\"Rozmowa Claude Code\"]')?.textContent.includes('kod 3')", 20_000);
   });
 });

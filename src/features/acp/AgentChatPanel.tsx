@@ -1,37 +1,42 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
-import { logFilePath, openAgent } from "../../workbench/commands";
-import { startAcp, type AcpEvent, type AcpHandle, type AcpStartRequest } from "./acpClient";
-import { canContinue, chatReducer, initialChat, type ChatState } from "./chatState";
-import { transcriptActions, transcriptTerminalEvents } from "./transcript";
+import { openAgent } from "../../workbench/commands";
+import { canContinue, type ChatState } from "./chatState";
 import { AgentSessions } from "./AgentSessions";
-import { sessionsClient } from "../sessions/sessionsClient";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { PlanView } from "./PlanView";
 import { PromptBox } from "./PromptBox";
 import { SessionControls } from "./SessionControls";
 import { ToolCard } from "./ToolCard";
 import { PermissionCard } from "./PermissionCard";
-import { serveFsRequest, type FsRequest } from "./agentFiles";
-import { agentTerminalKey, useAgentTerminalsStore } from "../../store/agentTerminals";
-import { useSettingsStore } from "../../store/settings";
+import { agentTerminalKey } from "../../store/agentTerminals";
+import {
+  allowCommandAlways,
+  chatHandle,
+  chatToLocal,
+  decideChatFile,
+  dispatchChat,
+  isWaiting,
+  openAgentSessionInChat,
+  resumeChat,
+  runChat,
+  sendChat,
+  useChatsStore,
+  type ChatEntry,
+} from "../../store/chats";
+import type { AcpHandle } from "./acpClient";
 
+/** A tab shows one conversation of the "Rozmowy" list; closing the tab does not end it. */
 export interface AgentChatParams {
-  agentId: string;
-  profileId?: string | null;
-  cwd?: string | null;
-  /** A conversation from the history (row in the sessions database): shown read only until resumed. */
-  historyId?: number | null;
-  /** The agent's id of that conversation. */
-  acpSessionId?: string | null;
+  chatId: string;
 }
 
-const STATUS: Record<ChatState["status"], string> = {
+export const CHAT_STATUS: Record<ChatState["status"], string> = {
   starting: "Łączenie z agentem…",
   auth: "Wymagane logowanie",
   ready: "Gotowy",
@@ -40,6 +45,7 @@ const STATUS: Record<ChatState["status"], string> = {
   exited: "Agent zakończył działanie",
   history: "Historia",
 };
+const STATUS = CHAT_STATUS;
 
 const number = (n: number) => n.toLocaleString("pl-PL");
 
@@ -53,6 +59,7 @@ function usageText(usage: ChatState["usage"]): string | null {
 
 /** Conversation with an agent over the Agent Client Protocol. */
 export function AgentChatPanel(props: IDockviewPanelProps<AgentChatParams>) {
+  const chat = useChatsStore((s) => (props.params?.chatId ? s.chats[props.params.chatId] : undefined));
   if (!isTauri()) {
     return (
       <div className="h-full bg-lf-editor">
@@ -60,135 +67,82 @@ export function AgentChatPanel(props: IDockviewPanelProps<AgentChatParams>) {
       </div>
     );
   }
-  return <Chat {...props} />;
+  if (!chat) {
+    return (
+      <div className="h-full bg-lf-editor">
+        <Placeholder icon="comment-discussion" title="Ta rozmowa została zakończona">
+          Zakończone rozmowy znajdziesz w panelu „Sesje”, w zakładce „Historia”.{" "}
+          {typeof props.api?.close === "function" && (
+            <button type="button" onClick={() => props.api.close()} className="text-lf-accent hover:underline">
+              Zamknij kartę
+            </button>
+          )}
+        </Placeholder>
+      </div>
+    );
+  }
+  return <Chat chat={chat} api={props.api} />;
 }
 
-/** Serves a file request and answers the agent. */
-async function serveAndReply(req: FsRequest, h: AcpHandle | null, mtimes: Map<string, number>) {
-  if (!h) return;
-  const reply = await serveFsRequest(req, mtimes);
-  await h.replyFs(req.requestId, "error" in reply ? { error: reply.error } : "content" in reply ? { content: reply.content } : {});
-}
-
-function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
-  const [state, dispatch] = useReducer(chatReducer, initialChat);
-  const handle = useRef<AcpHandle | null>(null);
-  // What this session's agent read (for conflict checks on write) and file requests awaiting the user.
-  const mtimes = useRef(new Map<string, number>());
-  const pendingFs = useRef(new Map<number, FsRequest>());
-  // Commands the user allowed "always" in this conversation.
-  const allowedCommands = useRef(new Set<string>());
-  const chatId = api?.id ?? "chat";
+function Chat({ chat, api }: { chat: ChatEntry; api: IDockviewPanelProps<AgentChatParams>["api"] }) {
+  const { id: chatId, params, state, historyLoading, historyError } = chat;
   const bottom = useRef<HTMLDivElement>(null);
+  const log = useRef<HTMLDivElement>(null);
   const agent = useAgentsStore((s) => s.agentById(params.agentId));
   const profile = useProfilesStore((s) => s.byId(params.profileId ?? s.defaultProfileId));
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(params.historyId != null);
   const [showSessions, setShowSessions] = useState(false);
-  // The running agent, for rendering (the ref is for callbacks).
-  const [liveHandle, setLiveHandle] = useState<AcpHandle | null>(null);
-  // Ends the agent process of this panel (set while one runs).
-  const stopAgent = useRef<(() => void) | null>(null);
-
-  const terminalEvent = useCallback(
-    (event: AcpEvent) => {
-      const terminals = useAgentTerminalsStore.getState();
-      if (event.type === "terminalStarted") terminals.start(agentTerminalKey(chatId, event.terminalId), event.command, event.cwd);
-      else if (event.type === "terminalOutput") terminals.append(agentTerminalKey(chatId, event.terminalId), event.data);
-      else if (event.type === "terminalExit") terminals.exit(agentTerminalKey(chatId, event.terminalId), event.exitCode, event.signal);
-    },
-    [chatId],
-  );
-
-  /** Starts the panel's agent process: a new conversation, or one to resume. */
-  const connect = (resume?: AcpStartRequest["resume"]) => {
-    let disposed = false;
-    let started: AcpHandle | null = null;
-    startAcp({ agentId: params.agentId, profileId: params.profileId, cwd: params.cwd, resume }, (event) => {
-      if (disposed) return;
-      if (event.type === "terminalRequest") {
-        // Without asking: when the user turned it off, or allowed this command for the conversation.
-        const ask = useSettingsStore.getState().values.acpConfirmCommands !== false;
-        if (!ask || allowedCommands.current.has(event.command)) {
-          void handle.current?.replyTerminal(event.requestId, true).catch(() => undefined);
-          return;
-        }
-      }
-      terminalEvent(event);
-      dispatch({ type: "event", event });
-      if (event.type === "fsRequest") {
-        // Inside the session folder: served at once. Outside: the user decides (card below).
-        if (event.inside) void serveAndReply(event, handle.current, mtimes.current).catch(() => undefined);
-        else pendingFs.current.set(event.requestId, event);
-      } else if (event.type === "fsClosed") {
-        pendingFs.current.delete(event.requestId);
-      }
-    })
-      .then((h) => {
-        started = h;
-        if (disposed) void h.stop().catch(() => undefined);
-        else {
-          handle.current = h;
-          setLiveHandle(h);
-        }
-      })
-      .catch((e: unknown) => !disposed && dispatch({ type: "failed", message: String(e) }));
-    stopAgent.current = () => {
-      disposed = true;
-      handle.current = null;
-      setLiveHandle(null);
-      void started?.stop().catch(() => undefined);
-    };
-  };
-
-  // A new conversation: one agent process for the panel's lifetime. From the history: the
-  // transcript, read only; the agent starts only when the user resumes the conversation.
-  useEffect(() => {
-    let disposed = false;
-    if (params.historyId != null) {
-      sessionsClient
-        .read(params.historyId)
-        .then((text) => {
-          if (disposed) return;
-          const actions = transcriptActions(text);
-          transcriptTerminalEvents(actions).forEach(terminalEvent);
-          actions.forEach(dispatch);
-          dispatch({ type: "historyLoaded" });
-        })
-        .catch((e: unknown) => !disposed && setHistoryError(String(e)))
-        .finally(() => !disposed && setHistoryLoading(false));
-    } else {
-      connect();
-    }
-    return () => {
-      disposed = true;
-      stopAgent.current?.();
-      stopAgent.current = null;
-    };
-    // The panel's agent, profile, folder and history entry are fixed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The running agent (the conversation outlives this tab).
+  const liveHandle: AcpHandle | null = chat.live ? chatHandle(chatId) : null;
 
   const sessionId = state.sessionId ?? params.acpSessionId ?? null;
-  const resume = () => {
-    if (!sessionId || params.historyId == null) return;
-    dispatch({ type: "resumed" });
-    connect({ sessionId, historyId: params.historyId });
-  };
+  const resume = () => resumeChat(chatId);
 
-  /** Opens one of the agent's saved sessions in this panel (the agent replays it). */
+  /** Opens one of the agent's saved sessions in this conversation (the agent replays it). */
   const openAgentSession = (id: string) => {
     setShowSessions(false);
-    dispatch({ type: "reset" });
-    run((h) => h.loadSession(id));
+    openAgentSessionInChat(chatId, id);
   };
 
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
   }, [state.items, state.tools, state.permissions, state.fileApprovals, state.commandApprovals]);
 
+  // A click on the tab, a switch from the "Rozmowy" view or the tab becoming active: show the end.
+  // A tab that was hidden or just opened gets its size and content over a few frames, so the end
+  // is kept in view until the height stops changing (or the user scrolls).
+  const scrollFrame = useRef(0);
+  const scrollToEnd = useCallback(() => {
+    cancelAnimationFrame(scrollFrame.current);
+    let last = -1;
+    let stable = 0;
+    let placed = -1;
+    const step = (frame: number) => {
+      const el = log.current;
+      if (!el) return;
+      // The user scrolled up meanwhile: leave it there. (A tab growing taller also lowers
+      // scrollTop, but then the view is still at the end.)
+      const fromEnd = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (placed >= 0 && el.scrollTop < placed - 4 && fromEnd > 4) return;
+      el.scrollTop = el.scrollHeight;
+      placed = el.scrollTop;
+      stable = el.clientHeight > 0 && el.scrollHeight === last ? stable + 1 : 0;
+      last = el.scrollHeight;
+      if (stable < 3 && frame < 60) scrollFrame.current = requestAnimationFrame(() => step(frame + 1));
+    };
+    scrollFrame.current = requestAnimationFrame(() => step(0));
+  }, []);
+  useEffect(() => () => cancelAnimationFrame(scrollFrame.current), []);
+  useEffect(() => {
+    if (chat.scrollSeq > 0) scrollToEnd();
+  }, [chat.scrollSeq, scrollToEnd]);
+  useEffect(() => {
+    if (typeof api?.onDidActiveChange !== "function") return;
+    const sub = api.onDidActiveChange((e) => e.isActive && scrollToEnd());
+    return () => sub.dispose();
+  }, [api, scrollToEnd]);
+
   // The tab shows when the agent waits for a decision (the panel may be in the background).
-  const waiting = state.permissions.length + state.fileApprovals.length + state.commandApprovals.length > 0;
+  const waiting = isWaiting(state);
   const baseTitle = useRef<string | null>(null);
   useEffect(() => {
     if (typeof api?.setTitle !== "function") return;
@@ -197,14 +151,10 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
     api.setTitle(waiting ? `⚑ ${base}` : base);
   }, [api, waiting]);
 
-  const decideFile = (requestId: number, allow: boolean) => {
-    const req = pendingFs.current.get(requestId);
-    const h = handle.current;
-    if (!req || !h) return;
-    pendingFs.current.delete(requestId);
-    if (allow) void serveAndReply(req, h, mtimes.current).catch((e: unknown) => dispatch({ type: "failed", message: String(e) }));
-    else run((x) => x.replyFs(requestId, { error: "Użytkownik nie zezwolił na dostęp do pliku spoza folderu projektu." }));
-  };
+  const decideFile = (requestId: number, allow: boolean) => decideChatFile(chatId, requestId, allow);
+  const run = (action: (h: AcpHandle) => Promise<unknown>) => runChat(chatId, action);
+  const dispatch = (action: Parameters<typeof dispatchChat>[1]) => dispatchChat(chatId, action);
+  const send = (text: string) => sendChat(chatId, text);
 
   // Keys 1–9 choose an option of the first permission request (unless typing a message).
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -219,25 +169,9 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
   };
 
   /** A path the agent mentions, as a file this machine can open (not on SSH hosts). */
-  const toLocal = useCallback(
-    (path: string) => (profile?.kind === "ssh" ? null : logFilePath(path, state.cwd, profile?.id ?? "")),
-    [profile, state.cwd],
-  );
-
-  const run = (action: (h: AcpHandle) => Promise<unknown>) => {
-    const h = handle.current;
-    if (h) void action(h).catch((e: unknown) => dispatch({ type: "failed", message: String(e) }));
-  };
-
-  const send = (text: string) => {
-    const h = handle.current;
-    if (!h) return;
-    dispatch({ type: "sent", text });
-    h.prompt(text).then(
-      (stopReason) => dispatch({ type: "turnEnded", stopReason }),
-      (e: unknown) => dispatch({ type: "failed", message: String(e) }),
-    );
-  };
+  // Recomputed when the profile or the session folder changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const toLocal = useCallback((path: string) => chatToLocal(chatId, path), [chatId, profile, state.cwd]);
 
   const title = state.agentName ?? agent?.name ?? params.agentId;
   const usage = usageText(state.usage);
@@ -281,7 +215,7 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-2" aria-label="Rozmowa" role="log">
+      <div ref={log} className="min-h-0 flex-1 overflow-auto px-3 py-2" aria-label="Rozmowa" role="log">
         {historyError && (
           <p role="alert" className="mb-2 rounded border border-lf-danger/50 p-2 text-lf-danger">
             Nie udało się wczytać rozmowy: {historyError}
@@ -382,10 +316,7 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
               <button
                 type="button"
                 title="Do końca tej rozmowy to samo polecenie uruchomi się bez pytania"
-                onClick={() => {
-                  allowedCommands.current.add(c.command);
-                  run((h) => h.replyTerminal(c.requestId, true));
-                }}
+                onClick={() => allowCommandAlways(chatId, c.requestId, c.command)}
                 className="rounded border border-lf-border px-2 py-0.5 text-lf-fg hover:bg-lf-hover"
               >
                 Zawsze dla tego polecenia
