@@ -2,7 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 
 /** Events of an ACP session (see src-tauri/src/acp/session.rs `AcpEvent`). */
 export type AcpEvent =
-  | { type: "initialized"; agentInfo: { name?: string; title?: string; version?: string } | null; agentCapabilities: unknown; authMethods: AuthMethod[] }
+  | { type: "initialized"; agentInfo: { name?: string; title?: string; version?: string } | null; agentCapabilities: AgentCapabilities | null; authMethods: AuthMethod[] }
   | { type: "authRequired"; authMethods: AuthMethod[]; message: string }
   | { type: "sessionReady"; sessionId: string; cwd: string; modes: ModeState | null; configOptions: ConfigOption[] | null }
   | { type: "update"; update: SessionUpdate }
@@ -18,6 +18,21 @@ export type AcpEvent =
   | { type: "log"; line: string }
   | { type: "error"; message: string }
   | { type: "exited"; code: number | null; message: string | null };
+
+/** What the agent declares in `initialize` (the parts Leverframe uses). */
+export interface AgentCapabilities {
+  loadSession?: boolean;
+  sessionCapabilities?: { resume?: object | null; list?: object | null; delete?: object | null } | null;
+  [key: string]: unknown;
+}
+
+/** A saved session of the agent (`session/list`). */
+export interface AgentSessionInfo {
+  sessionId: string;
+  cwd: string;
+  title?: string | null;
+  updatedAt?: string | null;
+}
 
 export interface AuthMethod {
   id: string;
@@ -116,6 +131,8 @@ export interface AcpStartRequest {
   command?: string[];
   profileId?: string | null;
   cwd?: string | null;
+  /** Continue a saved conversation: the agent's session id and, for one from the history, its row. */
+  resume?: { sessionId: string; historyId?: number | null } | null;
 }
 
 export interface AcpHandle {
@@ -133,13 +150,25 @@ export interface AcpHandle {
   /** A select takes the value id, a boolean option `true` / `false`. */
   setConfigOption(configId: string, value: string | boolean): Promise<void>;
   stop(): Promise<void>;
+  /** The agent's saved sessions in this folder (`session/list`). */
+  listSessions(cursor?: string | null): Promise<{ sessions: AgentSessionInfo[]; nextCursor?: string | null }>;
+  /** Opens a saved session in this panel; the agent replays it. */
+  loadSession(sessionId: string): Promise<void>;
+  /** Deletes a saved session at the agent (`session/delete`). */
+  deleteSession(sessionId: string): Promise<void>;
 }
 
 /** Starts an agent in ACP mode in the Rust backend; events arrive through `onEvent`. */
 export async function startAcp(request: AcpStartRequest, onEvent: (event: AcpEvent) => void): Promise<AcpHandle> {
   const channel = new Channel<AcpEvent>(onEvent);
   const id = await invoke<number>("acp_start", {
-    request: { agentId: request.agentId, command: request.command, profileId: request.profileId ?? null, cwd: request.cwd ?? null },
+    request: {
+      agentId: request.agentId,
+      command: request.command,
+      profileId: request.profileId ?? null,
+      cwd: request.cwd ?? null,
+      resume: request.resume ?? null,
+    },
     onEvent: channel,
   });
   return {
@@ -154,5 +183,8 @@ export async function startAcp(request: AcpStartRequest, onEvent: (event: AcpEve
     setMode: (modeId) => invoke("acp_set_mode", { id, modeId }),
     setConfigOption: (configId, value) => invoke("acp_set_config_option", { id, configId, value }),
     stop: () => invoke("acp_stop", { id }),
+    listSessions: (cursor) => invoke("acp_list_sessions", { id, cursor: cursor ?? null }),
+    loadSession: (sessionId) => invoke("acp_load_session", { id, sessionId }),
+    deleteSession: (sessionId) => invoke("acp_delete_session", { id, sessionId }),
   };
 }

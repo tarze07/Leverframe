@@ -97,13 +97,28 @@ fn start_with(
     extra: &[&str],
     fs: Option<FsKind>,
 ) -> (Arc<AcpSession>, Arc<Collector>, PathBuf) {
+    start_resuming(name, extra, fs, None)
+}
+
+fn start_resuming(
+    name: &str,
+    extra: &[&str],
+    fs: Option<FsKind>,
+    resume: Option<&str>,
+) -> (Arc<AcpSession>, Arc<Collector>, PathBuf) {
     let dir = temp_dir(name);
     let mut command = vec![fake_agent().to_string_lossy().into_owned()];
     command.extend(extra.iter().map(|s| s.to_string()));
     let launch = launch_for(None, &command, Some(&dir), None, cfg!(windows));
     let events = Arc::new(Collector::default());
-    let session =
-        AcpSession::start(&launch, events.clone(), fs, Arc::new(PtyManager::new())).unwrap();
+    let session = AcpSession::start(
+        &launch,
+        events.clone(),
+        fs,
+        Arc::new(PtyManager::new()),
+        resume.map(String::from),
+    )
+    .unwrap();
     (session, events, dir)
 }
 
@@ -682,6 +697,147 @@ fn no_commands_without_access_to_the_machine() {
     assert!(events
         .message_text()
         .ends_with("polecenie: klient nie udostępnia terminali"));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Updates with conversation text (messages of both sides) seen so far.
+fn conversation(events: &Collector) -> Vec<String> {
+    events
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            AcpEvent::Update { update } if update["content"]["type"] == "text" => Some(format!(
+                "{}: {}",
+                update["sessionUpdate"].as_str().unwrap_or_default(),
+                update["content"]["text"].as_str().unwrap_or_default()
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_saved_session_is_loaded_without_repeating_what_the_ui_shows() {
+    let (session, events, dir) = start_resuming("load", &["--load"], None, Some("stara-1"));
+    match events.wait("session ready", |e| {
+        matches!(e, AcpEvent::SessionReady { .. })
+    }) {
+        AcpEvent::SessionReady { session_id, .. } => assert_eq!(session_id, "stara-1"),
+        _ => unreachable!(),
+    }
+    // The replay is dropped (the history is on screen), session state such as commands is not.
+    assert!(
+        conversation(&events).is_empty(),
+        "{:?}",
+        conversation(&events)
+    );
+    events.wait("commands", |e| {
+        matches!(e, AcpEvent::Update { update } if update["sessionUpdate"] == "available_commands_update")
+    });
+    assert_eq!(session.session_id().as_deref(), Some("stara-1"));
+    let s = session.clone();
+    assert_eq!(
+        finish(std::thread::spawn(move || s.prompt("dalej"))),
+        "end_turn"
+    );
+    assert!(events.message_text().ends_with("Echo: dalej"));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn resume_is_preferred_and_unknown_sessions_are_reported() {
+    let (session, events, dir) =
+        start_resuming("resume", &["--load", "--resume"], None, Some("stara-2"));
+    ready(&events);
+    assert!(conversation(&events).is_empty());
+    assert_eq!(session.session_id().as_deref(), Some("stara-2"));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+
+    let (session, events, dir) = start_resuming("resume-bad", &["--resume"], None, Some("nie-ma"));
+    match events.wait("error", |e| matches!(e, AcpEvent::Error { .. })) {
+        AcpEvent::Error { message } => {
+            assert!(
+                message.contains("Nie udało się wznowić rozmowy"),
+                "{message}"
+            )
+        }
+        _ => unreachable!(),
+    }
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn without_the_capability_a_session_cannot_be_resumed() {
+    let (session, events, dir) = start_resuming("noresume", &[], None, Some("stara-1"));
+    match events.wait("error", |e| matches!(e, AcpEvent::Error { .. })) {
+        AcpEvent::Error { message } => {
+            assert!(message.contains("nie pozwala wznawiać"), "{message}")
+        }
+        _ => unreachable!(),
+    }
+    assert!(!events
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| matches!(e, AcpEvent::SessionReady { .. })));
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_agents_sessions_are_listed_opened_and_deleted() {
+    let (session, events, dir) = start_with("list", &["--load", "--sessions"], None);
+    let cwd = ready(&events);
+    let list = session.list_sessions(None).unwrap();
+    let ids: Vec<&str> = list["sessions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["sessionId"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["stara-1", "stara-2"]);
+    assert_eq!(list["sessions"][0]["cwd"], cwd.as_str());
+    assert_eq!(list["sessions"][0]["title"], "Wczorajsza rozmowa");
+
+    // Opened from the list, the agent's replay is the only copy of the conversation: shown.
+    session.load_session("stara-1").unwrap();
+    assert_eq!(
+        conversation(&events),
+        [
+            "user_message_chunk: Napraw testy",
+            "agent_message_chunk: Naprawiłem testy w sklepie."
+        ]
+    );
+    assert_eq!(session.session_id().as_deref(), Some("stara-1"));
+
+    assert!(session
+        .delete_session("stara-1")
+        .unwrap_err()
+        .contains("otwarta"));
+    session.delete_session("stara-2").unwrap();
+    let left = session.list_sessions(None).unwrap();
+    assert_eq!(left["sessions"].as_array().unwrap().len(), 1);
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+
+    // An agent without these capabilities: no list, no deleting.
+    let (session, events, dir) = start_with("nolist", &[], None);
+    ready(&events);
+    assert!(session
+        .list_sessions(None)
+        .unwrap_err()
+        .contains("nie udostępnia"));
+    assert!(session
+        .delete_session("stara-1")
+        .unwrap_err()
+        .contains("nie pozwala"));
     session.stop();
     let _ = std::fs::remove_dir_all(dir);
 }

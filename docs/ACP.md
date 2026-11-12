@@ -101,6 +101,9 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
   włączone; odpowiedź „zawsze dla tego polecenia” obowiązuje do końca sesji). Wyjście jest przycinane do limitu
   bajtów z żądania.
 - Treść od agenta (Markdown) przechodzi przez to samo czyszczenie co podgląd (#32). Linki nie przełączają okna.
+- Historia rozmów (A6) zapisuje to, co widział panel: wiadomości, karty narzędzi, diffy skrócone do 4000 znaków
+  na tekst, wyjście poleceń do 32 KB na polecenie; **bez** treści plików, które agent zapisuje, i bez logu agenta.
+  Nagrywanie wyłącza to samo ustawienie co nagrania terminala (`recordSessions`).
 - Leverframe nadal nie przechowuje kluczy: logowanie (`authenticate`) obsługuje agent; aplikacja tylko pokazuje
   metody logowania, które agent zgłasza.
 
@@ -117,6 +120,27 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
 | **A7** ([#42](https://github.com/tarze07/Leverframe/issues/42)) | Testy E2E z atrapą agenta, dokumentacja, wydanie | wersja z ACP |
 
 **MVP = A1–A4** (rozmowa, zgody, diffy) – na wydanie 0.5.0. A5–A6 w kolejnej wersji.
+
+### Historia i wznawianie (A6)
+
+- **Zapis**: transkrypt to plik JSON Lines w `recordings/` (`<czas>-<agent>-<pid>.acp.jsonl`): nagłówek, zdarzenia
+  `AcpEvent` w postaci, w jakiej dostał je panel, wiadomości użytkownika (`sent`), końce tur (`turnEnded`) oraz
+  znaczniki `resumed` i `reset`. UI odtwarza go **tym samym reducerem** co rozmowę na żywo, więc historia wygląda
+  jak panel; nieznane zdarzenia (inna wersja zapisu) są pomijane.
+- **Baza**: tabela `sessions` dostała kolumny `kind` (`terminal` / `acp`), `acp_session_id` i `title` (dodawane
+  przy otwarciu starszej bazy; nagrania terminala dostają `terminal`). Tekst wiadomości i tytuły narzędzi trafiają do
+  tego samego indeksu FTS5 co wyjście terminala (z zamianą `ł`→`l`), po każdej turze – rozmowę widać w wynikach,
+  zanim się skończy. Wpis powstaje dopiero przy pierwszej wiadomości: otwarcie i zamknięcie panelu nie zaśmieca
+  historii. Tytuł to tytuł z `session_info_update`, a bez niego – początek pierwszej wiadomości.
+- **Wznawianie** rozmowy z historii: nowy proces agenta, `initialize`, potem zamiast `session/new`:
+  `session/resume` (jeśli agent ma `sessionCapabilities.resume`), w przeciwnym razie `session/load`
+  (`agentCapabilities.loadSession`). Przy `session/load` agent odtwarza rozmowę przed odpowiedzią – Leverframe
+  pomija wtedy odtwarzane wiadomości, narzędzia i plan (UI już pokazuje historię), ale przepuszcza stan sesji
+  (tryby, komendy). Dalszy ciąg dopisuje się do tego samego pliku i wpisu. Bez tych możliwości – tylko podgląd.
+- **Sesje agenta** (`session/list`, `sessionCapabilities.list`): lista sesji agenta w folderze rozmowy, np.
+  rozpoczętych w terminalu; otwarcie wybiera `session/load` (z widocznym odtworzeniem, bo UI nie ma kopii) albo
+  `session/resume`. `session/delete` (`sessionCapabilities.delete`) tylko po potwierdzeniu, nigdy dla otwartej sesji.
+  Usunięcie rozmowy z historii Leverframe nie usuwa jej u agenta.
 
 ## 7. Ryzyka i decyzje
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
@@ -10,6 +10,7 @@ use super::cast::CastWriter;
 use super::db::{Facets, NewSession, SessionDb, SessionFilter, SessionRecord};
 use super::now_ms;
 use super::recorder::Recorder;
+use super::transcript::AcpTranscript;
 use crate::pty::PtyId;
 use crate::settings::SettingsStore;
 
@@ -44,6 +45,18 @@ pub struct SessionService {
     db: Arc<SessionDb>,
     settings: SettingsStore,
     active: Arc<Mutex<HashMap<PtyId, Arc<Recorder>>>>,
+    /// ACP conversations being recorded (row ids).
+    active_acp: Arc<Mutex<HashSet<i64>>>,
+}
+
+/// Who and where an ACP conversation runs (stored with its transcript).
+#[derive(Debug, Clone, Default)]
+pub struct ConversationInfo {
+    pub agent_id: Option<String>,
+    pub agent_name: Option<String>,
+    pub profile_id: Option<String>,
+    pub profile_name: Option<String>,
+    pub cwd: Option<String>,
 }
 
 fn file_mtime_ms(path: &str) -> Option<i64> {
@@ -69,6 +82,7 @@ impl SessionService {
             db: Arc::new(db),
             settings: SettingsStore::new(config_dir),
             active: Arc::new(Mutex::new(HashMap::new())),
+            active_acp: Arc::new(Mutex::new(HashSet::new())),
         };
         svc.spawn_text_flusher();
         Ok(svc)
@@ -142,6 +156,7 @@ impl SessionService {
         )
         .map_err(|e| e.to_string())?;
         let id = self.db.insert(&NewSession {
+            kind: "terminal".into(),
             agent_id: req.agent_id.clone(),
             agent_name: req.agent_name.clone(),
             profile_id: req.profile_id.clone(),
@@ -151,6 +166,52 @@ impl SessionService {
             cast_path: path.to_string_lossy().into_owned(),
         })?;
         Ok(Some(Arc::new(Recorder::new(id, cast, self.db.clone()))))
+    }
+
+    /// Starts recording an ACP conversation (when recording is enabled). The history gets the
+    /// conversation once it has content.
+    pub fn start_conversation(&self, info: &ConversationInfo) -> Option<Arc<AcpTranscript>> {
+        if !self.recording_enabled() {
+            return None;
+        }
+        let file_name = format!(
+            "{}-{}-{}.acp.jsonl",
+            now_ms(),
+            info.agent_id.as_deref().unwrap_or("agent"),
+            std::process::id()
+        );
+        let meta = NewSession {
+            kind: "acp".into(),
+            agent_id: info.agent_id.clone(),
+            agent_name: info.agent_name.clone(),
+            profile_id: info.profile_id.clone(),
+            profile_name: info.profile_name.clone(),
+            cwd: info.cwd.clone(),
+            started_at: 0,
+            cast_path: String::new(),
+        };
+        Some(Arc::new(AcpTranscript::new(
+            self.db.clone(),
+            self.active_acp.clone(),
+            self.dir.join(file_name),
+            meta,
+        )))
+    }
+
+    /// Continues recording a conversation from the history (when recording is enabled).
+    pub fn resume_conversation(&self, id: i64) -> Result<Option<Arc<AcpTranscript>>, String> {
+        if !self.recording_enabled() {
+            return Ok(None);
+        }
+        if self.is_active(id) {
+            return Err("Ta rozmowa jest już otwarta".into());
+        }
+        AcpTranscript::resume(self.db.clone(), self.active_acp.clone(), id)
+            .map(|t| Some(Arc::new(t)))
+    }
+
+    pub fn get(&self, id: i64) -> Result<Option<SessionRecord>, String> {
+        self.db.get(id)
     }
 
     /// Associates a recorder with the PTY it records (for resize events).
@@ -205,11 +266,13 @@ impl SessionService {
     }
 
     fn is_active(&self, id: i64) -> bool {
-        self.active
-            .lock()
-            .unwrap()
-            .values()
-            .any(|r| r.session_id == id)
+        self.active_acp.lock().unwrap().contains(&id)
+            || self
+                .active
+                .lock()
+                .unwrap()
+                .values()
+                .any(|r| r.session_id == id)
     }
 
     pub fn delete(&self, id: i64) -> Result<(), String> {
@@ -433,5 +496,149 @@ mod tests {
         assert_eq!(list[0].exit_code, None);
         drop(svc);
         cleanup(&dir); // the "crashed" recorder still holds its file open on purpose
+    }
+
+    fn conversation_info() -> ConversationInfo {
+        ConversationInfo {
+            agent_id: Some("claude".into()),
+            agent_name: Some("Claude Code".into()),
+            profile_id: Some("local:bash".into()),
+            profile_name: Some("bash".into()),
+            cwd: Some("/src/sklep".into()),
+        }
+    }
+
+    fn chunk(kind: &str, text: &str) -> serde_json::Value {
+        serde_json::json!({ "type": "update", "update": {
+            "sessionUpdate": kind, "content": { "type": "text", "text": text } } })
+    }
+
+    fn acp_only() -> SessionFilter {
+        SessionFilter {
+            kind: Some("acp".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn conversations_are_kept_only_once_they_have_content() {
+        let dir = temp("acp-empty");
+        let svc = SessionService::open(&dir, &dir).unwrap();
+        let t = svc.start_conversation(&conversation_info()).unwrap();
+        t.event(serde_json::json!({ "type": "initialized", "agentInfo": null, "agentCapabilities": {}, "authMethods": [] }));
+        t.event(serde_json::json!({ "type": "sessionReady", "sessionId": "s-1", "cwd": "/src/sklep", "modes": null, "configOptions": null }));
+        t.finish(Some(0));
+        assert!(
+            svc.list(&acp_only()).unwrap().is_empty(),
+            "opened and closed without a word"
+        );
+        assert!(std::fs::read_dir(dir.join("recordings"))
+            .unwrap()
+            .next()
+            .is_none());
+
+        // Recording off: nothing at all.
+        svc.set_recording_enabled(false).unwrap();
+        assert!(svc.start_conversation(&conversation_info()).is_none());
+        drop(svc);
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn a_conversation_is_recorded_searched_and_resumed() {
+        let dir = temp("acp");
+        let svc = SessionService::open(&dir, &dir).unwrap();
+        let t = svc.start_conversation(&conversation_info()).unwrap();
+        t.event(serde_json::json!({ "type": "initialized", "agentInfo": { "name": "fake" }, "agentCapabilities": { "loadSession": true }, "authMethods": [] }));
+        t.event(serde_json::json!({ "type": "sessionReady", "sessionId": "s-1", "cwd": "/src/sklep", "modes": null, "configOptions": null }));
+        t.event(serde_json::json!({ "type": "log", "line": "stderr noise" }));
+        t.sent("Popraw walidację formularza\nszczegóły niżej");
+        t.event(chunk(
+            "agent_message_chunk",
+            "Poprawiłem kod; teraz pole „Miejscowość” jest wymagane, ",
+        ));
+        t.event(chunk(
+            "agent_message_chunk",
+            "a błąd pokazuje się na żółto.",
+        ));
+        t.event(serde_json::json!({ "type": "fsRequest", "requestId": 1, "op": "write", "path": "/src/sklep/a.ts", "inside": true, "content": "tajna treść pliku" }));
+        t.turn_ended("end_turn");
+
+        let rec = svc.get(t.id().unwrap()).unwrap().unwrap();
+        assert_eq!(rec.kind, "acp");
+        assert_eq!(rec.acp_session_id.as_deref(), Some("s-1"));
+        assert_eq!(rec.title.as_deref(), Some("Popraw walidację formularza"));
+        assert_eq!(rec.cwd.as_deref(), Some("/src/sklep"));
+        assert!(rec.ended_at.is_none(), "running");
+        assert!(
+            svc.delete(rec.id).is_err(),
+            "a running conversation is not deleted"
+        );
+
+        // Searchable while running, by a word from the answer, also without Polish letters.
+        let find = |q: &str| {
+            svc.list(&SessionFilter {
+                query: Some(q.into()),
+                ..acp_only()
+            })
+            .unwrap()
+        };
+        assert_eq!(find("miejscowosc")[0].id, rec.id);
+        assert_eq!(find("zolto")[0].id, rec.id);
+        assert_eq!(find("walidacje")[0].id, rec.id);
+        assert!(find("tajna").is_empty(), "file contents are not kept");
+        assert!(svc
+            .list(&SessionFilter {
+                kind: Some("terminal".into()),
+                ..Default::default()
+            })
+            .unwrap()
+            .is_empty());
+
+        t.event(serde_json::json!({ "type": "update", "update": { "sessionUpdate": "session_info_update", "title": "Walidacja formularza" } }));
+        t.event(serde_json::json!({ "type": "exited", "code": 0, "message": null }));
+        t.finish(Some(0));
+        let rec = svc.get(rec.id).unwrap().unwrap();
+        assert!(rec.ended_at.is_some());
+        assert_eq!(
+            rec.title.as_deref(),
+            Some("Walidacja formularza"),
+            "the agent's title wins"
+        );
+
+        let text = svc.read(rec.id).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(lines[0]["leverframe"], "acp-transcript");
+        assert_eq!(
+            lines[1]["event"]["type"], "initialized",
+            "the handshake is kept"
+        );
+        assert!(lines
+            .iter()
+            .any(|l| l["sent"] == "Popraw walidację formularza\nszczegóły niżej"));
+        assert!(lines.iter().any(|l| l["turnEnded"] == "end_turn"));
+        assert!(!text.contains("stderr noise") && !text.contains("tajna"));
+
+        // Resumed the next day: the same row and file go on.
+        let r = svc.resume_conversation(rec.id).unwrap().unwrap();
+        assert!(svc.resume_conversation(rec.id).is_err(), "open only once");
+        assert!(svc.get(rec.id).unwrap().unwrap().ended_at.is_none());
+        r.sent("A teraz dodaj test");
+        r.event(chunk("agent_message_chunk", "Dodałem test jednostkowy."));
+        r.turn_ended("end_turn");
+        r.finish(None);
+        assert_eq!(find("jednostkowy")[0].id, rec.id);
+        let text = svc.read(rec.id).unwrap();
+        assert!(text.contains("\"resumed\":true"));
+        assert!(text.contains("A teraz dodaj test"));
+        assert_eq!(svc.list(&acp_only()).unwrap().len(), 1);
+
+        svc.delete(rec.id).unwrap();
+        assert!(svc.list(&acp_only()).unwrap().is_empty());
+        drop(svc);
+        cleanup(&dir);
     }
 }

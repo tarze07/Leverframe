@@ -121,6 +121,32 @@ export function openAgentChat(
   return id;
 }
 
+/** Opens (or focuses) a conversation from the history, read only until the user resumes it. */
+export function openAgentChatHistory(session: SessionRecord) {
+  const api = dockRegistry.get("main");
+  if (!api || !session.agentId) return null;
+  const id = `chat-history-${session.id}`;
+  const existing = api.getPanel(id);
+  if (existing) {
+    existing.api.setActive();
+    return id;
+  }
+  const when = new Date(session.startedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+  api.addPanel({
+    id,
+    component: "agentChat",
+    title: [session.agentName ?? session.agentId, "rozmowa", when].join(" · "),
+    params: {
+      agentId: session.agentId,
+      profileId: session.profileId,
+      cwd: session.cwd,
+      historyId: session.id,
+      acpSessionId: session.acpSessionId,
+    },
+  });
+  return id;
+}
+
 /** Opens (or focuses) the player for a recorded session in the editor area. */
 export function openSessionPlayer(session: SessionRecord, query?: string) {
   const api = dockRegistry.get("main");

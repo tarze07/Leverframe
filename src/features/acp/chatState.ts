@@ -1,5 +1,6 @@
 import type {
   AcpEvent,
+  AgentCapabilities,
   AuthMethod,
   AvailableCommand,
   ConfigOption,
@@ -36,12 +37,35 @@ export type TimelineItem =
   | { kind: "plan"; entries: PlanEntry[] }
   | { kind: "notice"; text: string };
 
-export type ChatStatus = "starting" | "auth" | "ready" | "busy" | "error" | "exited";
+/** `history`: a conversation from the history, read only (until resumed). */
+export type ChatStatus = "starting" | "auth" | "ready" | "busy" | "error" | "exited" | "history";
+
+/** What the agent can do with saved sessions. */
+export interface SessionAbilities {
+  /** `session/load` (the agent replays the conversation). */
+  load: boolean;
+  /** `session/resume` (continues without a replay). */
+  resume: boolean;
+  list: boolean;
+  delete: boolean;
+}
+
+export function sessionAbilities(caps: AgentCapabilities | null | undefined): SessionAbilities {
+  const s = caps?.sessionCapabilities;
+  const has = (v: unknown) => typeof v === "object" && v !== null;
+  return { load: caps?.loadSession === true, resume: has(s?.resume), list: has(s?.list), delete: has(s?.delete) };
+}
+
+/** A conversation can be continued when the agent can load or resume sessions. */
+export const canContinue = (a: SessionAbilities) => a.load || a.resume;
 
 export interface ChatState {
   status: ChatStatus;
   agentName: string | null;
   agentVersion: string | null;
+  abilities: SessionAbilities;
+  /** The agent's id of this conversation. */
+  sessionId: string | null;
   cwd: string | null;
   title: string | null;
   items: TimelineItem[];
@@ -69,6 +93,8 @@ export const initialChat: ChatState = {
   status: "starting",
   agentName: null,
   agentVersion: null,
+  abilities: { load: false, resume: false, list: false, delete: false },
+  sessionId: null,
   cwd: null,
   title: null,
   items: [],
@@ -203,6 +229,7 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
         ...state,
         agentName: e.agentInfo?.title ?? e.agentInfo?.name ?? null,
         agentVersion: e.agentInfo?.version ?? null,
+        abilities: sessionAbilities(e.agentCapabilities),
         authMethods: e.authMethods,
       };
     case "authRequired":
@@ -211,6 +238,7 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
       return {
         ...state,
         status: "ready",
+        sessionId: e.sessionId,
         cwd: e.cwd,
         modes: e.modes ?? state.modes,
         configOptions: e.configOptions ?? state.configOptions,
@@ -258,6 +286,9 @@ function applyEvent(state: ChatState, e: AcpEvent): ChatState {
         error: e.message ?? (state.status === "error" ? state.error : null),
       };
     }
+    default:
+      // Events of other versions (e.g. in an older or newer transcript) change nothing.
+      return state;
   }
 }
 
@@ -267,7 +298,13 @@ export type ChatAction =
   | { type: "turnEnded"; stopReason: string }
   | { type: "failed"; message: string }
   | { type: "modeChosen"; modeId: string }
-  | { type: "optionChosen"; configId: string; value: string | boolean };
+  | { type: "optionChosen"; configId: string; value: string | boolean }
+  /** Another saved session opened in the panel: its replay starts a new timeline. */
+  | { type: "reset" }
+  /** The conversation continues (after a break, possibly in another agent process). */
+  | { type: "resumed" }
+  /** End of replaying a transcript: what was still open then is shown as finished. */
+  | { type: "historyLoaded" };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
@@ -297,6 +334,31 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     case "event":
       return applyEvent(state, action.event);
+    case "reset":
+      return { ...state, items: [], tools: {}, planIndex: null, title: null, usage: null };
+    case "resumed":
+      return {
+        ...state,
+        status: "starting",
+        error: null,
+        missingProgram: false,
+        items: [...state.items, { kind: "notice", text: "Rozmowa wznowiona." }],
+      };
+    case "historyLoaded":
+      return {
+        ...state,
+        status: "history",
+        permissions: [],
+        fileApprovals: [],
+        commandApprovals: [],
+        missingProgram: false,
+        error: null,
+        log: [],
+        // Tool calls interrupted by the end of the session are not running any more.
+        tools: Object.fromEntries(
+          Object.entries(state.tools).map(([id, t]) => [id, t.status === "pending" || t.status === "in_progress" ? { ...t, status: "failed" } : t]),
+        ),
+      };
   }
 }
 

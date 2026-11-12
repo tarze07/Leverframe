@@ -3,9 +3,9 @@ import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
 import { useSessionsStore } from "../../store/sessions";
 import { useTerminalStore } from "../../store/terminal";
-import { openSessionPlayer } from "../../workbench/commands";
+import { openAgentChatHistory, openSessionPlayer } from "../../workbench/commands";
 import { folderName } from "../agents/agentsClient";
-import { formatDuration, snippetParts, type DateRange, type SessionRecord } from "./sessionsClient";
+import { formatDuration, snippetParts, type DateRange, type SessionKind, type SessionRecord } from "./sessionsClient";
 import { AgentLogsList } from "./AgentLogsList";
 import { RANGES, selectClass } from "./filters";
 
@@ -27,7 +27,7 @@ export function SessionsView() {
         {(
           [
             ["logs", "Rozmowy"],
-            ["recordings", "Nagrania"],
+            ["recordings", "Historia"],
           ] as [Tab, string][]
         ).map(([id, label]) => (
           <button
@@ -47,7 +47,7 @@ export function SessionsView() {
   );
 }
 
-/** Recorded agent sessions with full-text search and filters. */
+/** Recorded agent sessions (terminal recordings and ACP conversations) with full-text search and filters. */
 function RecordingsList() {
   const { filters, sessions, facets, status, error, recordingEnabled, setFilters, resetFilters, refresh, loadInfo, setRecording, clear } =
     useSessionsStore();
@@ -81,7 +81,7 @@ function RecordingsList() {
     return () => clearInterval(t);
   }, [hasRunning, refresh]);
 
-  const hasFilters = filters.agentId || filters.profileId || filters.cwd || filters.range !== "all" || filters.query;
+  const hasFilters = filters.kind || filters.agentId || filters.profileId || filters.cwd || filters.range !== "all" || filters.query;
 
   return (
     <div className="flex flex-col gap-2 px-3 pb-4">
@@ -94,12 +94,22 @@ function RecordingsList() {
           id={searchId}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Szukaj w wyjściu sesji…"
+          placeholder="Szukaj w nagraniach i rozmowach…"
           className="w-full rounded border border-lf-border bg-lf-editor py-1 pl-7 pr-2 text-xs text-lf-fg outline-none placeholder:text-lf-subtle focus:border-lf-accent"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-1">
+        <select
+          aria-label="Rodzaj"
+          value={filters.kind}
+          onChange={(e) => setFilters({ kind: e.target.value as "" | SessionKind })}
+          className={`${selectClass} col-span-2`}
+        >
+          <option value="">Nagrania terminala i rozmowy</option>
+          <option value="terminal">Nagrania terminala</option>
+          <option value="acp">Rozmowy (ACP)</option>
+        </select>
         <select aria-label="Agent" value={filters.agentId} onChange={(e) => setFilters({ agentId: e.target.value })} className={selectClass}>
           <option value="">Wszyscy agenci</option>
           {facets.agents.map((a) => (
@@ -161,17 +171,18 @@ function RecordingsList() {
 
       {status === "ready" && sessions.length === 0 && (
         <p className="py-4 text-center text-xs text-lf-subtle">
-          {hasFilters ? "Brak sesji pasujących do filtrów." : "Brak nagranych sesji. Uruchom agenta w panelu „Agenci”."}
+          {hasFilters ? "Brak sesji pasujących do filtrów." : "Brak nagranych sesji i rozmów. Uruchom agenta w panelu „Agenci”."}
         </p>
       )}
 
       <div className="mt-2 flex flex-col gap-2 border-t border-lf-border pt-3">
         <label className="flex items-center gap-2 text-xs text-lf-fg">
           <input type="checkbox" checked={recordingEnabled} onChange={(e) => void setRecording(e.target.checked)} />
-          Nagrywaj sesje agentów
+          Nagrywaj sesje i rozmowy z agentami
         </label>
         <p className="text-[11px] leading-relaxed text-lf-subtle">
-          Nagrania zawierają wszystko, co pojawiło się w terminalu – także klucze i hasła, jeśli zostały wyświetlone.
+          Nagrania zawierają wszystko, co pojawiło się w terminalu – także klucze i hasła, jeśli zostały wyświetlone. Rozmowy
+          zapisują wiadomości, narzędzia i skrócone zmiany w plikach.
         </p>
         {confirmClear ? (
           <div className="flex items-center gap-2 text-xs">
@@ -208,14 +219,23 @@ function SessionRow({ session: s, query }: { session: SessionRecord; query: stri
   const remove = useSessionsStore((st) => st.remove);
   const started = new Date(s.startedAt);
   const running = s.endedAt === null;
+  const chat = s.kind === "acp";
   return (
-    <li className="group relative rounded hover:bg-lf-hover" aria-label={`${s.agentName ?? "Sesja"} ${started.toLocaleString("pl-PL")}`}>
+    <li
+      className="group relative rounded hover:bg-lf-hover"
+      aria-label={`${chat ? "Rozmowa" : "Nagranie"} ${s.agentName ?? "Sesja"} ${started.toLocaleString("pl-PL")}`}
+    >
       <button
         type="button"
-        onClick={() => openSessionPlayer(s, query)}
+        onClick={() => (chat ? openAgentChatHistory(s) : openSessionPlayer(s, query))}
         className="flex w-full flex-col gap-0.5 px-2 py-1.5 text-left"
       >
         <div className="flex items-center gap-1.5">
+          <span
+            className={`codicon ${chat ? "codicon-comment-discussion" : "codicon-terminal"} shrink-0 text-lf-muted`}
+            title={chat ? "Rozmowa (ACP)" : "Nagranie terminala"}
+            aria-hidden
+          />
           <span className="truncate text-[13px] text-lf-fg">{s.agentName ?? s.agentId ?? "Sesja"}</span>
           {s.profileName && <span className="truncate text-[11px] text-lf-subtle">{s.profileName}</span>}
           {running ? (
@@ -234,6 +254,7 @@ function SessionRow({ session: s, query }: { session: SessionRecord; query: stri
             </span>
           )}
         </div>
+        {chat && s.title && <p className="truncate text-[12px] text-lf-fg/90">{s.title}</p>}
         {s.snippet && (
           <p className="line-clamp-2 break-all font-mono text-[11px] text-lf-muted">
             {snippetParts(s.snippet).map((p, i) =>

@@ -21,7 +21,9 @@
 //! - anything else – a thought, an echo of the prompt and a plan
 //!
 //! Flags: `--need-auth` (session/new fails with -32000 until `authenticate`),
-//! `--protocol N` (answers `initialize` with version N).
+//! `--protocol N` (answers `initialize` with version N), `--load` (`session/load`: replays a
+//! saved session – `stara-1`, `stara-2` or one this agent started, `fake-…`), `--resume` (`session/resume`), `--sessions` (`session/list` and
+//! `session/delete` of the saved sessions `stara-1` and `stara-2`).
 
 use std::io::{BufRead, Write};
 
@@ -40,6 +42,11 @@ struct Agent {
     client_fs: bool,
     /// The client offered `terminal/*`.
     client_terminal: bool,
+    load: bool,
+    resume: bool,
+    sessions: bool,
+    /// Saved sessions: id, title.
+    saved: Vec<(String, String)>,
 }
 
 impl Agent {
@@ -486,6 +493,13 @@ fn main() {
         web: false,
         client_fs: false,
         client_terminal: false,
+        load: args.iter().any(|a| a == "--load"),
+        resume: args.iter().any(|a| a == "--resume"),
+        sessions: args.iter().any(|a| a == "--sessions"),
+        saved: vec![
+            ("stara-1".into(), "Wczorajsza rozmowa".into()),
+            ("stara-2".into(), "Starsza rozmowa".into()),
+        ],
     };
     eprintln!("fake agent: start");
     while let Some(msg) = agent.read() {
@@ -496,14 +510,22 @@ fn main() {
                 agent.client_fs = params["clientCapabilities"]["fs"]["readTextFile"] == true;
                 agent.client_terminal = params["clientCapabilities"]["terminal"] == true;
                 agent.respond(
-                &id,
-                json!({
-                    "protocolVersion": agent.protocol,
-                    "agentCapabilities": { "loadSession": false, "promptCapabilities": { "image": false } },
-                    "authMethods": [{ "id": "fake-login", "name": "Zaloguj w atrapie" }],
-                    "agentInfo": { "name": "fake-acp-agent", "version": "1.0.0" }
-                }),
-            );
+                    &id,
+                    json!({
+                        "protocolVersion": agent.protocol,
+                        "agentCapabilities": {
+                            "loadSession": agent.load,
+                            "promptCapabilities": { "image": false },
+                            "sessionCapabilities": {
+                                "resume": if agent.resume { json!({}) } else { Value::Null },
+                                "list": if agent.sessions { json!({}) } else { Value::Null },
+                                "delete": if agent.sessions { json!({}) } else { Value::Null }
+                            }
+                        },
+                        "authMethods": [{ "id": "fake-login", "name": "Zaloguj w atrapie" }],
+                        "agentInfo": { "name": "fake-acp-agent", "version": "1.0.0" }
+                    }),
+                );
             }
             Some("authenticate") => {
                 agent.need_auth = params["methodId"] != "fake-login";
@@ -555,6 +577,47 @@ fn main() {
                 }
                 let options = agent.config_options();
                 agent.respond(&id, json!({ "configOptions": options }));
+            }
+            Some(method @ ("session/load" | "session/resume")) => {
+                let sid = params["sessionId"].as_str().unwrap_or_default().to_string();
+                let allowed = if method == "session/load" {
+                    agent.load
+                } else {
+                    agent.resume
+                };
+                if !allowed {
+                    agent.error(&id, -32601, "Nieznana metoda");
+                } else if !sid.starts_with("fake-") && !agent.saved.iter().any(|(s, _)| *s == sid) {
+                    agent.error(&id, -32602, "Nie ma takiej sesji");
+                } else {
+                    agent.cwd = params["cwd"].as_str().unwrap_or_default().to_string();
+                    if method == "session/load" {
+                        // The whole conversation again, before the answer.
+                        agent.chunk(&sid, "user_message_chunk", "Napraw testy");
+                        agent.chunk(&sid, "agent_message_chunk", "Naprawiłem testy w sklepie.");
+                    }
+                    agent.respond(&id, json!({ "modes": null }));
+                    agent.update(
+                        &sid,
+                        json!({ "sessionUpdate": "available_commands_update", "availableCommands": [
+                            { "name": "review", "description": "Przejrzyj zmiany" }
+                        ]}),
+                    );
+                }
+            }
+            Some("session/list") if agent.sessions => {
+                let cwd = params["cwd"].clone();
+                let list: Vec<Value> = agent
+                    .saved
+                    .iter()
+                    .map(|(s, t)| json!({ "sessionId": s, "cwd": cwd, "title": t, "updatedAt": "2026-11-11T10:00:00Z" }))
+                    .collect();
+                agent.respond(&id, json!({ "sessions": list }));
+            }
+            Some("session/delete") if agent.sessions => {
+                let sid = params["sessionId"].as_str().unwrap_or_default().to_string();
+                agent.saved.retain(|(s, _)| *s != sid);
+                agent.respond(&id, json!({}));
             }
             Some("session/prompt") => agent.prompt(&id, &params),
             Some(_) if !id.is_null() => agent.error(&id, -32601, "Nieznana metoda"),

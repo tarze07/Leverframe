@@ -101,7 +101,7 @@ export function AgentLogsList() {
       {status === "ready" && logs.length === 0 && !error && (
         <p className="py-4 text-center text-xs leading-relaxed text-lf-subtle">
           Brak rozmów Claude Code ani Codex w tym źródle. Sesje innych agentów (Agy, Kilo Code) znajdziesz w zakładce
-          „Nagrania”.
+          „Historia”.
         </p>
       )}
     </div>

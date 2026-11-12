@@ -11,14 +11,36 @@ use super::fs::FsKind;
 use super::{launch_for, AcpEvent, AcpEvents, AcpService};
 use crate::agents::AgentService;
 use crate::profiles::{Profile, ProfileKind, ProfileService};
+use crate::sessions::{AcpTranscript, ConversationInfo, SessionService};
 use crate::settings::SettingsStore;
 
-struct ChannelEvents(Channel<AcpEvent>);
+/// Events to the UI, recorded in the conversation's transcript on the way.
+struct ChannelEvents {
+    channel: Channel<AcpEvent>,
+    transcript: Option<Arc<AcpTranscript>>,
+}
 
 impl AcpEvents for ChannelEvents {
     fn emit(&self, event: AcpEvent) {
-        let _ = self.0.send(event);
+        if let Some(t) = &self.transcript {
+            if let Ok(value) = serde_json::to_value(&event) {
+                t.event(value);
+            }
+            if let AcpEvent::Exited { code, .. } = &event {
+                t.finish(code.map(i64::from));
+            }
+        }
+        let _ = self.channel.send(event);
     }
+}
+
+/// A conversation to continue: the agent's session id, and the row in the history whose
+/// transcript continues (none for a session picked from the agent's own list).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeRequest {
+    pub session_id: String,
+    pub history_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +54,9 @@ pub struct AcpStartRequest {
     pub profile_id: Option<String>,
     /// Project folder on this machine (local and WSL profiles).
     pub cwd: Option<PathBuf>,
+    /// Continue a saved conversation instead of starting a new one.
+    #[serde(default)]
+    pub resume: Option<ResumeRequest>,
 }
 
 /// File access offered to the agent: its own machine or a WSL distribution; none on SSH hosts
@@ -94,6 +119,7 @@ pub fn acp_start(
     profiles: State<'_, ProfileService>,
     agents: State<'_, AgentService>,
     settings: State<'_, SettingsStore>,
+    sessions: State<'_, SessionService>,
     request: AcpStartRequest,
     on_event: Channel<AcpEvent>,
 ) -> Result<u64, String> {
@@ -119,7 +145,38 @@ pub fn acp_start(
         cfg!(windows),
     );
     let fs = fs_kind(profile.as_ref());
-    service.start(&launch, Arc::new(ChannelEvents(on_event)), fs)
+    let transcript = match request.resume.as_ref().and_then(|r| r.history_id) {
+        Some(history_id) => sessions.resume_conversation(history_id)?,
+        None => sessions.start_conversation(&ConversationInfo {
+            agent_id: request.agent_id.clone(),
+            agent_name: request
+                .agent_id
+                .as_deref()
+                .and_then(|id| agents.find(id))
+                .map(|a| a.name),
+            profile_id: profile.as_ref().map(|p| p.id.clone()),
+            profile_name: profile.as_ref().map(|p| p.name.clone()),
+            cwd: local_cwd.as_ref().map(|d| d.to_string_lossy().into_owned()),
+        }),
+    };
+    let events = ChannelEvents {
+        channel: on_event,
+        transcript: transcript.clone(),
+    };
+    let resume = request.resume.map(|r| r.session_id);
+    let id = match service.start(&launch, Arc::new(events), fs, resume) {
+        Ok(id) => id,
+        Err(e) => {
+            if let Some(t) = transcript {
+                t.finish(None);
+            }
+            return Err(e);
+        }
+    };
+    if let Some(t) = transcript {
+        service.set_transcript(id, t);
+    }
+    Ok(id)
 }
 
 /// Sends a text prompt; resolves with the stop reason when the turn ends.
@@ -130,7 +187,54 @@ pub async fn acp_prompt(
     text: String,
 ) -> Result<String, String> {
     let session = service.get(id)?;
-    blocking(move || session.prompt(&text)).await
+    let transcript = service.transcript(id);
+    blocking(move || {
+        if let Some(t) = &transcript {
+            t.sent(&text);
+        }
+        let result = session.prompt(&text);
+        if let (Some(t), Ok(reason)) = (&transcript, &result) {
+            t.turn_ended(reason);
+        }
+        result
+    })
+    .await
+}
+
+/// The agent's saved sessions in this folder (`session/list`): `{ sessions, nextCursor }`.
+#[tauri::command]
+pub async fn acp_list_sessions(
+    service: State<'_, AcpService>,
+    id: u64,
+    cursor: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let session = service.get(id)?;
+    blocking(move || session.list_sessions(cursor.as_deref())).await
+}
+
+/// Opens one of the agent's saved sessions in this panel; the agent replays it.
+#[tauri::command]
+pub async fn acp_load_session(
+    service: State<'_, AcpService>,
+    id: u64,
+    session_id: String,
+) -> Result<(), String> {
+    let session = service.get(id)?;
+    if let Some(t) = service.transcript(id) {
+        t.reset();
+    }
+    blocking(move || session.load_session(&session_id)).await
+}
+
+/// Deletes a saved session at the agent (`session/delete`); only on the user's explicit request.
+#[tauri::command]
+pub async fn acp_delete_session(
+    service: State<'_, AcpService>,
+    id: u64,
+    session_id: String,
+) -> Result<(), String> {
+    let session = service.get(id)?;
+    blocking(move || session.delete_session(&session_id)).await
 }
 
 #[tauri::command]
@@ -225,6 +329,7 @@ mod tests {
             command: command.map(|c| c.iter().map(|s| s.to_string()).collect()),
             profile_id: None,
             cwd: None,
+            resume: None,
         }
     }
 

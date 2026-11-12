@@ -145,6 +145,28 @@ struct State {
     next_terminal: u64,
     next_permission: u64,
     auth_methods: Vec<Value>,
+    /// `agentCapabilities` from `initialize`.
+    capabilities: Value,
+    /// `session/load` is replaying a conversation the UI already shows: its messages are dropped.
+    hide_replay: bool,
+    /// The session being opened by `session/load` (its replay arrives before the answer).
+    opening: Option<String>,
+}
+
+/// Updates that make up a conversation (replayed by `session/load`), as opposed to session
+/// state such as modes or commands.
+fn is_conversation_update(update: &Value) -> bool {
+    matches!(
+        update.get("sessionUpdate").and_then(Value::as_str),
+        Some(
+            "agent_message_chunk"
+                | "agent_thought_chunk"
+                | "user_message_chunk"
+                | "tool_call"
+                | "tool_call_update"
+                | "plan"
+        )
+    )
 }
 
 struct PendingFs {
@@ -272,12 +294,22 @@ impl Incoming for Handler {
         if method != "session/update" {
             return;
         }
-        let ours = self.0.state.lock().unwrap().session_id.clone();
+        let (ours, opening) = {
+            let st = self.0.state.lock().unwrap();
+            (st.session_id.clone(), st.opening.clone())
+        };
         let theirs = params.get("sessionId").and_then(Value::as_str);
-        if ours.is_some() && theirs.is_some() && ours.as_deref() != theirs {
+        if ours.is_some()
+            && theirs.is_some()
+            && ours.as_deref() != theirs
+            && opening.as_deref() != theirs
+        {
             return;
         }
         if let Some(update) = params.get_mut("update").map(Value::take) {
+            if self.0.state.lock().unwrap().hide_replay && is_conversation_update(&update) {
+                return;
+            }
             self.0.emit(AcpEvent::Update { update });
         }
     }
@@ -296,6 +328,8 @@ pub struct AcpSession {
     conn: Arc<Connection>,
     child: Mutex<Child>,
     busy: AtomicBool,
+    /// The agent's session to continue instead of starting a new one.
+    resume: Option<String>,
 }
 
 impl AcpSession {
@@ -306,6 +340,7 @@ impl AcpSession {
         events: Arc<dyn AcpEvents>,
         fs: Option<FsKind>,
         ptys: Arc<PtyManager>,
+        resume: Option<String>,
     ) -> Result<Arc<AcpSession>, String> {
         let mut command = Command::new(&launch.program);
         command.args(&launch.args);
@@ -353,6 +388,7 @@ impl AcpSession {
             conn,
             child: Mutex::new(child),
             busy: AtomicBool::new(false),
+            resume,
         });
         spawn_exit_watcher(&session);
         let s = session.clone();
@@ -393,13 +429,138 @@ impl AcpSession {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        self.shared.state.lock().unwrap().auth_methods = auth_methods.clone();
+        let capabilities = init
+            .get("agentCapabilities")
+            .cloned()
+            .filter(Value::is_object)
+            .unwrap_or(json!({}));
+        {
+            let mut st = self.shared.state.lock().unwrap();
+            st.auth_methods = auth_methods.clone();
+            st.capabilities = capabilities.clone();
+        }
         self.shared.emit(AcpEvent::Initialized {
             agent_info: init.get("agentInfo").cloned().filter(|v| !v.is_null()),
-            agent_capabilities: init.get("agentCapabilities").cloned().unwrap_or(json!({})),
+            agent_capabilities: capabilities,
             auth_methods,
         });
-        self.new_session();
+        self.begin();
+    }
+
+    /// The first session: the one to resume, or a new one.
+    fn begin(&self) {
+        match &self.resume {
+            Some(id) => {
+                if let Err(e) = self.open_session(id, false) {
+                    self.fail(&e);
+                }
+            }
+            None => self.new_session(),
+        }
+    }
+
+    /// What the agent can do with its saved sessions (`agentCapabilities`).
+    fn can(&self, what: &str) -> bool {
+        let st = self.shared.state.lock().unwrap();
+        let caps = &st.capabilities;
+        match what {
+            "load" => caps["loadSession"].as_bool() == Some(true),
+            _ => caps["sessionCapabilities"][what].is_object(),
+        }
+    }
+
+    /// Opens a saved session of the agent: `session/resume` (no replay) or `session/load` (the
+    /// agent replays the conversation). `show_replay`: the UI has no copy of the conversation
+    /// (picked from `session/list`), so `load` is preferred and its replay shown; otherwise the
+    /// UI shows the history and a replay would duplicate it.
+    fn open_session(&self, session_id: &str, show_replay: bool) -> Result<(), String> {
+        let (resume, load) = (self.can("resume"), self.can("load"));
+        let method = match (show_replay, resume, load) {
+            (true, _, true) | (false, false, true) => "session/load",
+            (_, true, _) => "session/resume",
+            _ => return Err("Agent nie pozwala wznawiać rozmów".into()),
+        };
+        let cwd = self
+            .wait_for_cwd()
+            .ok_or("Nie udało się ustalić katalogu roboczego agenta")?;
+        let params = json!({ "sessionId": session_id, "cwd": cwd, "mcpServers": [] });
+        {
+            let mut st = self.shared.state.lock().unwrap();
+            st.hide_replay = !show_replay && method == "session/load";
+            st.opening = Some(session_id.to_string());
+        }
+        let result = self.conn.request(method, params, Some(HANDSHAKE_TIMEOUT));
+        {
+            let mut st = self.shared.state.lock().unwrap();
+            st.hide_replay = false;
+            st.opening = None;
+        }
+        match result {
+            Ok(r) => {
+                let mut st = self.shared.state.lock().unwrap();
+                st.session_id = Some(session_id.to_string());
+                st.session_cwd = Some(cwd.clone());
+                drop(st);
+                self.shared.emit(AcpEvent::SessionReady {
+                    session_id: session_id.to_string(),
+                    cwd,
+                    modes: r.get("modes").cloned().filter(|v| !v.is_null()),
+                    config_options: r.get("configOptions").cloned().filter(|v| !v.is_null()),
+                });
+                Ok(())
+            }
+            Err(CallError::Rpc(e)) if e.code == RpcError::AUTH_REQUIRED => {
+                let auth_methods = self.shared.state.lock().unwrap().auth_methods.clone();
+                self.shared.emit(AcpEvent::AuthRequired {
+                    auth_methods,
+                    message: e.message,
+                });
+                Ok(())
+            }
+            Err(e) => Err(format!("Nie udało się wznowić rozmowy: {e}")),
+        }
+    }
+
+    /// Opens another saved session of the agent in this panel (from `list_sessions`); the
+    /// agent replays it.
+    pub fn load_session(&self, session_id: &str) -> Result<(), String> {
+        if self.busy.load(Ordering::SeqCst) {
+            return Err("Agent jeszcze odpowiada na poprzednią wiadomość".into());
+        }
+        self.open_session(session_id, true)
+    }
+
+    /// `session/list`: the agent's saved sessions in this folder (a page; `cursor` for more).
+    pub fn list_sessions(&self, cursor: Option<&str>) -> Result<Value, String> {
+        if !self.can("list") {
+            return Err("Agent nie udostępnia listy rozmów".into());
+        }
+        let cwd = self.shared.state.lock().unwrap().session_cwd.clone();
+        self.conn
+            .request(
+                "session/list",
+                json!({ "cwd": cwd, "cursor": cursor }),
+                Some(HANDSHAKE_TIMEOUT),
+            )
+            .map_err(|e| format!("Nie udało się pobrać listy rozmów: {e}"))
+    }
+
+    /// `session/delete`: removes a saved session at the agent (only on the user's request).
+    pub fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        if !self.can("delete") {
+            return Err("Agent nie pozwala usuwać rozmów".into());
+        }
+        if self.session_id().as_deref() == Some(session_id) {
+            return Err("Nie można usunąć rozmowy, która jest otwarta".into());
+        }
+        self.conn
+            .request(
+                "session/delete",
+                json!({ "sessionId": session_id }),
+                Some(HANDSHAKE_TIMEOUT),
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Nie udało się usunąć rozmowy: {e}"))
     }
 
     /// `session/new`; reports `AuthRequired` when the agent wants a login first.
@@ -478,7 +639,7 @@ impl AcpSession {
                 Some(AUTH_TIMEOUT),
             )
             .map_err(|e| format!("Logowanie nie powiodło się: {e}"))?;
-        self.new_session();
+        self.begin();
         Ok(())
     }
 
