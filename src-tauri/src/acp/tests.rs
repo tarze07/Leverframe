@@ -78,6 +78,16 @@ fn temp_dir(name: &str) -> PathBuf {
     d
 }
 
+/// The stop reason of a turn run on another thread; fails instead of hanging the test run.
+fn finish(turn: std::thread::JoinHandle<Result<String, String>>) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !turn.is_finished() {
+        assert!(std::time::Instant::now() < deadline, "the turn never ended");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    turn.join().unwrap().unwrap()
+}
+
 fn start(name: &str, extra: &[&str]) -> (Arc<AcpSession>, Arc<Collector>, PathBuf) {
     start_with(name, extra, Some(FsKind::Local))
 }
@@ -196,7 +206,7 @@ fn permissions_are_answered_by_the_user() {
     assert_eq!(options.len(), 2);
     assert_eq!(options[0]["kind"], "allow_once");
     session.reply_permission(request_id, Some("allow")).unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events.message_text().ends_with("zgoda: allow"));
     events.wait("closed", |e| {
         *e == AcpEvent::PermissionClosed { request_id }
@@ -231,14 +241,14 @@ fn cancelling_ends_the_turn_and_open_permission_requests() {
         "one turn at a time"
     );
     session.cancel().unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "cancelled");
+    assert_eq!(finish(turn), "cancelled");
 
     // Cancelling while a permission request waits: the request is answered with "cancelled".
     let s = session.clone();
     let turn = std::thread::spawn(move || s.prompt("permission"));
     let (request_id, _) = permission(&events);
     session.cancel().unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "cancelled");
+    assert_eq!(finish(turn), "cancelled");
     assert!(events.message_text().ends_with("zgoda: cancelled"));
     events.wait("closed", |e| {
         *e == AcpEvent::PermissionClosed { request_id }
@@ -300,7 +310,7 @@ fn the_agent_edits_a_file_through_leverframe() {
         Some("# Sklep\nniezapisane w edytorze\nDopisane przez agenta.\n")
     );
     session.reply_fs(write_id, Ok(None)).unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events.message_text().ends_with("zapisano"));
     assert!(
         session.reply_fs(write_id, Ok(None)).is_err(),
@@ -324,7 +334,7 @@ fn the_agent_edits_a_file_through_leverframe() {
     session
         .reply_fs(write_id, Err("Plik zmienił się na dysku".into()))
         .unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events
         .message_text()
         .ends_with("błąd zapisu: Plik zmienił się na dysku"));
@@ -347,7 +357,7 @@ fn files_outside_the_folder_are_flagged_and_can_be_refused() {
     session
         .reply_fs(id, Err("Użytkownik nie zezwolił".into()))
         .unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events.message_text().ends_with("fs: -32603"));
     session.stop();
     let _ = std::fs::remove_dir_all(dir);
@@ -377,7 +387,7 @@ fn cancelling_drops_open_file_requests() {
     let (id, ..) = fs_request(&events, "read", 0);
     session.cancel().unwrap();
     events.wait("closed", |e| *e == AcpEvent::FsClosed { request_id: id });
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events.message_text().ends_with("fs: -32603"));
     session.stop();
     let _ = std::fs::remove_dir_all(dir);
@@ -520,7 +530,7 @@ fn commands_run_through_leverframe_after_the_user_allows_them() {
     assert!(command.contains("hello-from-agent"), "{command}");
     assert_eq!(cwd.as_deref(), Some(session_cwd.as_str()));
     session.reply_terminal(request, true).unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     let text = events.message_text();
     assert!(
         text.contains("wynik: kod 3 sygnał null obcięte false wyjście ["),
@@ -555,6 +565,23 @@ fn commands_run_through_leverframe_after_the_user_allows_them() {
 }
 
 #[test]
+fn cursor_position_queries_of_commands_are_answered() {
+    // Windows' console asks before every command and waits; without an answer nothing runs.
+    let (session, events, dir) = start("runquery", &[]);
+    ready(&events);
+    let s = session.clone();
+    let turn = std::thread::spawn(move || s.prompt("runquery"));
+    let (request, ..) = terminal_request(&events, 0);
+    session.reply_terminal(request, true).unwrap();
+    assert_eq!(finish(turn), "end_turn");
+    let text = events.message_text();
+    assert!(text.contains("wynik: kod 0 sygnał null"), "{text}");
+    assert!(text.contains("answered"), "{text}");
+    session.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn a_refused_command_does_not_run() {
     let (session, events, dir) = start("runno", &[]);
     ready(&events);
@@ -562,7 +589,7 @@ fn a_refused_command_does_not_run() {
     let turn = std::thread::spawn(move || s.prompt("run"));
     let (request, ..) = terminal_request(&events, 0);
     session.reply_terminal(request, false).unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events
         .message_text()
         .ends_with("polecenie: odmowa (Użytkownik nie zezwolił na uruchomienie polecenia)"));
@@ -584,7 +611,7 @@ fn commands_can_be_killed_and_their_output_is_limited() {
     let turn = std::thread::spawn(move || s.prompt("runkill"));
     let (request, ..) = terminal_request(&events, 0);
     session.reply_terminal(request, true).unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     let text = events.message_text();
     assert!(
         text.contains("wynik: kod null sygnał \"SIGKILL\""),
@@ -595,7 +622,7 @@ fn commands_can_be_killed_and_their_output_is_limited() {
     let turn = std::thread::spawn(move || s.prompt("runlimit"));
     let (request, ..) = terminal_request(&events, request);
     session.reply_terminal(request, true).unwrap();
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     // The last 10 bytes of the output. A login shell may add a line break of its own to the
     // terminal (it depends on the user's shell setup), so only the end of the text is fixed.
     let text = events.message_text();
@@ -626,7 +653,7 @@ fn commands_end_with_the_agent_and_wait_for_the_user_no_longer_after_a_cancel() 
             request_id: request,
         }
     });
-    assert_eq!(turn.join().unwrap().unwrap(), "end_turn");
+    assert_eq!(finish(turn), "end_turn");
     assert!(events
         .message_text()
         .ends_with("polecenie: odmowa (Przerwano)"));

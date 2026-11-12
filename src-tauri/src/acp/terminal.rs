@@ -77,9 +77,45 @@ impl Utf8Stream {
     }
 }
 
+/// Finds cursor position queries (`ESC [ 6 n`) in a terminal's output, also when split between
+/// chunks. Windows' console (ConPTY) sends one when a command starts and waits for the answer
+/// before the command runs; the user's terminal (xterm.js) answers it, the agent's terminals have
+/// no view that could, so Leverframe answers itself (`CURSOR_POSITION`).
+#[derive(Default)]
+pub struct CursorQueries {
+    tail: Vec<u8>,
+}
+
+/// The answer to a cursor position query: the top left corner.
+pub const CURSOR_POSITION: &[u8] = b"\x1b[1;1R";
+
+impl CursorQueries {
+    const QUERY: &'static [u8] = b"\x1b[6n";
+
+    /// How many queries end in `bytes`.
+    pub fn scan(&mut self, bytes: &[u8]) -> usize {
+        self.tail.extend_from_slice(bytes);
+        let count = self
+            .tail
+            .windows(Self::QUERY.len())
+            .filter(|w| *w == Self::QUERY)
+            .count();
+        // Keep only what could be the start of a query split off by the next chunk.
+        let keep = (1..Self::QUERY.len())
+            .rev()
+            .find(|&n| self.tail.ends_with(&Self::QUERY[..n]))
+            .unwrap_or(0);
+        self.tail.drain(..self.tail.len() - keep);
+        count
+    }
+}
+
 /// One command of the agent.
 pub struct AgentTerminal {
+    /// The PTY once started; `pending_answers` holds cursor queries that came before.
     pub pty_id: Mutex<Option<crate::pty::PtyId>>,
+    pub pending_answers: Mutex<usize>,
+    pub cursor_queries: Mutex<CursorQueries>,
     pub output: Mutex<TextOutput>,
     pub exit: Mutex<Option<ExitStatus>>,
     pub exited: Condvar,
@@ -91,6 +127,8 @@ impl AgentTerminal {
     pub fn new(limit: Option<u64>) -> Self {
         Self {
             pty_id: Mutex::new(None),
+            pending_answers: Mutex::new(0),
+            cursor_queries: Mutex::new(CursorQueries::default()),
             output: Mutex::new(TextOutput::new(limit)),
             exit: Mutex::new(None),
             exited: Condvar::new(),
@@ -241,6 +279,18 @@ mod tests {
         let mut out = TextOutput::new(Some(5));
         out.push("ąąąą".as_bytes()); // 8 bytes
         assert_eq!(out.snapshot(), ("ąą".into(), true));
+    }
+
+    #[test]
+    fn cursor_queries_are_found_also_when_split() {
+        let mut q = CursorQueries::default();
+        assert_eq!(q.scan(b"abc\x1b[6nde\x1b[6n"), 2);
+        assert_eq!(q.scan(b"x\x1b["), 0);
+        assert_eq!(q.scan(b"6"), 0);
+        assert_eq!(q.scan(b"n\x1b[6"), 1);
+        assert_eq!(q.scan(b"m"), 0); // a different sequence
+        assert_eq!(q.scan(b"\x1b[6n"), 1);
+        assert_eq!(q.scan(b"\x1b[0m plain"), 0);
     }
 
     #[test]

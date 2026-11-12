@@ -16,6 +16,8 @@
 //!   its output and exit code
 //! - `runkill`    – starts a long command, kills it and reports how it ended
 //! - `runlimit`   – a command printing 16 characters with an output limit of 10 bytes
+//! - `runquery`   – a command asking for the cursor position and waiting for the answer (as
+//!   Windows' console does before every command)
 //! - anything else – a thought, an echo of the prompt and a plan
 //!
 //! Flags: `--need-auth` (session/new fails with -32000 until `authenticate`),
@@ -195,7 +197,7 @@ impl Agent {
                 self.chunk(&session, "agent_message_chunk", &result);
                 "end_turn"
             }
-            "run" | "runkill" | "runlimit" if !self.client_terminal => {
+            "run" | "runkill" | "runlimit" | "runquery" if !self.client_terminal => {
                 self.chunk(
                     &session,
                     "agent_message_chunk",
@@ -203,13 +205,20 @@ impl Agent {
                 );
                 "end_turn"
             }
-            "run" | "runkill" | "runlimit" => {
+            "run" | "runkill" | "runlimit" | "runquery" => {
                 let (command, args, limit): (&str, Vec<&str>, Option<u64>) =
                     match (text.as_str(), cfg!(windows)) {
                         ("run", false) => ("sh", vec!["-c", "echo hello-from-agent; exit 3"], None),
                         ("run", true) => {
                             ("cmd", vec!["/c", "echo hello-from-agent& exit /b 3"], None)
                         }
+                        ("runquery", false) => (
+                            "sh",
+                            vec!["-c", "stty -icanon -echo min 1; printf '\\033[6n'; head -c 6 >/dev/null; echo answered"],
+                            None,
+                        ),
+                        // Here the console itself asks before the command starts.
+                        ("runquery", true) => ("cmd", vec!["/c", "echo answered"], None),
                         ("runkill", false) => ("sleep", vec!["30"], None),
                         ("runkill", true) => ("ping", vec!["-n", "30", "127.0.0.1"], None),
                         (_, false) => ("printf", vec!["0123456789ABCDEF"], Some(10)),

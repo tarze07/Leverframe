@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use super::fs::{is_inside, lexical, slice_lines, to_local, FsKind};
 use super::launch::{AcpLaunch, CWD_MARKER};
 use super::rpc::{CallError, Connection, Incoming, RpcError};
-use super::terminal::{spawn_options, AgentTerminal, CommandRequest, ExitStatus};
+use super::terminal::{spawn_options, AgentTerminal, CommandRequest, ExitStatus, CURSOR_POSITION};
 use crate::pty::{PtyEvents, PtyManager};
 
 /// The ACP version Leverframe speaks (stable v1).
@@ -704,6 +704,12 @@ struct TerminalEvents {
 
 impl PtyEvents for TerminalEvents {
     fn data(&self, bytes: Vec<u8>) {
+        let queries = self.term.cursor_queries.lock().unwrap().scan(&bytes);
+        if queries > 0 {
+            if let Some(shared) = self.shared.upgrade() {
+                shared.answer_cursor_queries(&self.term, queries);
+            }
+        }
         self.term.output.lock().unwrap().push(&bytes);
         let data = self.term.ui_text.lock().unwrap().decode(&bytes);
         if let (Some(shared), false) = (self.shared.upgrade(), data.is_empty()) {
@@ -875,13 +881,33 @@ impl Shared {
         };
         match self.ptys.spawn(opts, Arc::new(events)) {
             Ok(spawned) => {
-                *term.pty_id.lock().unwrap() = Some(spawned.id);
+                let mut pty_id = term.pty_id.lock().unwrap();
+                *pty_id = Some(spawned.id);
+                let pending = std::mem::take(&mut *term.pending_answers.lock().unwrap());
+                for _ in 0..pending {
+                    let _ = self.ptys.write(spawned.id, CURSOR_POSITION);
+                }
+                drop(pty_id);
                 Ok(json!({ "terminalId": terminal_id }))
             }
             Err(e) => {
                 self.state.lock().unwrap().terminals.remove(&terminal_id);
                 Err(fail(e))
             }
+        }
+    }
+
+    /// Answers cursor position queries of a command (see `CursorQueries`); those that come
+    /// before its PTY id is known are answered once it is.
+    fn answer_cursor_queries(&self, term: &AgentTerminal, count: usize) {
+        let pty_id = term.pty_id.lock().unwrap();
+        match *pty_id {
+            Some(id) => {
+                for _ in 0..count {
+                    let _ = self.ptys.write(id, CURSOR_POSITION);
+                }
+            }
+            None => *term.pending_answers.lock().unwrap() += count,
         }
     }
 
