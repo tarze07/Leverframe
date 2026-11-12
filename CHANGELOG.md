@@ -5,6 +5,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 ## [Unreleased]
 
 ### Dodane
+- **Polecenia agenta w terminalach Leverframe** ([#40](https://github.com/tarze07/Leverframe/issues/40)): w trybie rozmowy (profile lokalne i WSL) agent uruchamia polecenia przez Leverframe – po pytaniu (**Uruchom** / **Zawsze dla tego polecenia** / **Odmów**; pytanie można wyłączyć w ustawieniach). Wyjście widać na żywo w karcie narzędzia, a „Otwórz jako terminal” pokazuje je w panelu terminala. Agent dostaje czysty tekst przycięty do swojego limitu, kod wyjścia i może polecenie zatrzymać; zamknięcie rozmowy kończy jego polecenia.
 - **Większe pole wiadomości w rozmowie z agentem**: rośnie razem z tekstem (do 40% panelu), przycisk obok pola powiększa je na większość panelu i z powrotem, a uchwyt nad polem pozwala przeciągnąć je wyżej – wysokość jest zapamiętywana, dwuklik na uchwycie przywraca automatyczną (także strzałki ↑/↓ na uchwycie).
 
 ## [0.5.0] – 2026-11-11

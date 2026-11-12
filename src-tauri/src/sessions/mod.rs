@@ -7,7 +7,7 @@ mod db;
 pub mod logs;
 mod recorder;
 mod service;
-mod text;
+pub(crate) mod text;
 
 pub use cast::{decode_utf8, CastWriter};
 pub use db::{fold, fts_query, Facet, Facets, NewSession, SessionDb, SessionFilter, SessionRecord};

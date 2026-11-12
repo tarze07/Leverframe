@@ -6,7 +6,7 @@ import { useUiStore } from "./ui";
 /** A theme id (see theme/themes.ts) or "system". */
 export type ThemeSetting = string;
 
-export type SettingKey = "theme" | "darkTheme" | "lightTheme" | "fontFamily" | "fontSize" | "keybindings" | "autoSave";
+export type SettingKey = "theme" | "darkTheme" | "lightTheme" | "fontFamily" | "fontSize" | "keybindings" | "autoSave" | "acpConfirmCommands";
 
 export interface SettingsSnapshot {
   path: string;

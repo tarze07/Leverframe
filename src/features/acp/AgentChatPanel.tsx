@@ -15,6 +15,8 @@ import { SessionControls } from "./SessionControls";
 import { ToolCard } from "./ToolCard";
 import { PermissionCard } from "./PermissionCard";
 import { serveFsRequest, type FsRequest } from "./agentFiles";
+import { agentTerminalKey, useAgentTerminalsStore } from "../../store/agentTerminals";
+import { useSettingsStore } from "../../store/settings";
 
 export interface AgentChatParams {
   agentId: string;
@@ -66,6 +68,9 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
   // What this session's agent read (for conflict checks on write) and file requests awaiting the user.
   const mtimes = useRef(new Map<string, number>());
   const pendingFs = useRef(new Map<number, FsRequest>());
+  // Commands the user allowed "always" in this conversation.
+  const allowedCommands = useRef(new Set<string>());
+  const chatId = api?.id ?? "chat";
   const bottom = useRef<HTMLDivElement>(null);
   const agent = useAgentsStore((s) => s.agentById(params.agentId));
   const profile = useProfilesStore((s) => s.byId(params.profileId ?? s.defaultProfileId));
@@ -76,6 +81,18 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
     let started: AcpHandle | null = null;
     startAcp({ agentId: params.agentId, profileId: params.profileId, cwd: params.cwd }, (event) => {
       if (disposed) return;
+      if (event.type === "terminalRequest") {
+        // Without asking: when the user turned it off, or allowed this command for the conversation.
+        const ask = useSettingsStore.getState().values.acpConfirmCommands !== false;
+        if (!ask || allowedCommands.current.has(event.command)) {
+          void handle.current?.replyTerminal(event.requestId, true).catch(() => undefined);
+          return;
+        }
+      }
+      const terminals = useAgentTerminalsStore.getState();
+      if (event.type === "terminalStarted") terminals.start(agentTerminalKey(chatId, event.terminalId), event.command, event.cwd);
+      else if (event.type === "terminalOutput") terminals.append(agentTerminalKey(chatId, event.terminalId), event.data);
+      else if (event.type === "terminalExit") terminals.exit(agentTerminalKey(chatId, event.terminalId), event.exitCode, event.signal);
       dispatch({ type: "event", event });
       if (event.type === "fsRequest") {
         // Inside the session folder: served at once. Outside: the user decides (card below).
@@ -102,10 +119,10 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
 
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
-  }, [state.items, state.tools, state.permissions, state.fileApprovals]);
+  }, [state.items, state.tools, state.permissions, state.fileApprovals, state.commandApprovals]);
 
   // The tab shows when the agent waits for a decision (the panel may be in the background).
-  const waiting = state.permissions.length + state.fileApprovals.length > 0;
+  const waiting = state.permissions.length + state.fileApprovals.length + state.commandApprovals.length > 0;
   const baseTitle = useRef<string | null>(null);
   useEffect(() => {
     if (typeof api?.setTitle !== "function") return;
@@ -217,7 +234,15 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
             case "tool": {
               const tool = state.tools[item.id];
               const awaiting = state.permissions.some((p) => p.toolCall.toolCallId === tool?.id);
-              return tool ? <ToolCard key={i} tool={tool} toLocal={toLocal} awaitingPermission={awaiting} /> : null;
+              return tool ? (
+                <ToolCard
+                  key={i}
+                  tool={tool}
+                  toLocal={toLocal}
+                  awaitingPermission={awaiting}
+                  terminalKey={(id) => agentTerminalKey(chatId, id)}
+                />
+              ) : null;
             }
             case "plan":
               return <PlanView key={i} entries={item.entries} />;
@@ -240,6 +265,49 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
             toLocal={toLocal}
             onChoose={(optionId) => run((h) => h.replyPermission(p.requestId, optionId))}
           />
+        ))}
+
+        {state.commandApprovals.map((c) => (
+          <div key={c.requestId} role="group" aria-label="Polecenie agenta" className="mb-2 rounded border border-lf-accent/60 bg-lf-elevated p-2">
+            <p className="mb-1 text-lf-fg">
+              <span className="codicon codicon-terminal align-middle text-lf-accent" aria-hidden /> Agent chce uruchomić polecenie
+              {c.cwd && (
+                <>
+                  {" "}
+                  w <span className="font-mono text-[11px] text-lf-muted">{c.cwd}</span>
+                </>
+              )}
+              :
+            </p>
+            <code className="mb-1.5 block whitespace-pre-wrap break-all rounded bg-lf-bg px-2 py-1 font-mono text-[11px] text-lf-fg">{c.command}</code>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => run((h) => h.replyTerminal(c.requestId, true))}
+                className="rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg hover:opacity-90"
+              >
+                Uruchom
+              </button>
+              <button
+                type="button"
+                title="Do końca tej rozmowy to samo polecenie uruchomi się bez pytania"
+                onClick={() => {
+                  allowedCommands.current.add(c.command);
+                  run((h) => h.replyTerminal(c.requestId, true));
+                }}
+                className="rounded border border-lf-border px-2 py-0.5 text-lf-fg hover:bg-lf-hover"
+              >
+                Zawsze dla tego polecenia
+              </button>
+              <button
+                type="button"
+                onClick={() => run((h) => h.replyTerminal(c.requestId, false))}
+                className="rounded border border-lf-border px-2 py-0.5 text-lf-fg hover:bg-lf-hover"
+              >
+                Odmów
+              </button>
+            </div>
+          </div>
         ))}
 
         {state.fileApprovals.map((f) => (

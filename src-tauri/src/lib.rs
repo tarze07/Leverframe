@@ -79,6 +79,7 @@ pub fn run() {
             acp::commands::acp_cancel,
             acp::commands::acp_permission_reply,
             acp::commands::acp_fs_reply,
+            acp::commands::acp_terminal_reply,
             acp::commands::acp_authenticate,
             acp::commands::acp_set_mode,
             acp::commands::acp_set_config_option,

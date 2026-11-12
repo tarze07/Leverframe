@@ -301,6 +301,8 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
         {
             Ok(())
         }
+        ("acpConfirmCommands", Value::Bool(_)) => Ok(()),
+        ("acpConfirmCommands", _) => Err("acpConfirmCommands: true lub false".into()),
         ("autoSave", _) => Err("autoSave: \"off\", \"afterDelay\" lub \"onFocusChange\"".into()),
         ("fontFamily", Value::String(s)) if !s.trim().is_empty() && s.len() <= 200 => Ok(()),
         ("fontFamily", _) => Err("fontFamily: niepusty tekst do 200 znaków".into()),
@@ -363,6 +365,8 @@ mod settings_command_tests {
         assert!(validate_setting("theme", &json!(1)).is_err());
         assert!(validate_setting("darkTheme", &json!("dark-plum")).is_ok());
         assert!(validate_setting("autoSave", &json!("afterDelay")).is_ok());
+        assert!(validate_setting("acpConfirmCommands", &json!(false)).is_ok());
+        assert!(validate_setting("acpConfirmCommands", &json!("no")).is_err());
         assert!(validate_setting("autoSave", &json!("always")).is_err());
         assert!(validate_setting("autoSave", &json!(true)).is_err());
         assert!(validate_setting("lightTheme", &json!("")).is_err());

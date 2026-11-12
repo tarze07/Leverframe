@@ -189,6 +189,17 @@ pub fn acp_fs_reply(
     service.get(id)?.reply_fs(request_id, result)
 }
 
+/// Answers a command request of the agent: run it or not.
+#[tauri::command]
+pub fn acp_terminal_reply(
+    service: State<'_, AcpService>,
+    id: u64,
+    request_id: u64,
+    allow: bool,
+) -> Result<(), String> {
+    service.get(id)?.reply_terminal(request_id, allow)
+}
+
 #[tauri::command]
 pub async fn acp_authenticate(
     service: State<'_, AcpService>,

@@ -79,6 +79,21 @@ export function openDiff(change: { path: string; oldText: string | null; newText
   return id;
 }
 
+/** Shows an agent's command full size, read-only, in the terminal panel. */
+export function openAgentTerminal(storeKey: string, title: string) {
+  useUiStore.getState().setBottomPanelVisible(true);
+  const api = dockRegistry.get("panel");
+  if (!api) return null;
+  const id = `agentterm-${storeKey}`;
+  const existing = api.getPanel(id);
+  if (existing) {
+    existing.api.setActive();
+    return id;
+  }
+  api.addPanel({ id, component: "agentTerminal", title, params: { storeKey } });
+  return id;
+}
+
 let chatCounter = 0;
 
 /**

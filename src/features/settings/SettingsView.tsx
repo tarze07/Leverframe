@@ -50,6 +50,7 @@ export function SettingsView() {
   const positionId = useId();
   const autoSaveId = useId();
   const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
+  const confirmCommands = useSettingsStore((s) => s.values.acpConfirmCommands !== false);
 
   const save = async (key: SettingKey, value: unknown) => {
     // Apply immediately, persist in settings.json (in the browser there is no file).
@@ -131,6 +132,20 @@ export function SettingsView() {
           ))}
         </select>
       </div>
+      <label className="flex items-start gap-2 text-xs text-lf-fg">
+        <input
+          type="checkbox"
+          checked={confirmCommands}
+          onChange={(e) => void save("acpConfirmCommands", e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-semibold">Pytaj przed poleceniami agentów</span>
+          <span className="block text-[11px] text-lf-subtle">
+            W trybie rozmowy Leverframe pyta, zanim agent uruchomi polecenie w terminalu (zalecane).
+          </span>
+        </span>
+      </label>
       <div className="flex flex-col gap-1">
         <label htmlFor={positionId} className="text-xs font-semibold text-lf-fg">
           Panel terminala
