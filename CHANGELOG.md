@@ -4,6 +4,16 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+Sprawdzenie trybu rozmowy z prawdziwymi agentami ([#42](https://github.com/tarze07/Leverframe/issues/42)).
+
+### Dodane
+- README: wymagania adapterów (Node.js), logowanie w Codex, Gemini i Claude, tryby Claude (*Auto* / *Manual*), ograniczenia w WSL i SSH.
+- Test `real_acp_agents` (uruchamiany ręcznie) sprawdza prawdziwego agenta przez klienta Leverframe: logowanie, sesję, zadanie z plikiem i poleceniem, wznowienie i listę sesji. Wyniki dla Claude, Codex i Gemini CLI są w [docs/ACP.md](docs/ACP.md).
+- Nowe testy E2E: odrzucona zmiana pliku, zmiana wprowadzona własnym narzędziem agenta, awaria agenta i kod wyjścia w historii.
+
+### Poprawione
+- Gdy agent zmienia plik własnym narzędziem (jak adapter Claude), a nie przez Leverframe, otwarty edytor bez niezapisanych zmian wczytuje nową treść, a drzewo „Pliki” się odświeża. Wcześniej edytor pokazywał starą treść aż do próby zapisu.
+
 ## [0.6.0] – 2026-11-12
 
 Rozmowy z agentami (ACP) w historii, z wyszukiwaniem i wznawianiem ([#41](https://github.com/tarze07/Leverframe/issues/41)), polecenia agenta w terminalach Leverframe ([#40](https://github.com/tarze07/Leverframe/issues/40)) i większe pole wiadomości.

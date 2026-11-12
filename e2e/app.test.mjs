@@ -426,4 +426,43 @@ describe("Leverframe", () => {
     await app.type(`dalej po przerwie${KEY.enter}`);
     await app.waitFor(`return document.querySelector('${chat} [role=log]').textContent.includes('Echo: dalej po przerwie')`);
   });
+
+  it("leaves the file as it was when the change is refused, and reports a crash of the agent", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const box = `${chat} textarea[aria-label="Wiadomość do agenta"]`;
+    const has = (text) => `return document.querySelector('${chat} [role=log]')?.textContent.includes(${JSON.stringify(text)})`;
+    const say = async (text) => {
+      await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 20_000);
+      await app.waitFor(`const t = document.querySelector('${box}'); t.focus(); return document.activeElement === t`);
+      await app.type(`${text}${KEY.enter}`);
+    };
+
+    // The diff refused: the agent reports it, the file stays unchanged.
+    const before = readFileSync(join(env.project, "README.md"), "utf8");
+    await say("edit");
+    const card = `${chat} [role=group][aria-label="Prośba o zgodę"]`;
+    await app.waitFor(`return document.querySelector('${card}')?.textContent.includes('+ Dopisane przez agenta.')`);
+    await app.click(`${card} button`, "Odmów");
+    await app.waitFor(has("odmowa"));
+    assert.equal(readFileSync(join(env.project, "README.md"), "utf8"), before);
+
+    // A change the agent makes with its own tool (like Claude's Edit): the open editor shows it.
+    const readmeBar = `[...document.querySelectorAll('[aria-label="Pasek edytora"]')].find(b => b.querySelector('span[title$="README.md"]'))`;
+    await say("selfedit");
+    await app.waitFor(has("zmieniono bezpośrednio"));
+    await app.waitFor(`return ${readmeBar}?.parentElement.querySelector('.view-lines')?.textContent.replaceAll('\\u00a0', ' ').includes('Zmienione bezpośrednio przez agenta.')`, 20_000);
+    assert.ok(!(await app.exec("return [...document.querySelectorAll('.dv-tab')].some(t => t.textContent.includes('● README.md'))")), "not unsaved");
+
+    // The agent crashes: its last words and the end are shown; nothing more can be sent.
+    await say("crash");
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Agent zakończył działanie'`, 20_000);
+    assert.match(await app.exec(`return document.querySelector('${chat} [role=alert]')?.textContent ?? ''`), /awaria podczas pracy/);
+    assert.equal(await app.exec(`return document.querySelector('${box}').disabled`), true);
+
+    // The history keeps the conversation with its exit code.
+    await app.exec(
+      "const i=document.querySelector('input[placeholder^=\"Szukaj w nagraniach\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'dalej po przerwie'); i.dispatchEvent(new Event('input',{bubbles:true}));",
+    );
+    await app.waitFor("return document.querySelector('li[aria-label^=\"Rozmowa Claude Code\"]')?.textContent.includes('kod 3')", 20_000);
+  });
 });

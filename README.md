@@ -53,9 +53,14 @@ Agenci obsługujący [Agent Client Protocol](https://agentclientprotocol.com) ma
 |---|---|---|
 | Claude Code | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` (Node.js 22+) |
 | Codex | `codex-acp` | `npm install -g @agentclientprotocol/codex-acp` |
-| Gemini CLI | `gemini --acp` | `npm install -g @google/gemini-cli` |
+| Gemini CLI | `gemini --acp` | `npm install -g @google/gemini-cli` (Node.js 20+) |
 
-Panel „Agenci” pokazuje, czy program jest zainstalowany. Agent, który wymaga zalogowania, pokaże metody logowania; zawsze można też zalogować się raz w trybie terminalowym. W `agents.json` pole `acp` (`command`, `args`, `install`) dodaje lub zmienia tryb rozmowy, a `"acp": null` go wyłącza, np.:
+Panel „Agenci” pokazuje, czy program jest zainstalowany. Agent, który wymaga zalogowania, pokaże w panelu rozmowy swoje metody logowania (Codex: klucz API lub konto ChatGPT; Gemini: konto Google, klucz API, Vertex AI); zawsze można też zalogować się raz w trybie terminalowym – adapter Claude korzysta z logowania Claude Code (`claude`, polecenie `/login`). Leverframe nie przechowuje kluczy ani haseł.
+
+Wskazówki:
+- **Tryb Claude**: adapter Claude zaczyna w trybie *Auto* – sam decyduje, kiedy pytać. Żeby zatwierdzać każdą zmianę pliku i polecenie, wybierz nad polem wiadomości tryb *Manual* (albo *Plan*, żeby najpierw dostać plan).
+- **Pliki i polecenia przez Leverframe** (niezapisane zmiany z edytorów, terminale Leverframe, pytanie przed poleceniem) działają z agentami, które korzystają z tych możliwości klienta ACP. Adapter Claude (`claude-agent-acp` 0.106) zmienia pliki i uruchamia polecenia własnymi narzędziami – zmiany widać w kartach narzędzi i jako diff w prośbie o zgodę. Otwarty edytor bez niezapisanych zmian wczytuje zmieniony plik od razu (jako jedną zmianę do cofnięcia), a w edytorze z niezapisanymi zmianami zapis pokaże konflikt z opcjami „Nadpisz” i „Wczytaj z dysku”.
+- **WSL i SSH**: program trybu rozmowy (i Node.js) musi być zainstalowany po tamtej stronie – w dystrybucji WSL albo na hoście SSH – i tam też trzeba się zalogować. Na hostach SSH agent pracuje na swoich plikach i we własnym terminalu: Leverframe nie udostępnia mu plików z tego komputera ani terminali, a kliknięcie ścieżki nie otwiera pliku w edytorze. Połączenie SSH działa bez pytań (`BatchMode`), więc host musi przyjmować klucz z agenta SSH. W `agents.json` pole `acp` (`command`, `args`, `install`) dodaje lub zmienia tryb rozmowy, a `"acp": null` go wyłącza, np.:
 
 ```json
 { "agents": [{ "id": "kilo", "acp": { "command": "kilo", "args": ["acp"] } }] }

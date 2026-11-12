@@ -11,6 +11,9 @@ import { canContinue, chatReducer, initialChat, type ChatState } from "./chatSta
 import { transcriptActions, transcriptTerminalEvents } from "./transcript";
 import { AgentSessions } from "./AgentSessions";
 import { sessionsClient } from "../sessions/sessionsClient";
+import { AgentEdits } from "./agentEdits";
+import { editorForPath } from "../../store/editor";
+import { notifyFilesChanged } from "../../lib/fileEvents";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { PlanView } from "./PlanView";
 import { PromptBox } from "./PromptBox";
@@ -100,6 +103,20 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
     [chatId],
   );
 
+  // Files the agent changed with its own tools: open editors without unsaved changes and the
+  // file tree read them again (editors with unsaved changes keep them; saving shows the conflict).
+  const edits = useRef(new AgentEdits());
+  const toLocalRef = useRef<(path: string) => string | null>(() => null);
+  const refreshEdited = (paths: string[]) => {
+    const local = paths.map((p) => toLocalRef.current(p)).filter((p): p is string => !!p);
+    if (local.length === 0) return;
+    for (const p of local) {
+      const editor = editorForPath(p);
+      if (editor && !editor.dirty) void editor.reload?.().catch(() => undefined);
+    }
+    notifyFilesChanged(local);
+  };
+
   /** Starts the panel's agent process: a new conversation, or one to resume. */
   const connect = (resume?: AcpStartRequest["resume"]) => {
     let disposed = false;
@@ -115,6 +132,7 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
         }
       }
       terminalEvent(event);
+      if (event.type === "update") refreshEdited(edits.current.feed(event.update));
       dispatch({ type: "event", event });
       if (event.type === "fsRequest") {
         // Inside the session folder: served at once. Outside: the user decides (card below).
@@ -223,6 +241,9 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
     (path: string) => (profile?.kind === "ssh" ? null : logFilePath(path, state.cwd, profile?.id ?? "")),
     [profile, state.cwd],
   );
+  useEffect(() => {
+    toLocalRef.current = toLocal;
+  }, [toLocal]);
 
   const run = (action: (h: AcpHandle) => Promise<unknown>) => {
     const h = handle.current;

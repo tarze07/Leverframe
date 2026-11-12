@@ -4,6 +4,7 @@ import type { IDockviewPanelProps } from "dockview-react";
 import type { AcpEvent, AcpHandle, SessionUpdate } from "./acpClient";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
+import { useEditorStore } from "../../store/editor";
 
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 const openAgent = vi.fn();
@@ -499,6 +500,20 @@ describe("AgentChatPanel", () => {
     expect(screen.queryByText("Cześć")).toBeNull(); // the replay of the other session starts over
     update({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "Napraw testy" } });
     expect(screen.getByText("Napraw testy")).toBeInTheDocument();
+  });
+
+  it("reloads open editors without unsaved changes after the agent edits files itself", async () => {
+    const clean = { path: "/home/me/app/a.ts", dirty: false, save: vi.fn(), reload: vi.fn(async () => undefined) };
+    const dirty = { path: "/home/me/app/b.ts", dirty: true, save: vi.fn(), reload: vi.fn(async () => undefined) };
+    useEditorStore.setState({ editors: { "editor:a": clean, "editor:b": dirty } });
+    render(<AgentChatPanel {...props({ agentId: "claude", profileId: "local:bash" })} />);
+    await ready();
+    update({ sessionUpdate: "tool_call", toolCallId: "e1", title: "Edit", kind: "edit", status: "in_progress", locations: [{ path: "/home/me/app/a.ts" }, { path: "/home/me/app/b.ts" }] });
+    expect(clean.reload).not.toHaveBeenCalled();
+    update({ sessionUpdate: "tool_call_update", toolCallId: "e1", status: "completed" });
+    expect(clean.reload).toHaveBeenCalledTimes(1);
+    expect(dirty.reload).not.toHaveBeenCalled(); // unsaved changes stay; saving shows the conflict
+    useEditorStore.setState({ editors: {} });
   });
 
   it("has no list of saved sessions when the agent does not offer one", async () => {

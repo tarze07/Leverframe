@@ -142,7 +142,39 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
   `session/resume`. `session/delete` (`sessionCapabilities.delete`) tylko po potwierdzeniu, nigdy dla otwartej sesji.
   Usunięcie rozmowy z historii Leverframe nie usuwa jej u agenta.
 
-## 7. Ryzyka i decyzje
+## 7. Sprawdzenie (A7)
+
+**Zgodność ze schematem.** Cały ruch testów Rust (klient Leverframe ↔ atrapa, ok. 350 wiadomości w 41 rodzajach:
+od `initialize` po `terminal/*`, `session/load|resume|list|delete`, błędy i anulowanie) sprawdzono walidatorem
+JSON Schema na oficjalnym `schema/v1/schema.json` (SDK 2.6.0), wiadomość po wiadomości według metody: 0 błędów.
+
+**Prawdziwi agenci** – test `real_acp_agents` (pomijany w CI) uruchamia agenta przez klienta Leverframe i wypisuje
+przebieg: `initialize`, sesja, zadanie (odczyt i zmiana pliku, polecenie `ls`), wznowienie w nowym procesie,
+`session/list`:
+
+```sh
+LEVERFRAME_REAL_ACP='claude-agent-acp|codex-acp|gemini --acp' \
+LEVERFRAME_REAL_ACP_MODE=default \
+cargo test --lib real_acp_agents -- --ignored --nocapture
+```
+
+Wyniki z 12.11.2026 (Linux, profil lokalny, adaptery z npm):
+
+| Agent | `initialize` | Sesja | Zadanie | Wznowienie | `session/list` |
+|---|---|---|---|---|---|
+| Claude (`claude-agent-acp` 0.106.0) | ✅ `loadSession`, `resume`, `list`, `delete`; tryby Manual/Accept edits/Plan/Auto/Bypass; opcje model, effort | ✅ | ✅ zgoda (tryb Manual) z diffem ścieżki; plik zmieniony, `ls` wykonane | ✅ `session/resume`, agent pamięta rozmowę; bez dublowania | ✅ |
+| Codex (`codex-acp` 2.6.0) | ✅ `loadSession`, `resume`, `list`, `delete`; logowanie: klucz API, ChatGPT | „wymaga logowania” (brak konta) – metody poprawnie w panelu | – | – | – |
+| Gemini CLI 0.68.0 | ✅ `loadSession`; logowanie: Google, klucz API, Vertex AI, bramka | „wymaga logowania” (brak klucza) | – | – | – |
+
+Spostrzeżenia:
+- `claude-agent-acp` 0.106 nie korzysta z `fs/*` ani `terminal/*` klienta (choć je deklarujemy) – edytuje i uruchamia
+  własnymi narzędziami; zaczyna w trybie `auto` (bez pytań, jeśli nie ma ustawionego `defaultMode`). Diff w prośbie
+  o zgodę obejmuje zmieniany fragment, nie cały plik.
+- Do sprawdzenia z kontami: pełna rozmowa Codex i Gemini (Gemini korzysta z `fs/*` klienta, co sprawdzi odczyt
+  niezapisanych zmian), profile WSL i SSH. Lista kontrolna: Rozmowa → logowanie → zadanie z plikiem i poleceniem →
+  zgoda/odmowa → Stop → zamknięcie → „Historia” → Wznów rozmowę.
+
+## 8. Ryzyka i decyzje
 
 - **v1 czy v2** – v1 (stabilne). v2 śledzimy; biblioteka Rust ma v2 tylko jako funkcję `unstable_protocol_v2`.
 - **Adaptery wymagają Node.js** (Claude, Codex) – pokazujemy to we wskazówkach instalacji; w SSH/WSL adapter musi
