@@ -11,6 +11,9 @@ Sprawdzenie trybu rozmowy z prawdziwymi agentami ([#42](https://github.com/tarze
 - Test `real_acp_agents` (uruchamiany ręcznie) sprawdza prawdziwego agenta przez klienta Leverframe: logowanie, sesję, zadanie z plikiem i poleceniem, wznowienie i listę sesji. Wyniki dla Claude, Codex i Gemini CLI są w [docs/ACP.md](docs/ACP.md).
 - Nowe testy E2E: odrzucona zmiana pliku, zmiana wprowadzona własnym narzędziem agenta, awaria agenta i kod wyjścia w historii.
 
+### Zmienione
+- **Widok „Rozmowy”** na pasku aktywności: lista otwartych rozmów z agentami (agent, temat, folder, stan, znacznik „czeka na decyzję” i licznik na ikonie). Kliknięcie przełącza na rozmowę lub otwiera jej kartę ponownie. **Zamknięcie karty nie kończy już rozmowy** – agent pracuje dalej, a rozmowę kończy przycisk *Zakończ* w tym widoku.
+
 ### Poprawione
 - Gdy agent zmienia plik własnym narzędziem (jak adapter Claude), a nie przez Leverframe, otwarty edytor bez niezapisanych zmian wczytuje nową treść, a drzewo „Pliki” się odświeża. Wcześniej edytor pokazywał starą treść aż do próby zapisu.
 

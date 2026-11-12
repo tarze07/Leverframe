@@ -82,8 +82,11 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
   - lokalnie / PowerShell: bezpośrednio,
   - WSL: `wsl.exe -d <dystrybucja> --cd <katalog> -- <komenda>`,
   - SSH: `ssh -T <host> 'cd <katalog> && <komenda>'` (katalog z ustawień profilu, #26).
-- **Frontend**: nowy panel dockview `agentChat`; stan sesji w osobnym store; strumień zdarzeń przez `Channel`
-  (jak wyjście terminala).
+- **Frontend**: stan rozmów i ich procesy agentów w store `src/store/chats.ts` (niezależnie od kart); panel
+  dockview `agentChat` tylko pokazuje rozmowę (`{ chatId }`), więc zamknięcie karty nie kończy rozmowy. Widok
+  „Rozmowy” (`ChatsView`) listuje otwarte rozmowy i je kończy. Strumień zdarzeń przez `Channel` (jak wyjście
+  terminala). Po ponownym uruchomieniu aplikacji karty rozmów pokazują, że rozmowa się zakończyła – kontynuuje
+  się ją z „Historii”.
 - **Ścieżki**: agent widzi ścieżki swojego systemu. WSL: `/home/…` ↔ `\\wsl.localhost\<dystrybucja>\home\…`
   (już mamy obie strony tej zamiany). SSH: plików zdalnych nie mamy lokalnie – w sesjach SSH **nie deklarujemy**
   `fs` ani `terminal`, agent korzysta z własnych.

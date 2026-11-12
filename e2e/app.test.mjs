@@ -390,9 +390,20 @@ describe("Leverframe", () => {
   });
 
   it("finds an ACP conversation in the history by a word from the answer and resumes it", async () => {
-    // End the conversation of the previous tests (closing its tab stops the agent).
+    // Closing the tab keeps the conversation: it is in the "Rozmowy" view and opens again as it was.
     await app.exec(`[...document.querySelectorAll('.dv-tab')].filter(t => t.textContent.includes('rozmowa')).forEach(t => t.querySelector('.dv-default-tab-action')?.click())`);
     await app.waitFor("return !document.querySelector('[data-testid=agent-chat]')");
+    await showView("Rozmowy");
+    const listed = 'ul[aria-label="Otwarte rozmowy"] li';
+    await app.waitFor(`return document.querySelector('${listed}')?.textContent.includes('Witaj z e2e')`);
+    assert.match(await app.exec(`return document.querySelector('${listed}').textContent`), /Gotowy/, "the agent still runs");
+    await app.click(`${listed} button`, "fake-acp-agent");
+    await app.waitFor("return document.querySelector('[data-testid=agent-chat] [role=log]')?.textContent.includes('Echo: Witaj z e2e')");
+
+    // Ending it in the list stops the agent and closes its tab.
+    await app.click(`${listed} button[aria-label="Zakończ rozmowę"]`);
+    await app.waitFor("return !document.querySelector('[data-testid=agent-chat]')");
+    await app.waitFor(`return !document.querySelector('${listed}')`);
 
     await showView("Sesje");
     await app.click('[role="tab"]', "Historia");

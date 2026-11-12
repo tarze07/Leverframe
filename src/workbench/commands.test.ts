@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Conversations start an agent in the backend; here they only need to exist.
+vi.mock("../features/acp/acpClient", () => ({ startAcp: vi.fn(() => new Promise(() => undefined)) }));
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { dockRegistry } from "./docks";
-import { logFilePath, openAgentChat, openTerminal, shellQuote, terminalPanels, toggleTerminalPanel } from "./commands";
+import { endAgentChat, logFilePath, openAgentChat, openChatPanel, openTerminal, shellQuote, terminalPanels, toggleTerminalPanel } from "./commands";
+import { endAllChats, useChatsStore } from "../store/chats";
 import { useAgentsStore } from "../store/agents";
 import { useProfilesStore } from "../store/profiles";
 
@@ -21,6 +25,10 @@ function fakeDock() {
   const api = {
     panels,
     addPanel,
+    getPanel: (id: string) => {
+      const panel = panels.find((p) => p.id === id);
+      return panel && { ...panel, api: { setActive: vi.fn(), close: () => panels.splice(panels.indexOf(panel), 1) } };
+    },
     get activePanel() {
       return panels[panels.length - 1];
     },
@@ -45,16 +53,32 @@ describe("workbench commands", () => {
       defaultProfileId: "wsl:Ubuntu",
     } as Partial<ReturnType<typeof useProfilesStore.getState>>);
 
-    const first = openAgentChat("gemini", { cwd: "/home/me/app" });
-    const second = openAgentChat("gemini", { profileId: "wsl:Ubuntu" });
-    expect(first).not.toBe(second); // one agent process per panel
+    endAllChats();
+    const first = openAgentChat("gemini", { cwd: "/home/me/app" })!;
+    const second = openAgentChat("gemini", { profileId: "wsl:Ubuntu" })!;
+    expect(first).not.toBe(second); // one conversation (agent process) each
     expect(dock.addPanel).toHaveBeenNthCalledWith(1, {
       id: first,
       component: "agentChat",
       title: "Gemini CLI · rozmowa · Ubuntu",
-      params: { agentId: "gemini", profileId: null, cwd: "/home/me/app" },
+      params: { chatId: first },
     });
-    expect(dock.addPanel.mock.calls[1][0]).toMatchObject({ params: { profileId: "wsl:Ubuntu", cwd: null } });
+    const chats = useChatsStore.getState().chats;
+    expect(chats[first].params).toEqual({ agentId: "gemini", profileId: null, cwd: "/home/me/app" });
+    expect(chats[second].params).toMatchObject({ profileId: "wsl:Ubuntu", cwd: null });
+    expect(useChatsStore.getState().order).toEqual([first, second]);
+
+    // A closed tab opens again for the same conversation; an open one is only focused.
+    dock.getPanel(first)!.api.close();
+    expect(openChatPanel(first)).toBe(first);
+    expect(dock.addPanel).toHaveBeenCalledTimes(3);
+    expect(openChatPanel(first)).toBe(first);
+    expect(dock.addPanel).toHaveBeenCalledTimes(3);
+    // Ending it closes the tab and removes it from the list.
+    endAgentChat(first);
+    expect(dock.getPanel(first)).toBeUndefined();
+    expect(useChatsStore.getState().order).toEqual([second]);
+    expect(openChatPanel(first)).toBeNull();
     dockRegistry.set("main", null);
     expect(openAgentChat("gemini")).toBeNull();
 
