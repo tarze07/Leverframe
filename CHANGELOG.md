@@ -4,6 +4,10 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.6.0] – 2026-11-12
+
+Rozmowy z agentami (ACP) w historii, z wyszukiwaniem i wznawianiem ([#41](https://github.com/tarze07/Leverframe/issues/41)), polecenia agenta w terminalach Leverframe ([#40](https://github.com/tarze07/Leverframe/issues/40)) i większe pole wiadomości.
+
 ### Dodane
 - **Historia rozmów z agentami** ([#41](https://github.com/tarze07/Leverframe/issues/41)): rozmowy w trybie ACP trafiają do panelu „Sesje” (zakładka **Historia**, dawniej „Nagrania”) obok nagrań terminala, z oznaczeniem rodzaju, tytułem i filtrem „Rodzaj”. Wyszukiwanie obejmuje treść wiadomości (także bez polskich znaków). Rozmowę z historii otwiera się tylko do odczytu, a **Wznów rozmowę** kontynuuje ją, jeśli agent pozwala wczytywać sesje (`session/load` / `session/resume`). Przycisk **Rozmowy agenta** otwiera sesje zapisane przez samego agenta (`session/list`) i – na wyraźne żądanie – usuwa je u agenta (`session/delete`). Zapis rozmowy wyłącza to samo ustawienie co nagrania terminala; pusta rozmowa (bez wiadomości) nie trafia do historii.
 - **Polecenia agenta w terminalach Leverframe** ([#40](https://github.com/tarze07/Leverframe/issues/40)): w trybie rozmowy (profile lokalne i WSL) agent uruchamia polecenia przez Leverframe – po pytaniu (**Uruchom** / **Zawsze dla tego polecenia** / **Odmów**; pytanie można wyłączyć w ustawieniach). Wyjście widać na żywo w karcie narzędzia, a „Otwórz jako terminal” pokazuje je w panelu terminala. Agent dostaje czysty tekst przycięty do swojego limitu, kod wyjścia i może polecenie zatrzymać; zamknięcie rozmowy kończy jego polecenia.
@@ -122,6 +126,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.6.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.3.0

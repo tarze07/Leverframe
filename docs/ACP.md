@@ -119,7 +119,7 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
 | **A6** ([#41](https://github.com/tarze07/Leverframe/issues/41)) | Historia: zapis transkryptu, wyszukiwanie w panelu „Sesje”, wznawianie (`session/list`, `session/load` / `session/resume`) | rozmowy ACP w historii |
 | **A7** ([#42](https://github.com/tarze07/Leverframe/issues/42)) | Testy E2E z atrapą agenta, dokumentacja, wydanie | wersja z ACP |
 
-**MVP = A1–A4** (rozmowa, zgody, diffy) – na wydanie 0.5.0. A5–A6 w kolejnej wersji.
+**MVP = A1–A4** (rozmowa, zgody, diffy) – wydane w 0.5.0. A5–A6 – w 0.6.0.
 
 ### Historia i wznawianie (A6)
 
