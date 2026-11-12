@@ -1,4 +1,5 @@
-//! Session index in SQLite: metadata of recorded agent sessions + FTS5 full-text index of their output.
+//! Session index in SQLite: metadata of recorded agent sessions (terminal recordings and ACP
+//! conversations) + FTS5 full-text index of their text.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -10,6 +11,12 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct SessionRecord {
     pub id: i64,
+    /// `terminal` (asciicast recording) or `acp` (conversation transcript, JSON lines).
+    pub kind: String,
+    /// The agent's own id of an ACP session (for resuming it).
+    pub acp_session_id: Option<String>,
+    /// A conversation's title: the agent's, or the beginning of the first message.
+    pub title: Option<String>,
     pub agent_id: Option<String>,
     pub agent_name: Option<String>,
     pub profile_id: Option<String>,
@@ -26,6 +33,8 @@ pub struct SessionRecord {
 
 #[derive(Debug, Clone, Default)]
 pub struct NewSession {
+    /// `terminal` when empty.
+    pub kind: String,
     pub agent_id: Option<String>,
     pub agent_name: Option<String>,
     pub profile_id: Option<String>,
@@ -38,6 +47,8 @@ pub struct NewSession {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionFilter {
+    /// `terminal` or `acp`.
+    pub kind: Option<String>,
     pub agent_id: Option<String>,
     pub profile_id: Option<String>,
     pub cwd: Option<String>,
@@ -81,7 +92,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     ended_at     INTEGER,
     exit_code    INTEGER,
     cast_path    TEXT NOT NULL,
-    bytes        INTEGER NOT NULL DEFAULT 0
+    bytes        INTEGER NOT NULL DEFAULT 0,
+    kind         TEXT NOT NULL DEFAULT 'terminal',
+    acp_session_id TEXT,
+    title        TEXT
 );
 CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at DESC);
 CREATE VIRTUAL TABLE IF NOT EXISTS session_text USING fts5(
@@ -126,6 +140,9 @@ pub fn fts_query(input: &str) -> Option<String> {
 fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRecord> {
     Ok(SessionRecord {
         id: row.get("id")?,
+        kind: row.get("kind")?,
+        acp_session_id: row.get("acp_session_id")?,
+        title: row.get("title")?,
         agent_id: row.get("agent_id")?,
         agent_name: row.get("agent_name")?,
         profile_id: row.get("profile_id")?,
@@ -168,6 +185,24 @@ impl SessionDb {
                 .map_err(err)?;
         }
         conn.execute_batch(SCHEMA).map_err(err)?;
+        // Columns added after the first release (ACP conversations); old rows are recordings.
+        let columns: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('sessions')")
+            .map_err(err)?
+            .query_map([], |r| r.get(0))
+            .map_err(err)?
+            .collect::<Result<_, _>>()
+            .map_err(err)?;
+        for (name, def) in [
+            ("kind", "TEXT NOT NULL DEFAULT 'terminal'"),
+            ("acp_session_id", "TEXT"),
+            ("title", "TEXT"),
+        ] {
+            if !columns.iter().any(|c| c == name) {
+                conn.execute_batch(&format!("ALTER TABLE sessions ADD COLUMN {name} {def};"))
+                    .map_err(err)?;
+            }
+        }
         conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))
             .map_err(err)?;
         Ok(Self {
@@ -178,9 +213,18 @@ impl SessionDb {
     pub fn insert(&self, s: &NewSession) -> Result<i64, String> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO sessions (agent_id, agent_name, profile_id, profile_name, cwd, started_at, cast_path)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![s.agent_id, s.agent_name, s.profile_id, s.profile_name, s.cwd, s.started_at, s.cast_path],
+            "INSERT INTO sessions (agent_id, agent_name, profile_id, profile_name, cwd, started_at, cast_path, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                s.agent_id,
+                s.agent_name,
+                s.profile_id,
+                s.profile_name,
+                s.cwd,
+                s.started_at,
+                s.cast_path,
+                if s.kind.is_empty() { "terminal" } else { s.kind.as_str() }
+            ],
         )
         .map_err(err)?;
         Ok(conn.last_insert_rowid())
@@ -214,6 +258,47 @@ impl SessionDb {
             .execute(
                 "UPDATE sessions SET ended_at = ?2, exit_code = ?3, bytes = ?4 WHERE id = ?1",
                 params![id, ended_at, exit_code, bytes],
+            )
+            .map(|_| ())
+            .map_err(err)
+    }
+
+    /// The agent's id of an ACP conversation (known once its session starts).
+    pub fn set_acp_session_id(&self, id: i64, acp_session_id: &str) -> Result<(), String> {
+        self.update(id, "acp_session_id = ?2", acp_session_id)
+    }
+
+    /// Sets the title; `only_if_empty` keeps one already set (the agent's title wins over the
+    /// first message).
+    pub fn set_title(&self, id: i64, title: &str, only_if_empty: bool) -> Result<(), String> {
+        let set = if only_if_empty {
+            "title = COALESCE(title, ?2)"
+        } else {
+            "title = ?2"
+        };
+        self.update(id, set, title)
+    }
+
+    /// A resumed conversation is running again.
+    pub fn reopen(&self, id: i64) -> Result<(), String> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE sessions SET ended_at = NULL, exit_code = NULL WHERE id = ?1",
+                [id],
+            )
+            .map(|_| ())
+            .map_err(err)
+    }
+
+    fn update(&self, id: i64, set: &str, value: &str) -> Result<(), String> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute(
+                &format!("UPDATE sessions SET {set} WHERE id = ?1"),
+                params![id, value],
             )
             .map(|_| ())
             .map_err(err)
@@ -263,6 +348,9 @@ impl SessionDb {
             args.push(v);
             conds.push(cond.replace('?', &format!("?{}", args.len())));
         };
+        if let Some(v) = &f.kind {
+            push("s.kind = ?", v.clone().into());
+        }
         if let Some(v) = &f.agent_id {
             push("s.agent_id = ?", v.clone().into());
         }
@@ -406,6 +494,7 @@ mod tests {
 
     fn session(agent: &str, profile: &str, cwd: &str, started_at: i64) -> NewSession {
         NewSession {
+            kind: String::new(),
             agent_id: Some(agent.into()),
             agent_name: Some(agent.to_uppercase()),
             profile_id: Some(profile.into()),
@@ -645,5 +734,62 @@ mod tests {
         for ext in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
         }
+    }
+
+    #[test]
+    fn databases_from_older_versions_get_the_new_columns() {
+        let dir = std::env::temp_dir().join(format!("lf-db-migrate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sessions.db");
+        {
+            // The layout of version 0.5.0.
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, agent_id TEXT, agent_name TEXT,
+                   profile_id TEXT, profile_name TEXT, cwd TEXT, started_at INTEGER NOT NULL, ended_at INTEGER,
+                   exit_code INTEGER, cast_path TEXT NOT NULL, bytes INTEGER NOT NULL DEFAULT 0);
+                 CREATE VIRTUAL TABLE session_text USING fts5(text, folded, session_id UNINDEXED,
+                   tokenize = 'unicode61 remove_diacritics 2');
+                 INSERT INTO sessions (agent_id, started_at, cast_path) VALUES ('claude', 1, '/rec/1.cast');
+                 INSERT INTO session_text (text, folded, session_id) VALUES ('stare wyjście', 'stare wyjście', 1);
+                 PRAGMA user_version = 1;",
+            )
+            .unwrap();
+        }
+        let db = SessionDb::open(&path).unwrap();
+        let old = db.get(1).unwrap().unwrap();
+        assert_eq!(old.kind, "terminal");
+        assert_eq!(old.title, None);
+        let found = db
+            .list(&SessionFilter {
+                query: Some("wyjscie".into()),
+                kind: Some("terminal".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(ids(&found), [1], "the index survives");
+        let id = db
+            .insert(&NewSession {
+                kind: "acp".into(),
+                started_at: 2,
+                cast_path: "/rec/2.acp.jsonl".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        db.set_acp_session_id(id, "s-9").unwrap();
+        db.set_title(id, "Pierwsza", true).unwrap();
+        db.set_title(id, "Druga", true).unwrap();
+        let rec = db.get(id).unwrap().unwrap();
+        assert_eq!(
+            (
+                rec.kind.as_str(),
+                rec.acp_session_id.as_deref(),
+                rec.title.as_deref()
+            ),
+            ("acp", Some("s-9"), Some("Pierwsza"))
+        );
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

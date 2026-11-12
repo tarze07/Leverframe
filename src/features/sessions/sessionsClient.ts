@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export type SessionKind = "terminal" | "acp";
+
 export interface SessionRecord {
   id: number;
+  /** `terminal`: terminal recording (asciicast); `acp`: conversation transcript. */
+  kind: SessionKind;
+  /** The agent's own id of an ACP conversation (for resuming it). */
+  acpSessionId: string | null;
+  /** A conversation's title (the agent's, or the beginning of the first message). */
+  title: string | null;
   agentId: string | null;
   agentName: string | null;
   profileId: string | null;
@@ -16,6 +24,7 @@ export interface SessionRecord {
 }
 
 export interface SessionFilter {
+  kind?: SessionKind;
   agentId?: string;
   profileId?: string;
   cwd?: string;

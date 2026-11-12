@@ -5,18 +5,21 @@ import {
   sessionsClient,
   type DateRange,
   type Facets,
+  type SessionKind,
   type SessionRecord,
 } from "../features/sessions/sessionsClient";
 
 export interface SessionFilters {
   query: string;
+  /** "" = recordings and conversations. */
+  kind: "" | SessionKind;
   agentId: string;
   profileId: string;
   cwd: string;
   range: DateRange;
 }
 
-const EMPTY_FILTERS: SessionFilters = { query: "", agentId: "", profileId: "", cwd: "", range: "all" };
+const EMPTY_FILTERS: SessionFilters = { query: "", kind: "", agentId: "", profileId: "", cwd: "", range: "all" };
 
 interface SessionsStore {
   filters: SessionFilters;
@@ -60,6 +63,7 @@ export const useSessionsStore = create<SessionsStore>()((set, get) => ({
       const [sessions, facets] = await Promise.all([
         sessionsClient.list({
           query: f.query.trim() || undefined,
+          kind: f.kind || undefined,
           agentId: f.agentId || undefined,
           profileId: f.profileId || undefined,
           cwd: f.cwd || undefined,

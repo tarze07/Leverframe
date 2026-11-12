@@ -22,6 +22,8 @@ pub struct AcpService {
     next_id: AtomicU64,
     /// PTYs of agents' commands (`terminal/*`), apart from the user's terminals.
     ptys: Arc<crate::pty::PtyManager>,
+    /// Recordings of the conversations (when recording is enabled).
+    transcripts: Mutex<HashMap<u64, Arc<crate::sessions::AcpTranscript>>>,
 }
 
 impl AcpService {
@@ -30,11 +32,20 @@ impl AcpService {
         launch: &AcpLaunch,
         events: Arc<dyn AcpEvents>,
         fs: Option<fs::FsKind>,
+        resume: Option<String>,
     ) -> Result<u64, String> {
-        let session = AcpSession::start(launch, events, fs, self.ptys.clone())?;
+        let session = AcpSession::start(launch, events, fs, self.ptys.clone(), resume)?;
         let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
         self.sessions.lock().unwrap().insert(id, session);
         Ok(id)
+    }
+
+    pub fn set_transcript(&self, id: u64, transcript: Arc<crate::sessions::AcpTranscript>) {
+        self.transcripts.lock().unwrap().insert(id, transcript);
+    }
+
+    pub fn transcript(&self, id: u64) -> Option<Arc<crate::sessions::AcpTranscript>> {
+        self.transcripts.lock().unwrap().get(&id).cloned()
     }
 
     pub fn get(&self, id: u64) -> Result<Arc<AcpSession>, String> {
@@ -52,6 +63,9 @@ impl AcpService {
         if let Some(s) = session {
             s.stop();
         }
+        if let Some(t) = self.transcripts.lock().unwrap().remove(&id) {
+            t.finish(None);
+        }
     }
 
     /// Ends every agent (application exit).
@@ -65,6 +79,9 @@ impl AcpService {
             .collect();
         for s in all {
             s.stop();
+        }
+        for (_, t) in self.transcripts.lock().unwrap().drain() {
+            t.finish(None);
         }
     }
 }

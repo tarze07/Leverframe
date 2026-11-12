@@ -84,6 +84,9 @@ pub fn run() {
             acp::commands::acp_set_mode,
             acp::commands::acp_set_config_option,
             acp::commands::acp_stop,
+            acp::commands::acp_list_sessions,
+            acp::commands::acp_load_session,
+            acp::commands::acp_delete_session,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Leverframe")

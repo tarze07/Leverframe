@@ -7,13 +7,20 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 const openSessionPlayer = vi.fn();
-vi.mock("../../workbench/commands", () => ({ openSessionPlayer: (...a: unknown[]) => openSessionPlayer(...a) }));
+const openAgentChatHistory = vi.fn();
+vi.mock("../../workbench/commands", () => ({
+  openSessionPlayer: (...a: unknown[]) => openSessionPlayer(...a),
+  openAgentChatHistory: (...a: unknown[]) => openAgentChatHistory(...a),
+}));
 
 import { SessionsView } from "./SessionsView";
 import { useSessionsStore } from "../../store/sessions";
 
 const rec = (id: number, extra: Partial<SessionRecord> = {}): SessionRecord => ({
   id,
+  kind: "terminal",
+  acpSessionId: null,
+  title: null,
   agentId: "claude",
   agentName: "Claude Code",
   profileId: "local:bash",
@@ -53,15 +60,16 @@ function backend(list: (filter: Record<string, unknown>) => SessionRecord[]) {
 
 function renderRecordings() {
   render(<SessionsView />);
-  fireEvent.click(screen.getByRole("tab", { name: "Nagrania" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Historia" }));
 }
 
 describe("SessionsView – recordings", () => {
   beforeEach(() => {
     invoke.mockReset();
     openSessionPlayer.mockReset();
+    openAgentChatHistory.mockReset();
     useSessionsStore.setState({
-      filters: { query: "", agentId: "", profileId: "", cwd: "", range: "all" },
+      filters: { query: "", kind: "", agentId: "", profileId: "", cwd: "", range: "all" },
       sessions: [],
       status: "idle",
       error: null,
@@ -71,7 +79,7 @@ describe("SessionsView – recordings", () => {
   it("lists sessions with agent, profile, duration and folder, and opens the player", async () => {
     backend(() => [rec(1), rec(2, { agentName: "Codex", exitCode: 1 }), rec(3, { endedAt: null })]);
     renderRecordings();
-    const [first] = await screen.findAllByRole("listitem", { name: /^Claude Code/ });
+    const [first] = await screen.findAllByRole("listitem", { name: /Claude Code/ });
     expect(within(first).getByText("5 min 0 s", { exact: false })).toBeInTheDocument();
     expect(within(first).getByText("· app")).toBeInTheDocument();
     expect(screen.getByText("kod 1")).toBeInTheDocument();
@@ -110,6 +118,26 @@ describe("SessionsView – recordings", () => {
     expect(useSessionsStore.getState().filters.agentId).toBe("");
   });
 
+  it("lists ACP conversations next to recordings, filters by kind and opens them read only", async () => {
+    backend((f) =>
+      f.kind === "terminal"
+        ? [rec(1)]
+        : [rec(2, { kind: "acp", acpSessionId: "s-1", title: "Popraw walidację formularza", castPath: "/rec/2.acp.jsonl" }), rec(1)],
+    );
+    renderRecordings();
+    const chat = await screen.findByRole("listitem", { name: /^Rozmowa Claude Code/ });
+    expect(screen.getByRole("listitem", { name: /^Nagranie Claude Code/ })).toBeInTheDocument();
+    expect(within(chat).getByText("Popraw walidację formularza")).toBeInTheDocument();
+    fireEvent.click(within(chat).getByText("Claude Code"));
+    expect(openAgentChatHistory).toHaveBeenCalledWith(expect.objectContaining({ id: 2, acpSessionId: "s-1" }));
+    expect(openSessionPlayer).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Rodzaj"), { target: { value: "terminal" } });
+    await waitFor(() => expect(screen.queryByRole("listitem", { name: /^Rozmowa/ })).toBeNull());
+    const lastList = invoke.mock.calls.filter((c) => c[0] === "sessions_list").pop()![1] as { filter: Record<string, unknown> };
+    expect(lastList.filter).toMatchObject({ kind: "terminal" });
+  });
+
   it("keeps refreshing while a session is running", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     backend(() => [rec(1, { endedAt: null })]);
@@ -125,7 +153,7 @@ describe("SessionsView – recordings", () => {
     backend(() => [rec(1)]);
     renderRecordings();
     await screen.findByRole("listitem");
-    fireEvent.click(screen.getByLabelText("Nagrywaj sesje agentów"));
+    fireEvent.click(screen.getByLabelText("Nagrywaj sesje i rozmowy z agentami"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("sessions_set_recording", { enabled: false }));
 
     fireEvent.click(screen.getByLabelText("Usuń sesję"));

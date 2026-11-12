@@ -35,7 +35,19 @@ const handle = {
   setMode: vi.fn(async () => undefined),
   setConfigOption: vi.fn(async () => undefined),
   stop: vi.fn(async () => undefined),
+  listSessions: vi.fn(async () => ({
+    sessions: [
+      { sessionId: "s1", cwd: "/home/me/app", title: "Ta rozmowa" },
+      { sessionId: "old-1", cwd: "/home/me/app", title: "Wczorajsza rozmowa", updatedAt: "2026-11-11T10:00:00Z" },
+      { sessionId: "old-2", cwd: "/home/me/app", title: "Starsza rozmowa" },
+    ],
+    nextCursor: null,
+  })),
+  loadSession: vi.fn(async () => undefined),
+  deleteSession: vi.fn(async () => undefined),
 } satisfies AcpHandle;
+const readTranscript = vi.fn(async (id: number) => `${id}`);
+vi.mock("../sessions/sessionsClient", () => ({ sessionsClient: { read: (id: number) => readTranscript(id) } }));
 const startAcp = vi.fn(async (_req: unknown, onEvent: (e: AcpEvent) => void) => {
   emit = onEvent;
   return handle;
@@ -399,5 +411,99 @@ describe("AgentChatPanel", () => {
     startAcp.mockRejectedValueOnce("Nie można uruchomić gemini: brak pliku");
     render(<AgentChatPanel {...props({ agentId: "claude" })} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("brak pliku");
+  });
+
+  describe("history", () => {
+    const line = (o: object) => JSON.stringify({ t: 1, ...o });
+    const update = (u: object) => line({ event: { type: "update", update: u } });
+    const transcript = (caps: object) =>
+      [
+        JSON.stringify({ leverframe: "acp-transcript", version: 1 }),
+        line({ event: { type: "initialized", agentInfo: { name: "fake", title: "Fake Agent" }, agentCapabilities: caps, authMethods: [] } }),
+        line({ event: { type: "sessionReady", sessionId: "s-old", cwd: "/home/me/app", modes: null, configOptions: null } }),
+        line({ sent: "Uruchom testy" }),
+        update({ sessionUpdate: "tool_call", toolCallId: "t1", title: "npm test", kind: "execute", status: "in_progress", content: [{ type: "terminal", terminalId: "term-1" }] }),
+        line({ event: { type: "terminalStarted", terminalId: "term-1", command: "npm test", cwd: null } }),
+        line({ event: { type: "terminalOutput", terminalId: "term-1", data: "ok 12 testów\r\n" } }),
+        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Wszystkie **testy** przeszły." } }),
+        line({ event: { type: "permission", requestId: 3, toolCall: { title: "Zapis" }, options: [] } }),
+        "to nie jest JSON",
+        line({ turnEnded: "end_turn" }),
+        line({ event: { type: "exited", code: 0, message: null } }),
+      ].join("\n");
+
+    it("shows a saved conversation read only and resumes it", async () => {
+      readTranscript.mockResolvedValueOnce(transcript({ loadSession: true }));
+      render(<AgentChatPanel {...props({ agentId: "claude", profileId: "local:bash", cwd: "/home/me/app", historyId: 5, acpSessionId: "s-old" })} />);
+      expect(await screen.findByText("testy", { selector: "strong" })).toBeInTheDocument();
+      expect(readTranscript).toHaveBeenCalledWith(5);
+      expect(screen.getByText("Uruchom testy")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("Historia");
+      expect(screen.getAllByText("npm test").length).toBeGreaterThan(0);
+      // Nothing to answer in the history, nothing to type, and no agent process yet.
+      expect(screen.queryByRole("group", { name: "Zgoda" })).toBeNull();
+      expect(screen.queryByLabelText("Wiadomość do agenta")).toBeNull();
+      expect(startAcp).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText("Wznów rozmowę"));
+      expect(startAcp.mock.calls[0][0]).toMatchObject({
+        agentId: "claude",
+        profileId: "local:bash",
+        cwd: "/home/me/app",
+        resume: { sessionId: "s-old", historyId: 5 },
+      });
+      expect(screen.getByText("Rozmowa wznowiona.")).toBeInTheDocument();
+      await ready();
+      expect(screen.getByText("Uruchom testy")).toBeInTheDocument();
+      send("A teraz lint");
+      expect(handle.prompt).toHaveBeenCalledWith("A teraz lint");
+    });
+
+    it("offers no resuming when the agent cannot do it", async () => {
+      readTranscript.mockResolvedValueOnce(transcript({ loadSession: false, sessionCapabilities: { list: {} } }));
+      render(<AgentChatPanel {...props({ agentId: "claude", historyId: 6, acpSessionId: "s-old" })} />);
+      expect(await screen.findByText(/nie pozwala wznawiać rozmów/)).toBeInTheDocument();
+      expect(screen.queryByText("Wznów rozmowę")).toBeNull();
+    });
+
+    it("reports a transcript that cannot be read", async () => {
+      readTranscript.mockRejectedValueOnce("Brak pliku nagrania");
+      render(<AgentChatPanel {...props({ agentId: "claude", historyId: 7 })} />);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Nie udało się wczytać rozmowy: Brak pliku nagrania");
+    });
+  });
+
+  it("opens and deletes the agent's own saved sessions", async () => {
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await waitFor(() => expect(startAcp).toHaveBeenCalled());
+    act(() => {
+      emit({ type: "initialized", agentInfo: null, agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, delete: {} } }, authMethods: [] });
+      emit({ type: "sessionReady", sessionId: "s1", cwd: "/home/me/app", modes: null, configOptions: null });
+    });
+    send("Cześć");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Gotowy"));
+    fireEvent.click(screen.getByText("Rozmowy agenta"));
+    const list = await screen.findByRole("region", { name: "Rozmowy zapisane przez agenta" });
+    expect(await within(list).findByText("Wczorajsza rozmowa")).toBeInTheDocument();
+    expect(within(list).getByText("bieżąca")).toBeInTheDocument();
+
+    fireEvent.click(within(list).getByLabelText("Usuń rozmowę Starsza rozmowa u agenta"));
+    expect(handle.deleteSession).not.toHaveBeenCalled();
+    fireEvent.click(within(list).getByText("Usuń"));
+    await waitFor(() => expect(handle.deleteSession).toHaveBeenCalledWith("old-2"));
+    await waitFor(() => expect(within(list).queryByText("Starsza rozmowa")).toBeNull());
+
+    const row = within(list).getByText("Wczorajsza rozmowa").closest("li")!;
+    fireEvent.click(within(row).getByText("Otwórz"));
+    expect(handle.loadSession).toHaveBeenCalledWith("old-1");
+    expect(screen.queryByText("Cześć")).toBeNull(); // the replay of the other session starts over
+    update({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "Napraw testy" } });
+    expect(screen.getByText("Napraw testy")).toBeInTheDocument();
+  });
+
+  it("has no list of saved sessions when the agent does not offer one", async () => {
+    render(<AgentChatPanel {...props({ agentId: "claude" })} />);
+    await ready();
+    expect(screen.queryByText("Rozmowy agenta")).toBeNull();
   });
 });

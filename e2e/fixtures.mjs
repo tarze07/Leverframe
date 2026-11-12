@@ -25,7 +25,10 @@ export function makeHome() {
   if (!existsSync(fakeAcpAgent)) {
     throw new Error(`${fakeAcpAgent} is missing: run \`cargo build --example fake_acp_agent\` in src-tauri`);
   }
-  copyFileSync(fakeAcpAgent, join(bin, "claude-agent-acp"));
+  copyFileSync(fakeAcpAgent, join(bin, "fake-acp-agent"));
+  chmodSync(join(bin, "fake-acp-agent"), 0o755);
+  // It can load its saved sessions (conversations from the history are resumed).
+  writeFileSync(join(bin, "claude-agent-acp"), '#!/bin/sh\nexec "$HOME/bin/fake-acp-agent" --load "$@"\n');
   chmodSync(join(bin, "claude-agent-acp"), 0o755);
   // PATH only via .bashrc – like nvm – to check that detection uses the login shell's PATH.
   writeFileSync(join(home, ".bashrc"), 'export PATH="$HOME/bin:$PATH"\n');

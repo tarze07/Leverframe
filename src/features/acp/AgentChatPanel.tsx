@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Placeholder } from "../../components/Placeholder";
@@ -6,8 +6,11 @@ import { isTauri } from "../../lib/tauri";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
 import { logFilePath, openAgent } from "../../workbench/commands";
-import { startAcp, type AcpHandle } from "./acpClient";
-import { chatReducer, initialChat, type ChatState } from "./chatState";
+import { startAcp, type AcpEvent, type AcpHandle, type AcpStartRequest } from "./acpClient";
+import { canContinue, chatReducer, initialChat, type ChatState } from "./chatState";
+import { transcriptActions, transcriptTerminalEvents } from "./transcript";
+import { AgentSessions } from "./AgentSessions";
+import { sessionsClient } from "../sessions/sessionsClient";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { PlanView } from "./PlanView";
 import { PromptBox } from "./PromptBox";
@@ -22,6 +25,10 @@ export interface AgentChatParams {
   agentId: string;
   profileId?: string | null;
   cwd?: string | null;
+  /** A conversation from the history (row in the sessions database): shown read only until resumed. */
+  historyId?: number | null;
+  /** The agent's id of that conversation. */
+  acpSessionId?: string | null;
 }
 
 const STATUS: Record<ChatState["status"], string> = {
@@ -31,6 +38,7 @@ const STATUS: Record<ChatState["status"], string> = {
   busy: "Agent pracuje…",
   error: "Błąd",
   exited: "Agent zakończył działanie",
+  history: "Historia",
 };
 
 const number = (n: number) => n.toLocaleString("pl-PL");
@@ -74,12 +82,29 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
   const bottom = useRef<HTMLDivElement>(null);
   const agent = useAgentsStore((s) => s.agentById(params.agentId));
   const profile = useProfilesStore((s) => s.byId(params.profileId ?? s.defaultProfileId));
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(params.historyId != null);
+  const [showSessions, setShowSessions] = useState(false);
+  // The running agent, for rendering (the ref is for callbacks).
+  const [liveHandle, setLiveHandle] = useState<AcpHandle | null>(null);
+  // Ends the agent process of this panel (set while one runs).
+  const stopAgent = useRef<(() => void) | null>(null);
 
-  // One agent process per panel, for the panel's lifetime.
-  useEffect(() => {
+  const terminalEvent = useCallback(
+    (event: AcpEvent) => {
+      const terminals = useAgentTerminalsStore.getState();
+      if (event.type === "terminalStarted") terminals.start(agentTerminalKey(chatId, event.terminalId), event.command, event.cwd);
+      else if (event.type === "terminalOutput") terminals.append(agentTerminalKey(chatId, event.terminalId), event.data);
+      else if (event.type === "terminalExit") terminals.exit(agentTerminalKey(chatId, event.terminalId), event.exitCode, event.signal);
+    },
+    [chatId],
+  );
+
+  /** Starts the panel's agent process: a new conversation, or one to resume. */
+  const connect = (resume?: AcpStartRequest["resume"]) => {
     let disposed = false;
     let started: AcpHandle | null = null;
-    startAcp({ agentId: params.agentId, profileId: params.profileId, cwd: params.cwd }, (event) => {
+    startAcp({ agentId: params.agentId, profileId: params.profileId, cwd: params.cwd, resume }, (event) => {
       if (disposed) return;
       if (event.type === "terminalRequest") {
         // Without asking: when the user turned it off, or allowed this command for the conversation.
@@ -89,10 +114,7 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
           return;
         }
       }
-      const terminals = useAgentTerminalsStore.getState();
-      if (event.type === "terminalStarted") terminals.start(agentTerminalKey(chatId, event.terminalId), event.command, event.cwd);
-      else if (event.type === "terminalOutput") terminals.append(agentTerminalKey(chatId, event.terminalId), event.data);
-      else if (event.type === "terminalExit") terminals.exit(agentTerminalKey(chatId, event.terminalId), event.exitCode, event.signal);
+      terminalEvent(event);
       dispatch({ type: "event", event });
       if (event.type === "fsRequest") {
         // Inside the session folder: served at once. Outside: the user decides (card below).
@@ -105,17 +127,61 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
       .then((h) => {
         started = h;
         if (disposed) void h.stop().catch(() => undefined);
-        else handle.current = h;
+        else {
+          handle.current = h;
+          setLiveHandle(h);
+        }
       })
       .catch((e: unknown) => !disposed && dispatch({ type: "failed", message: String(e) }));
-    return () => {
+    stopAgent.current = () => {
       disposed = true;
       handle.current = null;
+      setLiveHandle(null);
       void started?.stop().catch(() => undefined);
     };
-    // The panel's agent, profile and folder are fixed.
+  };
+
+  // A new conversation: one agent process for the panel's lifetime. From the history: the
+  // transcript, read only; the agent starts only when the user resumes the conversation.
+  useEffect(() => {
+    let disposed = false;
+    if (params.historyId != null) {
+      sessionsClient
+        .read(params.historyId)
+        .then((text) => {
+          if (disposed) return;
+          const actions = transcriptActions(text);
+          transcriptTerminalEvents(actions).forEach(terminalEvent);
+          actions.forEach(dispatch);
+          dispatch({ type: "historyLoaded" });
+        })
+        .catch((e: unknown) => !disposed && setHistoryError(String(e)))
+        .finally(() => !disposed && setHistoryLoading(false));
+    } else {
+      connect();
+    }
+    return () => {
+      disposed = true;
+      stopAgent.current?.();
+      stopAgent.current = null;
+    };
+    // The panel's agent, profile, folder and history entry are fixed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const sessionId = state.sessionId ?? params.acpSessionId ?? null;
+  const resume = () => {
+    if (!sessionId || params.historyId == null) return;
+    dispatch({ type: "resumed" });
+    connect({ sessionId, historyId: params.historyId });
+  };
+
+  /** Opens one of the agent's saved sessions in this panel (the agent replays it). */
+  const openAgentSession = (id: string) => {
+    setShowSessions(false);
+    dispatch({ type: "reset" });
+    run((h) => h.loadSession(id));
+  };
 
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
@@ -190,12 +256,37 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
             {usage}
           </span>
         )}
+        {state.abilities.list && state.status === "ready" && liveHandle && (
+          <button
+            type="button"
+            title="Rozmowy zapisane przez agenta w tym folderze"
+            aria-expanded={showSessions}
+            onClick={() => setShowSessions((v) => !v)}
+            className="shrink-0 rounded px-1 text-lf-muted hover:bg-lf-hover hover:text-lf-fg"
+          >
+            <span className="codicon codicon-history align-middle" aria-hidden /> Rozmowy agenta
+          </button>
+        )}
         <span role="status" className={`shrink-0 ${state.status === "error" ? "text-lf-danger" : "text-lf-muted"}`}>
-          {STATUS[state.status]}
+          {historyLoading ? "Wczytywanie historii…" : STATUS[state.status]}
         </span>
       </header>
+      {showSessions && liveHandle && (
+        <AgentSessions
+          handle={liveHandle}
+          currentId={state.sessionId}
+          canDelete={state.abilities.delete}
+          onOpen={openAgentSession}
+          onClose={() => setShowSessions(false)}
+        />
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto px-3 py-2" aria-label="Rozmowa" role="log">
+        {historyError && (
+          <p role="alert" className="mb-2 rounded border border-lf-danger/50 p-2 text-lf-danger">
+            Nie udało się wczytać rozmowy: {historyError}
+          </p>
+        )}
         {state.items.length === 0 && state.status === "ready" && (
           <p className="text-lf-subtle">
             Napisz, co agent ma zrobić.{state.commands.length > 0 && " Wpisz „/”, aby zobaczyć komendy agenta."}
@@ -385,28 +476,57 @@ function Chat({ params, api }: IDockviewPanelProps<AgentChatParams>) {
         </details>
       )}
 
-      <SessionControls
-        modes={state.modes}
-        options={state.configOptions}
-        disabled={state.status !== "ready"}
-        onMode={(modeId) => {
-          dispatch({ type: "modeChosen", modeId });
-          run((h) => h.setMode(modeId));
-        }}
-        onOption={(configId, value) => {
-          dispatch({ type: "optionChosen", configId, value });
-          run((h) => h.setConfigOption(configId, value));
-        }}
-      />
-      <PromptBox
-        commands={state.commands}
-        disabled={state.status === "exited" || state.status === "starting"}
-        canSend={state.status === "ready"}
-        busy={state.status === "busy"}
-        placeholder={state.status === "ready" ? "Wiadomość (Enter – wyślij, Shift+Enter – nowa linia, / – komendy)" : ""}
-        onSend={send}
-        onStop={() => run((h) => h.cancel())}
-      />
+      {state.status === "history" ? (
+        <HistoryBar canResume={canContinue(state.abilities) && !!sessionId && !!agent?.acp} agentKnown={!!agent?.acp} onResume={resume} />
+      ) : (
+        <>
+          <SessionControls
+            modes={state.modes}
+            options={state.configOptions}
+            disabled={state.status !== "ready"}
+            onMode={(modeId) => {
+              dispatch({ type: "modeChosen", modeId });
+              run((h) => h.setMode(modeId));
+            }}
+            onOption={(configId, value) => {
+              dispatch({ type: "optionChosen", configId, value });
+              run((h) => h.setConfigOption(configId, value));
+            }}
+          />
+          <PromptBox
+            commands={state.commands}
+            disabled={state.status === "exited" || state.status === "starting"}
+            canSend={state.status === "ready"}
+            busy={state.status === "busy"}
+            placeholder={state.status === "ready" ? "Wiadomość (Enter – wyślij, Shift+Enter – nowa linia, / – komendy)" : ""}
+            onSend={send}
+            onStop={() => run((h) => h.cancel())}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Below a conversation from the history: continue it, or why it cannot be continued. */
+function HistoryBar({ canResume, agentKnown, onResume }: { canResume: boolean; agentKnown: boolean; onResume: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-t border-lf-border px-3 py-2" aria-label="Rozmowa z historii">
+      <span className="codicon codicon-history text-lf-muted" aria-hidden />
+      {canResume ? (
+        <>
+          <span className="min-w-0 flex-1 text-lf-muted">Rozmowa z historii (tylko do odczytu).</span>
+          <button type="button" onClick={onResume} className="shrink-0 rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg hover:opacity-90">
+            Wznów rozmowę
+          </button>
+        </>
+      ) : (
+        <span className="min-w-0 flex-1 text-lf-muted">
+          {agentKnown
+            ? "Agent nie pozwala wznawiać rozmów – to tylko podgląd historii."
+            : "Tego agenta nie ma w katalogu albo nie ma trybu rozmowy – to tylko podgląd historii."}
+        </span>
+      )}
     </div>
   );
 }

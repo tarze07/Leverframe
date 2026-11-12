@@ -53,9 +53,9 @@ describe("Leverframe", () => {
 
     // The session is still running: its recording must already be searchable.
     await showView("Sesje");
-    await app.click('[role="tab"]', "Nagrania");
+    await app.click('[role="tab"]', "Historia");
     await app.exec(
-      "const i=document.querySelector('input[placeholder^=\"Szukaj w wyjściu\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'refactor'); i.dispatchEvent(new Event('input',{bubbles:true}));",
+      "const i=document.querySelector('input[placeholder^=\"Szukaj w nagraniach\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'refactor'); i.dispatchEvent(new Event('input',{bubbles:true}));",
     );
     await app.waitFor("return document.querySelector('ul[aria-label=\"Sesje\"] mark')?.innerText.toLowerCase() === 'refactor'", 15_000);
   });
@@ -387,5 +387,43 @@ describe("Leverframe", () => {
     // Full size in the terminal panel.
     await app.click(`${output} button`, "Otwórz jako terminal");
     await app.waitFor(`return [...document.querySelectorAll('section[aria-label="Panel terminala"] .xterm-rows')].some(r => r.textContent.includes('hello-from-agent'))`);
+  });
+
+  it("finds an ACP conversation in the history by a word from the answer and resumes it", async () => {
+    // End the conversation of the previous tests (closing its tab stops the agent).
+    await app.exec(`[...document.querySelectorAll('.dv-tab')].filter(t => t.textContent.includes('rozmowa')).forEach(t => t.querySelector('.dv-default-tab-action')?.click())`);
+    await app.waitFor("return !document.querySelector('[data-testid=agent-chat]')");
+
+    await showView("Sesje");
+    await app.click('[role="tab"]', "Historia");
+    await app.exec(
+      "const s=document.querySelector('select[aria-label=\"Rodzaj\"]'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,'acp'); s.dispatchEvent(new Event('change',{bubbles:true}));",
+    );
+    await app.exec(
+      "const i=document.querySelector('input[placeholder^=\"Szukaj w nagraniach\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'zgoda'); i.dispatchEvent(new Event('input',{bubbles:true}));",
+    );
+    const row = 'li[aria-label^="Rozmowa Claude Code"]';
+    await app.waitFor(`return document.querySelector('${row} mark')?.textContent.toLowerCase() === 'zgoda'`, 20_000);
+    assert.match(await app.exec(`return document.querySelector('${row}').textContent`), /Witaj z e2e/, "titled with the first message");
+    assert.equal(await app.exec("return document.querySelectorAll('li[aria-label^=\"Nagranie\"]').length"), 0, "recordings filtered out");
+    await app.click(`${row} button`, "Claude Code");
+
+    // Read only, as the conversation ended.
+    const chat = "[data-testid=agent-chat]";
+    const log = () => app.exec(`return document.querySelector('${chat} [role=log]').textContent`);
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Historia'`, 20_000);
+    assert.match(await log(), /Echo: Witaj z e2e[\s\S]*zgoda: allow/);
+    assert.equal(await app.exec(`return document.querySelectorAll('${chat} textarea[aria-label="Wiadomość do agenta"]').length`), 0);
+
+    // Resumed: the agent loads its session (its replay is not shown twice) and the talk goes on.
+    await app.click(`${chat} [aria-label="Rozmowa z historii"] button`, "Wznów rozmowę");
+    await app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 30_000);
+    const text = await log();
+    assert.match(text, /Rozmowa wznowiona\./);
+    assert.equal(text.split("Echo: Witaj z e2e").length, 2, text);
+    assert.ok(!text.includes("Napraw testy"), "the agent's replay is hidden");
+    await app.waitFor(`const t = document.querySelector('${chat} textarea[aria-label="Wiadomość do agenta"]'); t.focus(); return document.activeElement === t`);
+    await app.type(`dalej po przerwie${KEY.enter}`);
+    await app.waitFor(`return document.querySelector('${chat} [role=log]').textContent.includes('Echo: dalej po przerwie')`);
   });
 });
