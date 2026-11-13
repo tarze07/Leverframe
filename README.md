@@ -15,6 +15,7 @@ Instalatory są w zakładce [Releases](https://github.com/tarze07/Leverframe/rel
 | Windows bez instalacji | `Leverframe_<wersja>_x64-portable.zip` – rozpakuj i uruchom `Leverframe.exe` |
 | Debian / Ubuntu | `Leverframe_<wersja>_amd64.deb` (`sudo apt install ./plik.deb`) |
 | Fedora / openSUSE | `Leverframe-<wersja>-1.x86_64.rpm` (`sudo dnf install ./plik.rpm`) |
+| Arch Linux (i pochodne, np. Manjaro, EndeavourOS) | `leverframe-<wersja>-1-x86_64.pkg.tar.zst` (`sudo pacman -U ./plik.pkg.tar.zst` – doinstaluje WebKitGTK i GTK) |
 | Inne dystrybucje Linuksa | `Leverframe_<wersja>_amd64.AppImage` (`chmod +x`, potem uruchom) |
 
 Wersja przenośna (ZIP) niczego nie instaluje – wymaga tylko WebView2, które jest w Windows 11 i aktualnych Windows 10; szczegóły w pliku `CZYTAJ-MNIE.txt` w archiwum. Ustawienia trzyma w profilu użytkownika, więc wersja przenośna i instalowana dzielą je ze sobą.
@@ -144,9 +145,9 @@ Sam interfejs (bez backendu Rust) w przeglądarce: `npm run dev`, potem <http://
    git tag v0.7.0 && git push origin v0.7.0
    ```
 
-Workflow `.github/workflows/release.yml` zbuduje instalatory na Windows i Linux i opublikuje wydanie. Wersje z sufiksem (`-alpha.1`, `-beta.2`) są oznaczane jako pre-release.
+Workflow `.github/workflows/release.yml` zbuduje instalatory na Windows i Linux, z pakietu `.deb` zrobi paczkę dla Arch Linux (`packaging/arch`; w kontenerze Arch jest instalowana na próbę z zależnościami) i opublikuje wydanie. Wersje z sufiksem (`-alpha.1`, `-beta.2`) są oznaczane jako pre-release.
 
-Aby ponownie zbudować i dograć instalatory do istniejącego wydania, uruchom workflow ręcznie: **Actions → Release → Run workflow** i podaj tag (np. `v0.1.0-alpha.1`). Istniejące wydanie zostanie użyte ponownie. Wydanie jest publikowane dopiero wtedy, gdy ma wszystkie instalatory (`.exe`, `.deb`, `.AppImage`).
+Aby ponownie zbudować i dograć instalatory do istniejącego wydania, uruchom workflow ręcznie: **Actions → Release → Run workflow** i podaj tag (np. `v0.1.0-alpha.1`). Istniejące wydanie zostanie użyte ponownie. Opcja **arch_only** dodaje do istniejącego wydania tylko paczkę dla Arch Linux, bez przebudowywania pozostałych. Wydanie jest publikowane dopiero wtedy, gdy ma wszystkie instalatory (`.exe`, `.deb`, `.AppImage`, `.pkg.tar.zst`, a dla wersji bez sufiksu także `.msi` i `.rpm`).
 
 ## Struktura
 

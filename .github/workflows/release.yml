@@ -4,6 +4,7 @@ name: Release
 # Versions with a suffix (-alpha.1, -beta.2, …) are published as pre-releases.
 # The workflow can also be started by hand for an existing tag (Actions → Release → Run workflow),
 # e.g. to rebuild and re-upload the installers of a release; an existing release is reused.
+# With "arch_only", the run only adds the Arch Linux package (made from the release's .deb).
 on:
   push:
     tags: ["v*"]
@@ -13,6 +14,11 @@ on:
         description: "Existing tag to release, e.g. v0.1.0-alpha.1"
         required: true
         type: string
+      arch_only:
+        description: "Only add the Arch Linux package to the existing release (from its .deb)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -59,6 +65,7 @@ jobs:
   build:
     name: Build (${{ matrix.platform }})
     needs: create-release
+    if: ${{ !inputs.arch_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -110,9 +117,45 @@ jobs:
         # By release id: a draft release cannot be found by its tag.
         run: bash release-tools/scripts/upload-release-asset.sh "$RELEASE_ID" dist-portable/*.zip
 
+  # The same binary as the .deb, as a pacman package with Arch's dependency names. Installed
+  # with its dependencies and checked before it is uploaded.
+  arch:
+    name: Package for Arch Linux
+    needs: [create-release, build]
+    if: ${{ !cancelled() && needs.create-release.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git github-cli
+      - uses: actions/checkout@v5
+        with:
+          path: release-tools
+          sparse-checkout: |
+            scripts
+            packaging
+      - name: Download the release's .deb
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: |
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --jq '.[] | select(.name | endswith("_amd64.deb")) | .id')
+          [ -n "$id" ] || { echo "::error::No .deb in the release"; exit 1; }
+          gh api -H "Accept: application/octet-stream" "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" > leverframe.deb
+      - name: Build the package
+        run: bash release-tools/packaging/arch/make-package.sh leverframe.deb "$TAG" dist-arch
+      - name: Install it and check its libraries
+        run: bash release-tools/packaging/arch/check-package.sh dist-arch/*.pkg.tar.zst
+      - name: Upload the package to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: bash release-tools/scripts/upload-release-asset.sh "$RELEASE_ID" dist-arch/*.pkg.tar.zst
+
   publish:
     name: Publish release
-    needs: [create-release, build]
+    needs: [create-release, build, arch]
+    if: ${{ !cancelled() && needs.create-release.result == 'success' && needs.arch.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check that installers were uploaded, then publish
@@ -123,7 +166,7 @@ jobs:
           assets=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" --jq '.[].name')
           echo "Assets:"; echo "$assets"
           # .msi and .rpm only exist for versions without a suffix (they reject e.g. "-alpha.1").
-          patterns='_x64-setup\.exe$ _x64-portable\.zip$ _amd64\.deb$ _amd64\.AppImage$'
+          patterns='_x64-setup\.exe$ _x64-portable\.zip$ _amd64\.deb$ _amd64\.AppImage$ -x86_64\.pkg\.tar\.zst$'
           case "${TAG#v}" in *-*) ;; *) patterns="$patterns _x64_en-US\.msi$ \.x86_64\.rpm$" ;; esac
           for pattern in $patterns; do
             if ! echo "$assets" | grep -Eq "$pattern"; then

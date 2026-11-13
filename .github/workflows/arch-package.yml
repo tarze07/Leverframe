@@ -1,0 +1,37 @@
+name: Arch package
+
+# Checks the Arch Linux packaging (packaging/arch) whenever it or the release workflow changes:
+# the latest release's .deb is turned into a pacman package, installed with its dependencies
+# and its libraries checked – what the release workflow does for a new release.
+on:
+  push:
+    paths: ["packaging/arch/**", ".github/workflows/arch-package.yml", ".github/workflows/release.yml"]
+  pull_request:
+    paths: ["packaging/arch/**", ".github/workflows/arch-package.yml", ".github/workflows/release.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build and install (latest release's .deb)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 20
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git github-cli
+      - uses: actions/checkout@v5
+      - name: Download the latest release's .deb
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # gh's own --jq: the container has no jq.
+          tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.assets[] | select(.name | endswith("_amd64.deb")) | .id')
+          gh api -H "Accept: application/octet-stream" "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" > leverframe.deb
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - name: Build the package
+        run: bash packaging/arch/make-package.sh leverframe.deb "$TAG" dist-arch
+      - name: Install it and check its libraries
+        run: bash packaging/arch/check-package.sh dist-arch/*.pkg.tar.zst
