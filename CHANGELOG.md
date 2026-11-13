@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Paczka dla Arch Linux** w wydaniach: `leverframe-<wersja>-1-x86_64.pkg.tar.zst` (`sudo pacman -U ./plik.pkg.tar.zst`). To ta sama binarka co w `.deb`, z zależnościami Arch (WebKitGTK 4.1, GTK 3); workflow wydania instaluje ją na próbę w kontenerze Arch i sprawdza biblioteki. Do istniejącego wydania można ją dodać ręcznym uruchomieniem workflow z opcją `arch_only`.
+
 ## [0.7.0] – 2026-11-13
 
 Widok „Rozmowy”, w którym zamknięcie karty nie kończy już rozmowy z agentem, oraz sprawdzenie trybu rozmowy z prawdziwymi agentami ([#42](https://github.com/tarze07/Leverframe/issues/42)). Zamyka etapy epiku ACP ([#35](https://github.com/tarze07/Leverframe/issues/35)).
