@@ -4,7 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
-Sprawdzenie trybu rozmowy z prawdziwymi agentami ([#42](https://github.com/tarze07/Leverframe/issues/42)).
+## [0.7.0] – 2026-11-13
+
+Widok „Rozmowy”, w którym zamknięcie karty nie kończy już rozmowy z agentem, oraz sprawdzenie trybu rozmowy z prawdziwymi agentami ([#42](https://github.com/tarze07/Leverframe/issues/42)). Zamyka etapy epiku ACP ([#35](https://github.com/tarze07/Leverframe/issues/35)).
 
 ### Dodane
 - README: wymagania adapterów (Node.js), logowanie w Codex, Gemini i Claude, tryby Claude (*Auto* / *Manual*), ograniczenia w WSL i SSH.
@@ -139,6 +141,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.7.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.4.0
