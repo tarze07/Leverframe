@@ -169,7 +169,7 @@ jobs:
           patterns='_x64-setup\.exe$ _x64-portable\.zip$ _amd64\.deb$ _amd64\.AppImage$ -x86_64\.pkg\.tar\.zst$'
           case "${TAG#v}" in *-*) ;; *) patterns="$patterns _x64_en-US\.msi$ \.x86_64\.rpm$" ;; esac
           for pattern in $patterns; do
-            if ! echo "$assets" | grep -Eq "$pattern"; then
+            if ! echo "$assets" | grep -Eq -e "$pattern"; then
               echo "::error::Missing installer matching $pattern"
               exit 1
             fi
