@@ -26,9 +26,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/${GITHUB_REPOSITORY}/releases/latest" > release.json
-          tag=$(jq -r .tag_name release.json)
-          id=$(jq -r '.assets[] | select(.name | endswith("_amd64.deb")) | .id' release.json)
+          # gh's own --jq: the container has no jq.
+          tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.assets[] | select(.name | endswith("_amd64.deb")) | .id')
           gh api -H "Accept: application/octet-stream" "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" > leverframe.deb
           echo "TAG=$tag" >> "$GITHUB_ENV"
       - name: Build the package
