@@ -11,4 +11,5 @@ if [ -n "$missing" ]; then
 fi
 test -f /usr/share/applications/Leverframe.desktop
 test -f /usr/share/icons/hicolor/128x128/apps/leverframe.png
+test -f /usr/share/licenses/leverframe/LICENSE
 echo "OK: all libraries found"

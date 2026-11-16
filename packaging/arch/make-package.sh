@@ -14,8 +14,12 @@ pkgver="${version//-/_}"
 [[ "$pkgver" =~ ^[0-9][0-9A-Za-z._]*$ ]] || { echo "::error::Invalid version: $version" >&2; exit 1; }
 
 work=$(mktemp -d)
+license="$here/../../LICENSE"
 cp "$deb" "$work/leverframe.deb"
-sed -e "s/@PKGVER@/${pkgver}/" -e "s/@SHA256@/$(sha256sum "$deb" | cut -d' ' -f1)/" \
+cp "$license" "$work/LICENSE"
+sed -e "s/@PKGVER@/${pkgver}/" \
+  -e "s/@SHA256@/$(sha256sum "$deb" | cut -d' ' -f1)/" \
+  -e "s/@LICENSE_SHA256@/$(sha256sum "$license" | cut -d' ' -f1)/" \
   "$here/PKGBUILD.in" > "$work/PKGBUILD"
 
 # Dependencies are checked when the package is installed, not here (nothing is compiled).
