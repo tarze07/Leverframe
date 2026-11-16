@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- Początek obsługi kontenerów Docker ([#60](https://github.com/tarze07/Leverframe/issues/60), etap D1 – [#63](https://github.com/tarze07/Leverframe/issues/63)): Leverframe wykrywa Dockera (wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień) i odczytuje obrazy, kontenery, wolumeny oraz szczegóły kontenera (montowania). Ustawienie **Program Docker** (`dockerPath`). Widok „Kontenery” – w kolejnym etapie.
+
 ## [0.7.1] – 2026-11-16
 
 Paczka dla Arch Linux i licencja MIT.

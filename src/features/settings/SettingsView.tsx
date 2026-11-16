@@ -49,6 +49,8 @@ export function SettingsView() {
   const lightId = useId();
   const positionId = useId();
   const autoSaveId = useId();
+  const dockerId = useId();
+  const dockerPath = useSettingsStore((s) => (typeof s.values.dockerPath === "string" ? s.values.dockerPath : ""));
   const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
   const confirmCommands = useSettingsStore((s) => s.values.acpConfirmCommands !== false);
 
@@ -162,6 +164,20 @@ export function SettingsView() {
             </option>
           ))}
         </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={dockerId} className="text-xs font-semibold text-lf-fg">
+          Program Docker
+        </label>
+        <input
+          id={dockerId}
+          key={dockerPath}
+          defaultValue={dockerPath}
+          placeholder="docker"
+          onBlur={(e) => e.target.value.trim() !== dockerPath && void save("dockerPath", e.target.value.trim())}
+          className={`${inputClass} font-mono`}
+        />
+        <span className="text-[11px] text-lf-subtle">Puste: docker z PATH. Podaj pełną ścieżkę, jeśli Leverframe go nie znajduje.</span>
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={fontId} className="text-xs font-semibold text-lf-fg">

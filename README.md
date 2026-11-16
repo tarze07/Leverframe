@@ -93,7 +93,7 @@ Plik `settings.json` (paleta poleceń → „Otwórz settings.json”) – zmian
 }
 ```
 
-`theme`: identyfikator motywu albo `system` (wtedy motyw wybierają `darkTheme` i `lightTheme` według ustawień systemu). Motywy ciemne: `dark`, `dark-midnight` (Północ), `dark-graphite` (Grafit), `dark-forest` (Las), `dark-plum` (Śliwka), `dark-contrast` (Wysoki kontrast); jasne: `light`, `light-paper` (Papier), `light-sky` (Błękit), `light-mint` (Mięta), `light-mist` (Mgła). Motyw zmienia też kolory terminala i edytora; szybko wybierzesz go w palecie poleceń („Motyw: …”). W `keybindings` identyfikatory poleceń (np. `palette.open`, `files.quickOpen`, `terminal.new`, `view.toggleSidebar`) przypisuje się do skrótów; `null` wyłącza skrót domyślny. Własnych agentów CLI dodaje się w `agents.json` w tym samym folderze.
+`theme`: identyfikator motywu albo `system` (wtedy motyw wybierają `darkTheme` i `lightTheme` według ustawień systemu). Motywy ciemne: `dark`, `dark-midnight` (Północ), `dark-graphite` (Grafit), `dark-forest` (Las), `dark-plum` (Śliwka), `dark-contrast` (Wysoki kontrast); jasne: `light`, `light-paper` (Papier), `light-sky` (Błękit), `light-mint` (Mięta), `light-mist` (Mgła). Motyw zmienia też kolory terminala i edytora; szybko wybierzesz go w palecie poleceń („Motyw: …”). W `keybindings` identyfikatory poleceń (np. `palette.open`, `files.quickOpen`, `terminal.new`, `view.toggleSidebar`) przypisuje się do skrótów; `null` wyłącza skrót domyślny. Własnych agentów CLI dodaje się w `agents.json` w tym samym folderze. `dockerPath`: ścieżka programu `docker` dla obsługi kontenerów (domyślnie `docker` z PATH; [docs/DOCKER.md](docs/DOCKER.md)).
 
 ## Bezpieczeństwo
 

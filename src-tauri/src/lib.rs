@@ -2,11 +2,14 @@
 
 pub mod acp;
 pub mod agents;
+pub mod docker;
 pub mod fs;
 pub mod profiles;
 pub mod pty;
 pub mod sessions;
 pub mod settings;
+#[cfg(test)]
+mod test_support;
 
 use tauri::{Emitter, Manager, RunEvent};
 
@@ -84,6 +87,11 @@ pub fn run() {
             acp::commands::acp_set_mode,
             acp::commands::acp_set_config_option,
             acp::commands::acp_stop,
+            docker::commands::docker_info,
+            docker::commands::docker_images,
+            docker::commands::docker_containers,
+            docker::commands::docker_volumes,
+            docker::commands::docker_inspect,
             acp::commands::acp_list_sessions,
             acp::commands::acp_load_session,
             acp::commands::acp_delete_session,

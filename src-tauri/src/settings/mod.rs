@@ -304,6 +304,11 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
         ("acpConfirmCommands", Value::Bool(_)) => Ok(()),
         ("acpConfirmCommands", _) => Err("acpConfirmCommands: true lub false".into()),
         ("autoSave", _) => Err("autoSave: \"off\", \"afterDelay\" lub \"onFocusChange\"".into()),
+        // Path of the docker CLI; empty: `docker` from PATH.
+        ("dockerPath", Value::String(s)) if s.len() <= 500 && !s.contains(['\n', '\r', '\0']) => {
+            Ok(())
+        }
+        ("dockerPath", _) => Err("dockerPath: ścieżka programu docker (do 500 znaków)".into()),
         ("fontFamily", Value::String(s)) if !s.trim().is_empty() && s.len() <= 200 => Ok(()),
         ("fontFamily", _) => Err("fontFamily: niepusty tekst do 200 znaków".into()),
         ("fontSize", Value::Number(n)) if n.as_u64().is_some_and(|v| (8..=32).contains(&v)) => {
@@ -369,6 +374,10 @@ mod settings_command_tests {
         assert!(validate_setting("acpConfirmCommands", &json!("no")).is_err());
         assert!(validate_setting("autoSave", &json!("always")).is_err());
         assert!(validate_setting("autoSave", &json!(true)).is_err());
+        assert!(validate_setting("dockerPath", &json!("/usr/local/bin/docker")).is_ok());
+        assert!(validate_setting("dockerPath", &json!("")).is_ok());
+        assert!(validate_setting("dockerPath", &json!("docker\n--help")).is_err());
+        assert!(validate_setting("dockerPath", &json!(1)).is_err());
         assert!(validate_setting("lightTheme", &json!("")).is_err());
         assert!(validate_setting("fontSize", &json!(14)).is_ok());
         assert!(validate_setting("fontSize", &json!(64)).is_err());
