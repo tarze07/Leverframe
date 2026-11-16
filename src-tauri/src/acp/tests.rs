@@ -60,22 +60,7 @@ impl Collector {
 }
 
 fn fake_agent() -> PathBuf {
-    // Examples are built into target/<profile>/examples. The test binary is somewhere below
-    // target/<profile> – in deps/ up to Cargo 1.99, in build/<package>/<hash>/out/ with the
-    // build-dir layout of 1.100 – so the nearest ancestor with the example wins.
-    let name = format!("fake_acp_agent{}", std::env::consts::EXE_SUFFIX);
-    let exe = std::env::current_exe().unwrap();
-    let found = exe
-        .ancestors()
-        .skip(1)
-        .map(|dir| dir.join("examples").join(&name))
-        .find(|p| p.exists());
-    found.unwrap_or_else(|| {
-        panic!(
-            "{name} is missing next to {}: plain `cargo test` builds it; with a test name filter or `--lib`, run `cargo build --example fake_acp_agent` first",
-            exe.display()
-        )
-    })
+    crate::test_support::example("fake_acp_agent")
 }
 
 fn temp_dir(name: &str) -> PathBuf {
