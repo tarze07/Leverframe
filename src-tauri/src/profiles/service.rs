@@ -34,7 +34,17 @@ pub struct ProfileService {
 
 impl ProfileService {
     pub fn new(config_dir: &Path) -> Self {
-        Self::with_detector(config_dir, detect_all)
+        let settings = SettingsStore::new(config_dir);
+        Self::with_detector(config_dir, move || {
+            let mut all = detect_all();
+            all.extend(crate::docker::commands::docker(&settings).detect_profiles());
+            all
+        })
+    }
+
+    /// Settings of the profiles (e.g. the docker program of container profiles).
+    pub fn settings(&self) -> &SettingsStore {
+        &self.settings
     }
 
     pub fn with_detector(
@@ -187,6 +197,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: None,
+            container: None,
             source: ProfileSource::Detected,
         }
     }

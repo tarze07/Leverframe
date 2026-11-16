@@ -19,6 +19,8 @@ const VOLUMES: &str = r#"{"Availability":"N/A","Driver":"local","Group":"N/A","L
 {"Availability":"N/A","Driver":"local","Group":"N/A","Labels":"","Links":"N/A","Mountpoint":"/var/lib/docker/volumes/pgdata/_data","Name":"pgdata","Scope":"local","Size":"N/A","Status":"N/A"}"#;
 const INSPECT: &str = r#"[{"Id":"c0ffee1234567890abcdef","Name":"/sklep-agenci","State":{"Status":"running","Running":true},"Config":{"Image":"leverframe-agents:0.8.0","User":"agent","WorkingDir":"/workspace","Labels":{"io.leverframe.agents":"1","org.opencontainers.image.title":"Leverframe agents"}},"Mounts":[{"Type":"bind","Source":"/home/me/sklep","Destination":"/workspace","Mode":"","RW":true,"Propagation":"rprivate"},{"Type":"volume","Name":"leverframe-sklep-home","Source":"/var/lib/docker/volumes/leverframe-sklep-home/_data","Destination":"/home/agent","Driver":"local","Mode":"z","RW":true,"Propagation":""}]}]"#;
 
+const INSPECT_STOPPED: &str = r#"[{"Id":"deadbeef0001","Name":"/baza","State":{"Status":"exited","Running":false},"Config":{"Image":"postgres:17","User":"","WorkingDir":"","Labels":{}},"Mounts":[{"Type":"volume","Name":"pgdata","Source":"/var/lib/docker/volumes/pgdata/_data","Destination":"/var/lib/postgresql/data","RW":true}]}]"#;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Ok(log) = std::env::var("FAKE_DOCKER_LOG") {
@@ -67,6 +69,7 @@ fn main() {
         ["inspect", "--type", "container", "--", "sklep-agenci" | "c0ffee123456"] => {
             INSPECT.to_string()
         }
+        ["inspect", "--type", "container", "--", "baza"] => INSPECT_STOPPED.to_string(),
         ["inspect", "--type", "container", "--", _] => {
             println!("[]");
             eprintln!("Error: No such container: {}", words[4]);

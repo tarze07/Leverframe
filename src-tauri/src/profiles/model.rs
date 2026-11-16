@@ -9,6 +9,8 @@ pub enum ProfileKind {
     Wsl,
     Ssh,
     Powershell,
+    /// A Docker container (`docker exec`): docs/DOCKER.md, § 4.2.
+    Container,
 }
 
 /// Where a profile comes from: detected on this machine (read-only) or defined by the user (`profiles.json`).
@@ -71,6 +73,60 @@ impl SshTarget {
     }
 }
 
+/// The container of a container profile and how its terminal starts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ContainerTarget {
+    /// Container name (or id).
+    pub name: String,
+    /// User in the container (`None`: the image's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    /// Shell to start (`None`, or missing in the container: bash, else sh).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+    /// Working directory in the container (`None`: `/workspace`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<String>,
+    /// Start the container when its terminal opens (otherwise the user is asked).
+    #[serde(default = "yes")]
+    pub auto_start: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl ContainerTarget {
+    pub fn validate(&self) -> Result<(), String> {
+        if !crate::docker::actions::valid_name(&self.name) {
+            return Err("Nieprawidłowa nazwa kontenera".into());
+        }
+        if let Some(user) = &self.user {
+            if user.is_empty()
+                || user.starts_with('-')
+                || !user
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "_.:-".contains(c))
+            {
+                return Err("Nieprawidłowy użytkownik kontenera".into());
+            }
+        }
+        for (what, path) in [("Powłoka", &self.shell), ("Katalog roboczy", &self.workdir)] {
+            if let Some(p) = path {
+                if !p.starts_with('/')
+                    || p.contains(|c: char| c.is_whitespace() || c == '\'' || c == '\0')
+                {
+                    return Err(format!(
+                        "{what}: ścieżka bezwzględna w kontenerze, np. /bin/bash"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
@@ -93,6 +149,8 @@ pub struct Profile {
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SshTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerTarget>,
     #[serde(default)]
     pub source: ProfileSource,
 }
@@ -108,6 +166,15 @@ pub struct LaunchSpec {
 
 impl Profile {
     pub fn launch_spec(&self) -> LaunchSpec {
+        if let (Some(target), ProfileKind::Container) = (&self.container, self.kind) {
+            // The program is the docker CLI from the settings (`resolve_request` puts it in).
+            return LaunchSpec {
+                program: "docker".into(),
+                args: crate::docker::terminal::terminal_args(target, None),
+                env: Vec::new(),
+                cwd: None,
+            };
+        }
         let (program, args) = match (&self.ssh, self.kind) {
             (Some(target), ProfileKind::Ssh) => (
                 if self.command.is_empty() {
@@ -159,6 +226,20 @@ impl Profile {
             if self.name.is_empty() {
                 self.name = target.host.clone();
             }
+        } else if let Some(target) = &mut self.container {
+            target.name = target.name.trim().to_string();
+            for field in [&mut target.user, &mut target.shell, &mut target.workdir] {
+                *field = field
+                    .take()
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty());
+            }
+            target.validate()?;
+            self.kind = ProfileKind::Container;
+            self.description = Some(format!("kontener {}", target.name));
+            if self.name.is_empty() {
+                self.name = target.name.clone();
+            }
         } else if self.command.trim().is_empty() {
             return Err("Podaj program do uruchomienia".into());
         }
@@ -185,6 +266,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: Some(target),
+            container: None,
             source: ProfileSource::User,
         }
     }
@@ -275,5 +357,45 @@ mod tests {
         assert_eq!(json["kind"], "ssh");
         assert_eq!(json["source"], "user");
         assert_eq!(json["ssh"]["identityFile"], "k");
+    }
+
+    #[test]
+    fn container_profiles_are_checked_and_start_docker_exec() {
+        let mut p: Profile = serde_json::from_str(
+            r#"{"id":"","name":" ","kind":"local","container":{"name":" sklep-agenci ","user":"","shell":" /bin/zsh "}}"#,
+        )
+        .unwrap();
+        p.validate_user().unwrap();
+        assert_eq!(p.kind, ProfileKind::Container);
+        assert_eq!(p.name, "sklep-agenci");
+        assert_eq!(p.description.as_deref(), Some("kontener sklep-agenci"));
+        let target = p.container.clone().unwrap();
+        assert_eq!(
+            (target.user, target.shell.as_deref()),
+            (None, Some("/bin/zsh"))
+        );
+        assert!(target.auto_start, "starts the container by default");
+        let spec = p.launch_spec();
+        assert_eq!(spec.program, "docker");
+        assert_eq!(spec.args[..2], ["exec", "-it"]);
+        assert!(spec.args.contains(&"sklep-agenci".to_string()));
+
+        let bad = |json: &str| {
+            let mut p: Profile = serde_json::from_str(json).unwrap();
+            p.validate_user().unwrap_err()
+        };
+        assert!(
+            bad(r#"{"id":"","name":"x","kind":"container","container":{"name":"-x"}}"#)
+                .contains("kontenera")
+        );
+        assert!(bad(r#"{"id":"","name":"x","kind":"container","container":{"name":"c","user":"--privileged"}}"#).contains("użytkownik"));
+        assert!(bad(
+            r#"{"id":"","name":"x","kind":"container","container":{"name":"c","shell":"bash"}}"#
+        )
+        .contains("Powłoka"));
+        assert!(bad(
+            r#"{"id":"","name":"x","kind":"container","container":{"name":"c","workdir":"/a b"}}"#
+        )
+        .contains("Katalog roboczy"));
     }
 }

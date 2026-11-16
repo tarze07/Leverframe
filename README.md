@@ -81,7 +81,13 @@ Widok **Kontenery** (ikona paczki na pasku aktywności) pokazuje Dockera (Docker
 - **Nowy kontener** z obrazu: nazwa, folder projektu (domyślnie folder z panelu „Agenci”) montowany jako `/workspace`, wolumen na katalog domowy (logowania agentów przetrwają usunięcie kontenera), opcjonalnie zmienne, porty, sieć i użytkownik. Przed utworzeniem widać dokładne polecenie `docker run` i ostrzeżenia (np. o montowaniu całego katalogu domowego; zmienne środowiskowe są widoczne w `docker inspect`).
 - **Kontenery**: uruchom, zatrzymaj, uruchom ponownie, logi (na żywo w karcie w obszarze edytora), usuń (po potwierdzeniu; wolumeny zostają, wolumen Leverframe usuwa się osobno).
 
-Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host`. Terminal i agenci w kontenerze – w kolejnych etapach ([docs/DOCKER.md](docs/DOCKER.md)).
+**Terminal w kontenerze**: przycisk z ikoną terminala przy kontenerze otwiera powłokę w nim (`docker exec`, powłoka profilu albo bash, a bez niego sh) – w folderze projektu, jeśli jest zamontowany (np. `/workspace/src`), inaczej w `/workspace`. Kontenery utworzone w Leverframe są od razu profilami terminala (grupa **Kontenery** w „Terminalach” i wybór profilu w „Agentach”); inne dodaje się przyciskiem „Dodaj jako profil” albo w „Terminalach” (ikona paczki). Zatrzymany kontener uruchamia się przy otwarciu terminala (w profilu własnym z `"autoStart": false` – po pytaniu). Profil kontenera w `profiles.json`:
+
+```json
+{ "profiles": [{ "id": "", "name": "sklep", "kind": "container", "container": { "name": "sklep-agenci", "user": "agent", "shell": "/bin/zsh", "workdir": "/workspace", "autoStart": true } }] }
+```
+
+Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host`. Agenci w kontenerze (wykrywanie, tryb rozmowy) – w kolejnych etapach ([docs/DOCKER.md](docs/DOCKER.md)).
 
 ## Układ okna
 

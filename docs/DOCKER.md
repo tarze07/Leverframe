@@ -4,8 +4,10 @@ Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
 z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
-**Stan:** D1 (#63) i D2 (#64) zrobione – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy
-kontener i zmiany, `jobs.rs` – pull / build / logs z postępem), widok „Kontenery”, ustawienie `dockerPath`.
+**Stan:** D1 (#63), D2 (#64) i D3 (#65) zrobione – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` –
+nowy kontener i zmiany, `jobs.rs` – pull / build / logs z postępem, `terminal.rs` – terminal profilu kontenera,
+ścieżki z montowań, profile wykryte), widok „Kontenery”, profil `kind: "container"`, ustawienie `dockerPath`.
+Profile wykryte obejmują też zatrzymane kontenery z etykietą (ich terminal je uruchamia).
 
 **Decyzje (16.11.2026):** na początek **tylko Docker** (Podman później); obraz z agentami jako **`Dockerfile` w
 repozytorium**, bez publikacji w rejestrze (GHCR). Pozostałe pytania z § 9 – na razie według tej propozycji.

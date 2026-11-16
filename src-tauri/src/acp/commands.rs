@@ -132,6 +132,12 @@ pub fn acp_start(
         ),
         None => profiles.default_profile(),
     };
+    if profile.as_ref().map(|p| p.kind) == Some(ProfileKind::Container) {
+        return Err(
+            "Tryb rozmowy w kontenerze nie jest jeszcze dostępny – uruchom agenta w terminalu kontenera (przycisk Terminal)."
+                .into(),
+        );
+    }
     let remote_dir = profile
         .as_ref()
         .filter(|p| p.kind == ProfileKind::Ssh)
@@ -347,6 +353,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: None,
+            container: None,
             source: ProfileSource::Detected,
         };
         assert_eq!(fs_kind(None), Some(FsKind::Local));

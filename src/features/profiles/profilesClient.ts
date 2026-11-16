@@ -1,6 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type ProfileKind = "local" | "wsl" | "ssh" | "powershell";
+export type ProfileKind = "local" | "wsl" | "ssh" | "powershell" | "container";
+
+/** The container of a container profile (`docker exec`). */
+export interface ContainerTarget {
+  name: string;
+  user?: string;
+  shell?: string;
+  workdir?: string;
+  /** Start the container when its terminal opens (otherwise the user is asked). */
+  autoStart: boolean;
+}
 
 export interface SshTarget {
   host: string;
@@ -20,6 +30,7 @@ export interface Profile {
   icon?: string;
   description?: string;
   ssh?: SshTarget;
+  container?: ContainerTarget;
   source: "detected" | "user";
 }
 
@@ -36,13 +47,14 @@ export const profilesClient = {
   setDefault: (id: string) => invoke<void>("profile_set_default", { id }),
 };
 
-export const KIND_ORDER: ProfileKind[] = ["local", "wsl", "ssh", "powershell"];
+export const KIND_ORDER: ProfileKind[] = ["local", "wsl", "ssh", "powershell", "container"];
 
 export const KIND_LABELS: Record<ProfileKind, string> = {
   local: "Lokalne",
   wsl: "WSL",
   ssh: "SSH",
   powershell: "PowerShell",
+  container: "Kontenery",
 };
 
 /** Codicon for a profile. */
@@ -54,6 +66,8 @@ export function profileIcon(p: Pick<Profile, "kind" | "name" | "id" | "icon">): 
       return "terminal-powershell";
     case "ssh":
       return "remote";
+    case "container":
+      return "package";
     case "wsl":
       if (name.includes("ubuntu")) return "terminal-ubuntu";
       if (name.includes("debian")) return "terminal-debian";

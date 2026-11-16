@@ -217,6 +217,22 @@ pub fn detect_command(profile: &Profile) -> DetectCommand {
                 kind: ScriptKind::Posix,
             }
         }
+        ProfileKind::Container => {
+            // `docker exec -i <container> sh -s`: the script on stdin, in the container.
+            let name = profile
+                .container
+                .as_ref()
+                .map(|c| c.name.clone())
+                .unwrap_or_default();
+            DetectCommand {
+                program: spec.program,
+                args: ["exec", "-i", "--", &name, "sh", "-s"]
+                    .map(String::from)
+                    .to_vec(),
+                env: vec![],
+                kind: ScriptKind::Posix,
+            }
+        }
         ProfileKind::Local if is_windows_shell(&spec.program) => DetectCommand {
             // cmd.exe shares the Windows PATH, so PowerShell can do the lookup.
             program: "powershell.exe".into(),
@@ -351,6 +367,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: None,
+            container: None,
             source: ProfileSource::Detected,
         }
     }

@@ -545,6 +545,29 @@ fn pulls_builds_and_follows_logs_as_jobs() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// busybox for the real-Docker tests: pulled only when missing (Docker Hub limits pulls).
+fn ensure_busybox(d: &Docker) -> bool {
+    let present = d.images().is_ok_and(|images| {
+        images
+            .iter()
+            .any(|i| i.repository.as_deref() == Some("busybox") && i.tag.as_deref() == Some("1.36"))
+    });
+    if present {
+        return true;
+    }
+    let pulled = Arc::new(Collector::default());
+    if DockerJobs::default()
+        .start(d, &pull_args("busybox:1.36").unwrap(), pulled.clone())
+        .is_err()
+    {
+        return false;
+    }
+    matches!(
+        pulled.wait(done).last(),
+        Some(JobEvent::Done { ok: true, .. })
+    )
+}
+
 /// The whole cycle on the real Docker (Linux containers): pull, create with the project folder
 /// and a home volume, mounts, stop / start / restart, logs, removal. Skipped without Docker.
 #[test]
@@ -557,15 +580,9 @@ fn real_docker_container_cycle_when_available() {
     }
     let jobs = DockerJobs::default();
     let image = "busybox:1.36";
-    let pulled = Arc::new(Collector::default());
-    jobs.start(&d, &pull_args(image).unwrap(), pulled.clone())
-        .unwrap();
-    match pulled.wait(done).last().unwrap() {
-        JobEvent::Done { ok: true, .. } => {}
-        e => {
-            eprintln!("busybox could not be pulled ({e:?}), skipped");
-            return;
-        }
+    if !ensure_busybox(&d) {
+        eprintln!("busybox could not be pulled, skipped");
+        return;
     }
     let dir = project();
     std::fs::write(dir.join("README.md"), "projekt\n").unwrap();
@@ -633,6 +650,262 @@ fn real_docker_container_cycle_when_available() {
     }));
     cleanup(&d);
     let _ = std::fs::remove_dir_all(dir);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+// ---- D3: terminals in containers ----
+
+use super::terminal::{container_dir, terminal_args};
+use super::ContainerMount;
+use crate::profiles::{ContainerTarget, ProfileKind};
+
+fn bind(source: &str, destination: &str) -> ContainerMount {
+    ContainerMount {
+        kind: "bind".into(),
+        source: source.into(),
+        destination: destination.into(),
+        name: None,
+        read_write: true,
+    }
+}
+
+#[test]
+fn a_container_terminal_is_docker_exec_with_a_shell_fallback() {
+    let target = ContainerTarget {
+        name: "sklep-agenci".into(),
+        auto_start: true,
+        ..Default::default()
+    };
+    let args = terminal_args(&target, None);
+    assert_eq!(
+        args[..10],
+        [
+            "exec",
+            "-it",
+            "-w",
+            "/workspace",
+            "-e",
+            "TERM=xterm-256color",
+            "-e",
+            "COLORTERM=truecolor",
+            "--",
+            "sklep-agenci"
+        ]
+    );
+    assert_eq!(args[10..12], ["sh", "-c"]);
+    assert_eq!(
+        args[12],
+        r#"s='/bin/bash'; [ -x "$s" ] || s=$(command -v bash || command -v sh); exec "$s" -l"#
+    );
+
+    let custom = ContainerTarget {
+        name: "c".into(),
+        user: Some("agent".into()),
+        shell: Some("/usr/bin/zsh".into()),
+        workdir: Some("/srv/app".into()),
+        auto_start: false,
+    };
+    let args = terminal_args(&custom, None);
+    assert_eq!(args[3], "/srv/app");
+    assert_eq!(args[8..10], ["-u", "agent"]);
+    assert!(args.last().unwrap().starts_with("s='/usr/bin/zsh';"));
+    // The project folder in the container wins over the profile's directory.
+    assert_eq!(
+        terminal_args(&custom, Some("/workspace/src"))[3],
+        "/workspace/src"
+    );
+}
+
+#[test]
+fn a_project_folder_is_found_in_the_containers_mounts() {
+    let mounts = [
+        bind("/home/me/sklep", "/workspace"),
+        bind("/home/me/sklep/vendor", "/opt/vendor"),
+        ContainerMount {
+            kind: "volume".into(),
+            ..bind("/var/lib/docker/volumes/x/_data", "/root")
+        },
+    ];
+    let dir = |p: &str| container_dir(&mounts, std::path::Path::new(p));
+    assert_eq!(dir("/home/me/sklep").as_deref(), Some("/workspace"));
+    assert_eq!(
+        dir("/home/me/sklep/src/app/").as_deref(),
+        Some("/workspace/src/app")
+    );
+    assert_eq!(
+        dir("/home/me/sklep/vendor/lib").as_deref(),
+        Some("/opt/vendor/lib"),
+        "the deepest mount"
+    );
+    assert_eq!(
+        dir("/home/me/sklep/a/../b").as_deref(),
+        Some("/workspace/b")
+    );
+    assert_eq!(dir("/home/me/inny"), None, "not mounted");
+    assert_eq!(dir("/home/me/sklepik"), None, "a prefix is not a folder");
+    assert_eq!(
+        dir("/var/lib/docker/volumes/x/_data"),
+        None,
+        "volumes are not this machine's folders"
+    );
+    assert_eq!(
+        container_dir(&[bind("/", "/host")], std::path::Path::new("/etc")).as_deref(),
+        Some("/host/etc")
+    );
+}
+
+#[test]
+fn a_container_is_prepared_and_started_when_allowed() {
+    let log = std::env::temp_dir().join(format!("lf-fake-docker-d3-{}.log", std::process::id()));
+    let d = fake("ok");
+    let target = |name: &str| ContainerTarget {
+        name: name.into(),
+        auto_start: true,
+        ..Default::default()
+    };
+    let calls = logged(&d, &log, |d| {
+        let p = d
+            .prepare(
+                &target("sklep-agenci"),
+                Some(std::path::Path::new("/home/me/sklep/src")),
+                false,
+            )
+            .unwrap();
+        assert!(p.running && !p.started);
+        assert_eq!(p.workdir, "/workspace/src");
+        // Stopped: reported, not started, unless allowed.
+        let p = d.prepare(&target("baza"), None, false).unwrap();
+        assert!(!p.running && !p.started);
+        assert_eq!(p.workdir, "/workspace");
+        let p = d
+            .prepare(
+                &target("baza"),
+                Some(std::path::Path::new("/home/me/sklep")),
+                true,
+            )
+            .unwrap();
+        assert!(p.running && p.started);
+        assert_eq!(
+            p.workdir, "/workspace",
+            "not mounted in this container: the profile's directory"
+        );
+    });
+    let starts: Vec<&String> = calls.iter().filter(|c| c.starts_with("start|")).collect();
+    assert_eq!(starts, ["start|--|baza"]);
+    assert!(matches!(
+        d.prepare(&target("nie-ma"), None, true),
+        Err(DockerError::NoSuchObject(_))
+    ));
+}
+
+#[test]
+fn containers_made_for_leverframe_become_profiles() {
+    let profiles = fake("ok").detect_profiles();
+    assert_eq!(profiles.len(), 1, "only labelled containers");
+    let p = &profiles[0];
+    assert_eq!(
+        (p.id.as_str(), p.name.as_str(), p.kind),
+        (
+            "container:sklep-agenci",
+            "sklep-agenci",
+            ProfileKind::Container
+        )
+    );
+    assert_eq!(p.description.as_deref(), Some("leverframe-agents:0.8.0"));
+    assert!(p.container.as_ref().unwrap().auto_start);
+    assert!(fake("down").detect_profiles().is_empty());
+    assert!(Docker::new("leverframe-no-such-docker-program")
+        .detect_profiles()
+        .is_empty());
+}
+
+/// A terminal in a real container: `pwd` is the project folder, a file made in the container is
+/// on this machine (busybox has no bash: the shell falls back to sh). Skipped without Docker.
+#[cfg(unix)]
+#[test]
+fn real_docker_terminal_when_available() {
+    use crate::pty::{PtyEvents, PtyManager, SpawnOptions};
+    let d = Docker::new("docker");
+    let info = d.info();
+    if !info.running || info.server_os.as_deref() != Some("linux") {
+        eprintln!("Docker with Linux containers not available, skipped");
+        return;
+    }
+    if !ensure_busybox(&d) {
+        eprintln!("busybox could not be pulled, skipped");
+        return;
+    }
+    let dir = project().join(format!("term-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let name = format!("lf-term-{}", std::process::id());
+    let _ = d.remove(&name, true);
+    d.create(&ContainerSpec {
+        image: "busybox:1.36".into(),
+        name: name.clone(),
+        project_dir: Some(dir.to_string_lossy().into_owned()),
+        ..Default::default()
+    })
+    .unwrap();
+    d.stop(&name).unwrap();
+
+    #[derive(Default)]
+    struct Out(Mutex<Vec<u8>>, Mutex<Option<Option<u32>>>);
+    impl PtyEvents for Out {
+        fn data(&self, bytes: Vec<u8>) {
+            self.0.lock().unwrap().extend(bytes);
+        }
+        fn exit(&self, code: Option<u32>) {
+            *self.1.lock().unwrap() = Some(code);
+        }
+    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let target = ContainerTarget {
+            name: name.clone(),
+            auto_start: true,
+            ..Default::default()
+        };
+        let prepared = d.prepare(&target, Some(&dir.join("src")), true).unwrap();
+        assert!(prepared.started);
+        assert_eq!(prepared.workdir, "/workspace/src");
+        let out = Arc::new(Out::default());
+        let ptys = PtyManager::new();
+        let pty = ptys
+            .spawn(
+                SpawnOptions {
+                    program: Some("docker".into()),
+                    args: terminal_args(&target, Some(&prepared.workdir)),
+                    cols: 80,
+                    rows: 24,
+                    ..Default::default()
+                },
+                out.clone(),
+            )
+            .unwrap();
+        ptys.write(
+            pty.id,
+            b"echo LF-$(pwd); echo z-kontenera > ../z.txt; exit 3\n",
+        )
+        .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while out.1.lock().unwrap().is_none() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the terminal did not end"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let text = String::from_utf8_lossy(&out.0.lock().unwrap()).into_owned();
+        assert!(text.contains("LF-/workspace/src"), "{text}");
+        assert_eq!(*out.1.lock().unwrap(), Some(Some(3)));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("z.txt")).unwrap().trim(),
+            "z-kontenera"
+        );
+    }));
+    let _ = d.remove(&name, true);
+    let _ = std::fs::remove_dir_all(&dir);
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }

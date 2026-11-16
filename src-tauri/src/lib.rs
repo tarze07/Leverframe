@@ -104,6 +104,7 @@ pub fn run() {
             docker::commands::docker_build,
             docker::commands::docker_logs,
             docker::commands::docker_cancel,
+            docker::commands::docker_prepare_container,
             acp::commands::acp_list_sessions,
             acp::commands::acp_load_session,
             acp::commands::acp_delete_session,

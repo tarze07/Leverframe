@@ -8,6 +8,7 @@ mod cli;
 pub mod commands;
 pub mod jobs;
 mod model;
+pub mod terminal;
 
 pub use actions::{ContainerSpec, CreatePlan};
 pub use cli::{Docker, DockerError};
