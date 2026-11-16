@@ -167,6 +167,11 @@ export function AgentsView() {
               Folder z dysku Windows albo z WSL (w oknie wyboru: Linux → dystrybucja).
             </span>
           )}
+          {profile?.kind === "container" && (
+            <span className="text-[11px] text-lf-subtle">
+              Agent startuje w tym folderze w kontenerze, jeśli kontener go montuje (np. jako /workspace); inaczej w /workspace.
+            </span>
+          )}
           {dirError && <span className="text-[11px] text-lf-danger">{dirError}</span>}
         </div>
       )}
@@ -188,6 +193,7 @@ export function AgentsView() {
             agent={a}
             status={statusFor(a.id)}
             checking={state?.status === "loading"}
+            inContainer={profile?.kind === "container"}
             onLaunch={(split) =>
               openAgent(a.id, {
                 profileId: effectiveProfileId,
@@ -268,6 +274,8 @@ function AgentCard(props: {
   agent: Agent;
   status?: AgentStatus;
   checking: boolean;
+  /** Agents in a Docker container: the conversation mode there comes later. */
+  inContainer?: boolean;
   onLaunch: (split?: "right") => void;
   onChat: () => void;
 }) {
@@ -336,7 +344,7 @@ function AgentCard(props: {
         >
           <span className="codicon codicon-split-horizontal" aria-hidden />
         </button>
-        {acp && (
+        {acp && !props.inContainer && (
           <button
             type="button"
             onClick={props.onChat}
@@ -384,6 +392,7 @@ function AgentCard(props: {
           ))}
           <p className="text-[11px] text-lf-subtle">
             Wklej komendę w terminalu tego profilu. Leverframe niczego nie instaluje sam.
+            {props.inContainer && " W kontenerze program zniknie razem z nim – trwale zainstaluj agenta w obrazie (plik Dockerfile)."}
             {acpMissing && acp.install.length > 0 && " Programy trybu rozmowy instaluje npm – potrzebny jest Node.js (dla Claude: 22 lub nowszy)."}
           </p>
           {agent.docsUrl && (

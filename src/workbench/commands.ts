@@ -209,8 +209,9 @@ export function shellQuote(s: string): string {
 export function profileForSource(source: string): string | undefined {
   const { profiles, defaultProfileId } = useProfilesStore.getState();
   if (source.startsWith("wsl:")) return profiles.some((p) => p.id === source) ? source : undefined;
-  if (source.startsWith("ssh:")) {
-    const id = source.slice(4);
+  for (const prefix of ["ssh:", "docker:"]) {
+    if (!source.startsWith(prefix)) continue;
+    const id = source.slice(prefix.length);
     return profiles.some((p) => p.id === id) ? id : undefined;
   }
   const def = profiles.find((p) => p.id === defaultProfileId);
@@ -224,8 +225,8 @@ export function profileForSource(source: string): string | undefined {
  */
 export function openCommandInTerminal(options: { command: string; source: string; cwd?: string | null; submit?: boolean; title?: string }) {
   const profileId = profileForSource(options.source);
-  // On an SSH host the folder is remote: change into it as part of the command.
-  const remote = options.source.startsWith("ssh:");
+  // On an SSH host or in a container the folder is not this machine's: change into it as part of the command.
+  const remote = options.source.startsWith("ssh:") || options.source.startsWith("docker:");
   const command = remote && options.cwd ? `cd ${shellQuote(options.cwd)} && ${options.command}` : options.command;
   const id = openTerminal({
     params: { profileId, cwd: remote ? undefined : (options.cwd ?? undefined), initialCommand: command, submitInitial: options.submit ?? false },

@@ -167,9 +167,13 @@ pub struct LaunchSpec {
 impl Profile {
     pub fn launch_spec(&self) -> LaunchSpec {
         if let (Some(target), ProfileKind::Container) = (&self.container, self.kind) {
-            // The program is the docker CLI from the settings (`resolve_request` puts it in).
+            // The docker CLI: `ProfileService` puts the program from the settings in `command`.
             return LaunchSpec {
-                program: "docker".into(),
+                program: if self.command.is_empty() {
+                    "docker".into()
+                } else {
+                    self.command.clone()
+                },
                 args: crate::docker::terminal::terminal_args(target, None),
                 env: Vec::new(),
                 cwd: None,

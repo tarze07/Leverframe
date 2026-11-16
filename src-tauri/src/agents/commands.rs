@@ -30,11 +30,25 @@ pub async fn agents_detect(
         .resolve(&profile_id)
         .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
     let defs = agents.catalog().agents;
+    let docker = crate::docker::commands::docker(profiles.settings());
     // Detection runs processes (and may wait on the network for SSH): keep it off the async workers.
-    let result =
-        tauri::async_runtime::spawn_blocking(move || detect(&profile, &defs, DETECT_TIMEOUT))
-            .await
-            .map_err(|e| e.to_string())??;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        // A container must run to be checked: started when its profile starts it by itself.
+        if let Some(target) = &profile.container {
+            let prepared = docker
+                .prepare(target, None, target.auto_start)
+                .map_err(String::from)?;
+            if !prepared.running {
+                return Err(format!(
+                    "Kontener {} jest zatrzymany – uruchom go w widoku „Kontenery”, aby sprawdzić agentów.",
+                    target.name
+                ));
+            }
+        }
+        detect(&profile, &defs, DETECT_TIMEOUT)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     agents.store(&profile_id, result.clone());
     Ok(result)
 }

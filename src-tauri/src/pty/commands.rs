@@ -218,11 +218,6 @@ pub fn resolve_request(
         }
         if let (ProfileKind::Container, Some(target)) = (profile.kind, &profile.container) {
             // `docker exec` in the container; the local folder matters only for the history.
-            opts.program = Some(
-                crate::docker::commands::docker(profiles.settings())
-                    .program()
-                    .to_string(),
-            );
             opts.args =
                 crate::docker::terminal::terminal_args(target, request.container_dir.as_deref());
             opts.cwd = None;

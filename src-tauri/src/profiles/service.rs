@@ -87,6 +87,11 @@ impl ProfileService {
     pub fn all(&self) -> Vec<Profile> {
         let mut all = self.detected();
         all.extend(self.user_profiles());
+        // Container profiles run the docker program from the settings (terminal, detection, logs).
+        let docker = crate::docker::commands::docker(&self.settings);
+        for p in all.iter_mut().filter(|p| p.kind == ProfileKind::Container) {
+            p.command = docker.program().to_string();
+        }
         all
     }
 

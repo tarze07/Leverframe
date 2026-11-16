@@ -910,3 +910,189 @@ fn real_docker_terminal_when_available() {
         std::panic::resume_unwind(e);
     }
 }
+
+// ---- D4: agents in containers ----
+
+#[cfg(unix)]
+mod agents_in_containers {
+    use super::*;
+    use crate::agents::{detect, AgentDef};
+    use crate::profiles::{Profile, ProfileSource};
+    use crate::sessions::logs::SshLogs;
+
+    const CLAUDE_LOG: &str = include_str!("../sessions/logs/fixtures/claude.jsonl");
+    /// The fake container's home is in an environment variable of this process: one test at a time.
+    static HOME_LOCK: Mutex<()> = Mutex::new(());
+
+    fn container_profile(program: &str, container: &str) -> Profile {
+        Profile {
+            id: format!("container:{container}"),
+            name: container.into(),
+            kind: ProfileKind::Container,
+            command: program.into(),
+            args: vec![],
+            env: Default::default(),
+            cwd: None,
+            icon: None,
+            description: None,
+            ssh: None,
+            container: Some(ContainerTarget {
+                name: container.into(),
+                auto_start: true,
+                ..Default::default()
+            }),
+            source: ProfileSource::Detected,
+        }
+    }
+
+    /// The built-in agents and one that surely is not on this machine (by its name).
+    fn catalog() -> Vec<AgentDef> {
+        let test_agent = r#"{ "agents": [{ "id": "lftest", "name": "Agent testowy", "commands": ["lf-test-agent"] }] }"#;
+        crate::agents::load_catalog(crate::agents::BUILTIN_AGENTS_JSON, Some(test_agent)).agents
+    }
+
+    /// The "container" of the fake docker: its home with an agent and a Claude log.
+    fn container_home(test: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let home =
+            std::env::temp_dir().join(format!("lf-fake-container-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        let agent = home.join("bin/lf-test-agent");
+        std::fs::write(&agent, "#!/bin/sh\necho '9.9.9 (agent w kontenerze)'\n").unwrap();
+        std::fs::set_permissions(&agent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let logs = home.join(".claude/projects/-workspace");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(
+            logs.join("5f1c2a9e-1111-4c3b-9d7e-0123456789ab.jsonl"),
+            CLAUDE_LOG,
+        )
+        .unwrap();
+        home
+    }
+
+    fn program() -> String {
+        crate::test_support::example("fake_docker")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn agents_are_detected_in_a_container() {
+        let _lock = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = container_home("detect");
+        std::env::set_var("FAKE_DOCKER_HOME", &home);
+        let profile = container_profile(&program(), "sklep-agenci");
+        let found = detect(&profile, &catalog(), Duration::from_secs(30)).unwrap();
+        let agent = found.iter().find(|a| a.id == "lftest").unwrap();
+        assert!(agent.installed, "{found:?}");
+        assert_eq!(agent.version.as_deref(), Some("9.9.9 (agent w kontenerze)"));
+
+        let stopped = container_profile(&program(), "baza");
+        let err = detect(&stopped, &catalog(), Duration::from_secs(30)).unwrap_err();
+        assert!(err.contains("Brak odpowiedzi z kontenera"), "{err}");
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn agent_logs_are_listed_and_read_in_a_container() {
+        let _lock = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = container_home("logs");
+        std::env::set_var("FAKE_DOCKER_HOME", &home);
+        let logs = SshLogs::default();
+        let profile = container_profile(&program(), "sklep-agenci");
+        let source = "docker:container:sklep-agenci";
+        let list = logs.list(&profile, source).unwrap();
+        assert_eq!(list.len(), 1, "{list:?}");
+        assert_eq!(list[0].source, source);
+        let path = list[0].path.clone();
+        assert!(path
+            .ends_with("/.claude/projects/-workspace/5f1c2a9e-1111-4c3b-9d7e-0123456789ab.jsonl"));
+        let detail = logs.read(&profile, source, &path).unwrap();
+        assert!(!detail.entries.is_empty());
+
+        let err = logs
+            .list(
+                &container_profile(&program(), "baza"),
+                "docker:container:baza",
+            )
+            .unwrap_err();
+        assert!(err.contains("Kontener musi działać"), "{err}");
+        assert!(
+            logs.read(&profile, source, "/root/.claude/inny.jsonl")
+                .is_err(),
+            "only listed logs"
+        );
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    /// An agent and its log in a real container: detected and listed. Skipped without Docker.
+    #[test]
+    fn real_docker_agents_when_available() {
+        let d = Docker::new("docker");
+        let info = d.info();
+        if !info.running || info.server_os.as_deref() != Some("linux") || !ensure_busybox(&d) {
+            eprintln!("Docker with Linux containers not available, skipped");
+            return;
+        }
+        let name = format!("lf-agents-{}", std::process::id());
+        let _ = d.remove(&name, true);
+        d.create(&ContainerSpec {
+            image: "busybox:1.36".into(),
+            name: name.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let sh = |script: &str| {
+                let ok = std::process::Command::new("docker")
+                    .args(["exec", &name, "sh", "-c", script])
+                    .status()
+                    .unwrap()
+                    .success();
+                assert!(ok, "{script}");
+            };
+            sh("mkdir -p /usr/local/bin /root/.claude/projects/-workspace && printf '#!/bin/sh\\necho 1.2.3-claude\\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude");
+            let log = std::env::temp_dir().join(format!("lf-agents-{}.jsonl", std::process::id()));
+            std::fs::write(&log, CLAUDE_LOG).unwrap();
+            let ok = std::process::Command::new("docker")
+                .args([
+                    "cp",
+                    &log.to_string_lossy(),
+                    &format!("{name}:/root/.claude/projects/-workspace/5f1c.jsonl"),
+                ])
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok);
+            let _ = std::fs::remove_file(&log);
+
+            let profile = container_profile("docker", &name);
+            let found = detect(&profile, &catalog(), Duration::from_secs(30)).unwrap();
+            let claude = found.iter().find(|a| a.id == "claude").unwrap();
+            assert!(claude.installed, "{found:?}");
+            assert_eq!(claude.version.as_deref(), Some("1.2.3-claude"));
+
+            let logs = SshLogs::default();
+            let source = format!("docker:container:{name}");
+            let list = logs.list(&profile, &source).unwrap();
+            assert_eq!(list.len(), 1, "{list:?}");
+            assert_eq!(list[0].path, "/root/.claude/projects/-workspace/5f1c.jsonl");
+            assert!(!logs
+                .read(&profile, &source, &list[0].path)
+                .unwrap()
+                .entries
+                .is_empty());
+
+            d.stop(&name).unwrap();
+            assert!(
+                logs.list(&profile, &source).is_err(),
+                "a stopped container is reported"
+            );
+        }));
+        let _ = d.remove(&name, true);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+}
