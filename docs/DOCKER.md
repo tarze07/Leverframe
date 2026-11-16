@@ -2,7 +2,10 @@
 
 Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues/60): jak łączyć się z kontenerem
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
-z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md).
+z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania – zob. § 8.
+
+**Decyzje (16.11.2026):** na początek **tylko Docker** (Podman później); obraz z agentami jako **`Dockerfile` w
+repozytorium**, bez publikacji w rejestrze (GHCR). Pozostałe pytania z § 9 – na razie według tej propozycji.
 
 ## 1. Cel
 
@@ -22,9 +25,10 @@ Poza zakresem pierwszej wersji (do decyzji później, § 9): Docker Compose, `de
 
 - **Docker CLI, nie API.** Leverframe wywołuje polecenie `docker` (z `--format '{{json .}}'`), tak jak dziś
   wywołuje `ssh` i `wsl.exe`. Dzięki temu:
-  - działa każdy silnik zgodny z CLI: Docker Engine, Docker Desktop (Windows / macOS), **Podman** (`podman`
-    albo `podman-docker`), Colima, Rancher Desktop;
-  - działają konteksty Dockera (`docker context`), w tym zdalny Docker przez SSH (`DOCKER_HOST=ssh://host`);
+  - działa Docker Engine i Docker Desktop (Windows / macOS) – to jest zakres pierwszej wersji; inne silniki
+    zgodne z CLI (**Podman**, Colima, Rancher Desktop) można dodać później bez zmiany architektury;
+  - konteksty Dockera (`docker context`, także zdalny Docker przez SSH) działają „przy okazji”, ale w pierwszej
+    wersji nie są testowane ani wybierane w UI;
   - nie dochodzi zależność z runtime’em async (biblioteki Rust do API Dockera, np. `bollard`, wymagają tokio;
     backend Leverframe działa na wątkach – ten sam powód co przy ACP, zob. ACP.md § 4).
 - **Kontener = profil.** Kontener z agentami jest nowym rodzajem profilu (obok lokalnego, WSL, SSH,
@@ -39,8 +43,8 @@ Poza zakresem pierwszej wersji (do decyzji później, § 9): Docker Compose, `de
 ## 3. Jak to wygląda dla użytkownika
 
 1. Widok **Kontenery** (nowa ikona na pasku aktywności) pokazuje silnik (wersja, kontekst), obrazy i kontenery.
-2. **Obraz z agentami**: „Pobierz” (np. `ghcr.io/tarze07/leverframe-agents:latest`, § 6) albo „Zbuduj” z
-   własnego `Dockerfile` – z postępem w panelu.
+2. **Obraz z agentami**: „Zbuduj obraz Leverframe” z `Dockerfile` w repozytorium (§ 6), „Zbuduj” z własnego
+   `Dockerfile` albo „Pobierz” dowolny obraz z rejestru – z postępem w panelu.
 3. **Nowy kontener** z obrazu: nazwa, folder projektu (domyślnie folder z panelu „Agenci”) montowany jako
    `/workspace`, wolumeny na logowania agentów (domyślnie włączone), zmienne środowiskowe, opcjonalnie porty
    i sieć. Leverframe tworzy kontener (`docker run -d … sleep infinity` / `tini`) i od razu **profil** dla niego.
@@ -54,7 +58,7 @@ Poza zakresem pierwszej wersji (do decyzji później, § 9): Docker Compose, `de
 ## 4. Architektura
 
 ```
-React UI ── invoke ──▶ Rust: DockerService ── docker CLI ──▶ silnik (lokalny / Desktop / Podman / zdalny kontekst)
+React UI ── invoke ──▶ Rust: DockerService ── docker CLI ──▶ Docker (Engine / Desktop)
    ▲  widok „Kontenery”,     │  obrazy, kontenery, wolumeny,
    │  profile kontenerów     │  postęp pull/build, logi
    │                         ▼
@@ -65,7 +69,7 @@ React UI ── invoke ──▶ Rust: DockerService ── docker CLI ──▶
 
 ### 4.1 Moduł `src-tauri/src/docker`
 
-- `cli.rs` – wywołanie `docker` (program z ustawień: `docker` albo `podman`; kontekst), parsowanie JSON z
+- `cli.rs` – wywołanie `docker` (ścieżka programu z ustawień; później także `podman`), parsowanie JSON z
   `--format`, błędy po polsku („Docker nie działa – uruchom Docker Desktop”, „brak uprawnień do gniazda”).
 - `service.rs` – `DockerService`: `info()`, `images()`, `containers()`, `volumes()`, `pull(image, postęp)`,
   `build(dir, tag, postęp)`, `create(spec)`, `start/stop/restart/remove(id)`, `logs(id, follow)`,
@@ -84,8 +88,6 @@ React UI ── invoke ──▶ Rust: DockerService ── docker CLI ──▶
   "kind": "container",
   "container": {
     "name": "sklep-agenci",
-    "engine": "docker",
-    "context": null,
     "user": null,
     "shell": "/bin/bash",
     "workdir": "/workspace",
@@ -131,8 +133,8 @@ pytanie przed poleceniem, podgląd wyjścia i limit działają bez zmian.
 
 | Sekcja | Co pokazuje | Działania |
 |---|---|---|
-| Silnik | program (`docker` / `podman`), wersja, kontekst, czy działa | wybór programu i kontekstu; podpowiedź instalacji / uruchomienia |
-| Obrazy | repozytorium:tag, rozmiar, data, czy ma agentów (etykieta `io.leverframe.agents`) | Pobierz (z postępem), Zbuduj z `Dockerfile` (folder, tag), Nowy kontener, Usuń (z pytaniem), Usuń nieużywane |
+| Silnik | wersja Dockera, czy działa | ścieżka programu `docker`; podpowiedź instalacji / uruchomienia (Docker Desktop, Docker Engine) |
+| Obrazy | repozytorium:tag, rozmiar, data, czy ma agentów (etykieta `io.leverframe.agents`) | Zbuduj obraz Leverframe, Zbuduj z `Dockerfile` (folder, tag), Pobierz (z postępem), Nowy kontener, Usuń (z pytaniem), Usuń nieużywane |
 | Kontenery | nazwa, obraz, stan, montowania, profil | Start / Stop / Restart, Terminal, Agenci, Logi kontenera, Dodaj jako profil, Usuń (z pytaniem; opcjonalnie z wolumenami) |
 | Wolumeny | wolumeny Leverframe (logowania agentów) | Usuń (z pytaniem) |
 
@@ -155,9 +157,11 @@ W repozytorium `packaging/docker/agents/Dockerfile`:
   komputerze w Linuksie; na Windows/macOS robi to Docker Desktop);
 - etykieta `io.leverframe.agents=1`, katalog roboczy `/workspace`.
 
-Workflow `docker-agents.yml` buduje obraz i publikuje go w GHCR (`ghcr.io/tarze07/leverframe-agents:<wersja>`
-i `:latest`) – przy zmianach w `packaging/docker/agents` i przy wydaniu. Obraz jest punktem startowym:
-projekty mogą mieć własny `Dockerfile` `FROM` tego obrazu z narzędziami projektu (Python, Rust, …).
+Obraz **nie jest publikowany** w rejestrze (decyzja z 16.11.2026): użytkownik buduje go u siebie przyciskiem
+„Zbuduj obraz Leverframe” (Leverframe ma `Dockerfile` w zasobach aplikacji) albo `docker build` z repozytorium.
+CI buduje go przy zmianach w `packaging/docker/agents`, żeby wykryć zepsuty `Dockerfile`, i nic nie wysyła.
+Obraz jest punktem startowym: projekty mogą mieć własny `Dockerfile` `FROM leverframe-agents` z narzędziami
+projektu (Python, Rust, …). Publikacja w GHCR – do ewentualnej decyzji później.
 
 ## 7. Bezpieczeństwo
 
@@ -177,13 +181,13 @@ projekty mogą mieć własny `Dockerfile` `FROM` tego obrazu z narzędziami proj
 
 | Etap | Zakres | Wynik |
 |---|---|---|
-| **D1** | `DockerService` przez CLI: wykrycie silnika (Docker / Podman, wersja, konteksty), lista obrazów, kontenerów i wolumenów, `inspect`; atrapa CLI `docker` do testów; komunikaty o braku Dockera | Leverframe widzi Dockera i jego zasoby |
+| **D1** | `DockerService` przez CLI: wykrycie Dockera (wersja, czy działa), lista obrazów, kontenerów i wolumenów, `inspect`; atrapa CLI `docker` do testów; komunikaty o braku Dockera | Leverframe widzi Dockera i jego zasoby |
 | **D2** | Widok „Kontenery”: obrazy i kontenery, pobieranie i budowanie z postępem, start / stop / restart / usuń, logi kontenera, formularz „Nowy kontener” (montowanie projektu, wolumeny logowań) | zarządzanie obrazami i kontenerami z aplikacji |
 | **D3** | Profil kontenera (`ProfileKind::Container`): terminal w kontenerze (`docker exec -it`), automatyczny start zatrzymanego kontenera, profile wykryte (etykieta), „Dodaj jako profil” | terminal w kontenerze jednym kliknięciem |
 | **D4** | Agenci w kontenerze: wykrywanie, uruchamianie w terminalu, nagrania sesji, logi agentów z kontenera w „Sesje” | agent w trybie terminalowym w kontenerze |
 | **D5** | Tryb rozmowy w kontenerze: uruchamianie ACP przez `docker exec -i`, `FsKind::Container` (mapowanie montowań), polecenia agenta w PTY kontenera, otwieranie ścieżek w edytorze | rozmowa z agentem w kontenerze, zmiany plików pod kontrolą |
-| **D6** | Obraz z agentami: `packaging/docker/agents/Dockerfile`, workflow publikujący w GHCR, „Pobierz obraz Leverframe” w widoku | gotowy obraz do pobrania |
-| **D7** | Testy E2E na prawdziwym Dockerze (runner ubuntu ma Dockera) z atrapą agenta w obrazie testowym, ręczne sprawdzenie na Docker Desktop (Windows) i Podmanie, dokumentacja, wydanie | wersja z obsługą kontenerów |
+| **D6** | Obraz z agentami: `packaging/docker/agents/Dockerfile` (także w zasobach aplikacji), „Zbuduj obraz Leverframe” w widoku, budowanie obrazu w CI (bez publikacji) | obraz z agentami zbudowany jednym kliknięciem |
+| **D7** | Testy E2E na prawdziwym Dockerze (runner ubuntu ma Dockera) z atrapą agenta w obrazie testowym, ręczne sprawdzenie na Docker Desktop (Windows), dokumentacja, wydanie | wersja z obsługą kontenerów |
 
 Kolejność daje wartość po każdym etapie: po D3 można już pracować w kontenerze w terminalu, po D5 – w trybie
 rozmowy. D6 można zrobić równolegle z D2–D5.
@@ -191,18 +195,19 @@ rozmowy. D6 można zrobić równolegle z D2–D5.
 ## 9. Ryzyka, decyzje i pytania otwarte
 
 - **CLI czy API** – CLI (§ 2). Koszt: parsowanie wyjścia `--format`; zysk: Podman, konteksty, brak tokio.
-- **Podman** – zgodny z CLI, ale `podman` bez demona inaczej obsługuje użytkowników (rootless, `--userns`);
-  testy ręczne w D7.
+- **Podman** – poza pierwszą wersją (decyzja z 16.11.2026). Jest zgodny z CLI, ale bez demona inaczej obsługuje
+  użytkowników (rootless, `--userns`); po D7 osobne zadanie: wybór programu `podman` i testy.
 - **Windows** – Docker Desktop daje `docker.exe` w PATH Windows; Docker w dystrybucji WSL (bez Desktop) to
   profil WSL + `docker` w środku – do obsłużenia przez wybór programu `wsl.exe -d <dystrybucja> docker`.
 - **Uprawnienia plików** w montowaniu na Linuksie (UID kontenera ≠ UID użytkownika) – obraz z UID 1000,
   opcja „użytkownik” w formularzu; do sprawdzenia w D7.
 - **Wydajność montowań** na Windows/macOS (Docker Desktop) – znana wolniejsza praca na dużych projektach;
   w dokumentacji: projekt w WSL dla Windows.
-- Pytania do decyzji przed D2:
-  1. Czy obsługiwać od razu **Podmana**, czy na start tylko Dockera?
+- Pytania:
+  1. ~~Podman od razu?~~ – **nie**, na początek tylko Docker.
   2. Kontener **trwały** (tworzony raz, profil wskazuje kontener) – jak w tej propozycji – czy także
-     **jednorazowy** (`docker run --rm` przy każdym otwarciu terminala z obrazu)?
-  3. Czy publikować **obraz z agentami** w GHCR (D6), czy wystarczy `Dockerfile` w repozytorium?
-  4. Czy **zdalny Docker** (kontekst / `ssh://`) jest potrzebny w pierwszej wersji?
+     **jednorazowy** (`docker run --rm` przy każdym otwarciu terminala z obrazu)? *Na razie: trwały.*
+  3. ~~Publikacja obrazu w GHCR?~~ – **nie**, `Dockerfile` w repozytorium.
+  4. Czy **zdalny Docker** (kontekst / `ssh://`) jest potrzebny w pierwszej wersji? *Na razie: nie.*
   5. Później: **Docker Compose** i **`devcontainer.json`** (VS Code Dev Containers) – czy są w planach?
+     *Na razie poza zakresem.*
