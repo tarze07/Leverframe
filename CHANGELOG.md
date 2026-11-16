@@ -4,11 +4,13 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
-### Dodane
-- Licencja **MIT** ([LICENSE](LICENSE)). Jest też w `Cargo.toml` i `package.json` (stąd trafia do metadanych instalatorów), w paczce dla Arch Linux (`license=MIT` i plik w `/usr/share/licenses/leverframe`) i w archiwum portable (`LICENSE.txt`).
+## [0.7.1] – 2026-11-16
+
+Paczka dla Arch Linux i licencja MIT.
 
 ### Dodane
-- **Paczka dla Arch Linux** w wydaniach: `leverframe-<wersja>-1-x86_64.pkg.tar.zst` (`sudo pacman -U ./plik.pkg.tar.zst`). To ta sama binarka co w `.deb`, z zależnościami Arch (WebKitGTK 4.1, GTK 3); workflow wydania instaluje ją na próbę w kontenerze Arch i sprawdza biblioteki. Do istniejącego wydania można ją dodać ręcznym uruchomieniem workflow z opcją `arch_only`.
+- **Paczka dla Arch Linux** w wydaniach: `leverframe-<wersja>-1-x86_64.pkg.tar.zst` (`sudo pacman -U ./plik.pkg.tar.zst`). To ta sama binarka co w `.deb`, z zależnościami Arch (WebKitGTK 4.1, GTK 3); workflow wydania instaluje ją na próbę w kontenerze Arch i sprawdza biblioteki. Do istniejącego wydania można ją dodać ręcznym uruchomieniem workflow z opcją `arch_only` (tak dodano ją do 0.7.0).
+- Licencja **MIT** ([LICENSE](LICENSE)). Jest też w `Cargo.toml` i `package.json` (stąd trafia do metadanych instalatorów), w paczce dla Arch Linux (`license=MIT` i plik w `/usr/share/licenses/leverframe`) i w archiwum portable (`LICENSE.txt`).
 
 ## [0.7.0] – 2026-11-13
 
@@ -147,6 +149,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.7.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.1
 [0.7.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.5.0

@@ -142,7 +142,7 @@ Sam interfejs (bez backendu Rust) w przeglądarce: `npm run dev`, potem <http://
 3. Po scaleniu do `main` utwórz i wypchnij tag `v<wersja>`:
 
    ```bash
-   git tag v0.7.0 && git push origin v0.7.0
+   git tag v0.7.1 && git push origin v0.7.1
    ```
 
 Workflow `.github/workflows/release.yml` zbuduje instalatory na Windows i Linux, z pakietu `.deb` zrobi paczkę dla Arch Linux (`packaging/arch`; w kontenerze Arch jest instalowana na próbę z zależnościami) i opublikuje wydanie. Wersje z sufiksem (`-alpha.1`, `-beta.2`) są oznaczane jako pre-release.
