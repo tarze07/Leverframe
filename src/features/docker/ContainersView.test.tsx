@@ -6,6 +6,12 @@ vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 const pickFolder = vi.fn(async () => "/home/me/projekty/Sklep Główny" as string | null);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: () => pickFolder() }));
 const openContainerLogs = vi.fn();
+const openContainerTerminal = vi.fn<(...a: unknown[]) => Promise<string>>(async () => "terminal-1");
+const addContainerProfile = vi.fn<(...a: unknown[]) => Promise<object>>(async () => ({}));
+vi.mock("./containerTerminal", () => ({
+  openContainerTerminal: (...a: unknown[]) => openContainerTerminal(...a),
+  addContainerProfile: (...a: unknown[]) => addContainerProfile(...a),
+}));
 vi.mock("../../workbench/commands", () => ({ openContainerLogs: (...a: unknown[]) => openContainerLogs(...a) }));
 
 const running: DockerInfo = { installed: true, running: true, clientVersion: "29.1.0", serverVersion: "29.1.0", serverOs: "linux", message: null };
@@ -99,9 +105,14 @@ describe("ContainersView", () => {
     await waitFor(() => expect(client.containerAction).toHaveBeenCalledWith("sklep-agenci", "restart"));
     fireEvent.click(within(sklep).getByLabelText("Logi sklep-agenci"));
     expect(openContainerLogs).toHaveBeenCalledWith("sklep-agenci");
+    fireEvent.click(within(sklep).getByLabelText("Terminal w sklep-agenci"));
+    expect(openContainerTerminal).toHaveBeenCalledWith("sklep-agenci", { leverframe: true, projectDir: "/home/me/sklep" });
+    expect(within(sklep).queryByLabelText("Dodaj sklep-agenci jako profil")).toBeNull(); // detected profile
 
     const baza = await row("Kontener baza");
     expect(baza).toHaveTextContent("zatrzymany");
+    fireEvent.click(within(baza).getByLabelText("Dodaj baza jako profil"));
+    expect(addContainerProfile).toHaveBeenCalledWith("baza");
     fireEvent.click(within(baza).getByLabelText("Uruchom baza"));
     await waitFor(() => expect(client.containerAction).toHaveBeenCalledWith("baza", "start"));
 

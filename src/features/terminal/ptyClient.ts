@@ -9,6 +9,8 @@ export interface PtySpawnRequest {
   program?: string;
   args?: string[];
   cwd?: string;
+  /** Container profiles: the working directory in the container (from `prepareContainerTerminal`). */
+  containerDir?: string;
   env?: [string, string][];
   cols: number;
   rows: number;

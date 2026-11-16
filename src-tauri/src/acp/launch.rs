@@ -197,6 +197,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: None,
+            container: None,
             source: ProfileSource::Detected,
         }
     }

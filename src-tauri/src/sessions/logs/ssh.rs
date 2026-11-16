@@ -236,6 +236,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: None,
+            container: None,
             source: crate::profiles::ProfileSource::User,
         };
         let err = ssh

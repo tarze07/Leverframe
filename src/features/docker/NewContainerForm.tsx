@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAgentsStore } from "../../store/agents";
 import { useDockerStore } from "../../store/docker";
+import { useProfilesStore } from "../../store/profiles";
 import { folderName } from "../agents/agentsClient";
 import { dockerClient, type ContainerSpec, type CreatePlan, type DockerImage, imageName } from "./dockerClient";
 
@@ -101,7 +102,11 @@ export function NewContainerForm({ image, onDone }: { image: DockerImage; onDone
     setCreating(true);
     const ok = await act(name, () => dockerClient.create(spec));
     setCreating(false);
-    if (ok) onDone();
+    if (ok) {
+      // The new container is a detected profile: "Terminale" and "Agenci" list it.
+      void useProfilesStore.getState().refresh();
+      onDone();
+    }
   };
 
   const needsAccept = (plan?.warnings.length ?? 0) > 0;

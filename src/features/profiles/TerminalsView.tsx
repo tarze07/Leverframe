@@ -6,9 +6,10 @@ import { useTerminalStore, type RunningTerminal } from "../../store/terminal";
 import { useAgentsStore } from "../../store/agents";
 import { closeTerminal, openProfile, revealTerminal } from "../../workbench/commands";
 import { groupProfiles, KIND_LABELS, profileIcon, type Profile, type ProfileKind } from "./profilesClient";
+import { ContainerProfilePicker } from "../docker/ContainerProfilePicker";
 import { SshProfileForm } from "./SshProfileForm";
 
-type Mode = { type: "list" } | { type: "edit"; profile?: Profile };
+type Mode = { type: "list" } | { type: "edit"; profile?: Profile } | { type: "container" };
 
 /** Sidebar view: running terminals and available terminal profiles. */
 export function TerminalsView() {
@@ -29,6 +30,8 @@ export function TerminalsView() {
     );
   }
 
+  if (mode.type === "container") return <ContainerProfilePicker onDone={() => setMode({ type: "list" })} />;
+
   if (mode.type === "edit") {
     return (
       <SshProfileForm
@@ -48,6 +51,7 @@ export function TerminalsView() {
     <div className="flex flex-col pb-4">
       <div className="flex items-center gap-1 px-3 pb-1">
         <ToolbarButton icon="add" label="Dodaj host SSH" onClick={() => setMode({ type: "edit" })} />
+        <ToolbarButton icon="package" label="Dodaj kontener Docker" onClick={() => setMode({ type: "container" })} />
         <ToolbarButton
           icon="refresh"
           label="Wykryj profile ponownie"

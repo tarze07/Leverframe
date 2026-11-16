@@ -15,6 +15,7 @@ import { isTauri } from "../../lib/tauri";
 import { useTerminalStore } from "../../store/terminal";
 import { useUiStore } from "../../store/ui";
 import { programTitle, spawnPty, type PtyHandle } from "./ptyClient";
+import { prepareContainerTerminal } from "../docker/containerTerminal";
 import { terminalKeyAction } from "./keys";
 import { isAppShortcut } from "../../lib/useKeybindings";
 import { terminalRegistry } from "./registry";
@@ -185,34 +186,39 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       clear: () => term.clear(),
     });
 
-    spawnPty(
-      {
-        profileId: params?.profileId,
-        agentId: params?.agentId,
-        program,
-        args: params?.args,
-        cwd: params?.cwd,
-        cols: term.cols,
-        rows: term.rows,
-      },
-      {
-        onData: (bytes) => {
-          term.write(bytes);
-          const text = decoder.decode(bytes, { stream: true });
-          if (starter) starter.onOutput(text);
-          else earlyOutput = (earlyOutput + text).slice(-500);
-        },
-        onExit: (code) => {
-          if (disposed) return;
-          useTerminalStore.getState().update(api.id, { exited: true });
-          if (code === 0) {
-            api.close(); // normal `exit` closes the tab, like VS Code
-          } else {
-            term.write(`\r\n\x1b[90m[Proces zakończony${code === null ? "" : `, kod ${code}`}]\x1b[0m\r\n`);
-          }
-        },
-      },
-    )
+    // Container profiles: the container runs and the project folder is known in it first.
+    prepareContainerTerminal({
+      profileId: params?.profileId,
+      agentId: params?.agentId,
+      program,
+      args: params?.args,
+      cwd: params?.cwd,
+      cols: term.cols,
+      rows: term.rows,
+    })
+      .then(({ request, note }) => {
+        if (note && !disposed) term.write(`\x1b[90m[${note}]\x1b[0m\r\n`);
+        return spawnPty(
+          { ...request, cols: term.cols, rows: term.rows },
+          {
+            onData: (bytes) => {
+              term.write(bytes);
+              const text = decoder.decode(bytes, { stream: true });
+              if (starter) starter.onOutput(text);
+              else earlyOutput = (earlyOutput + text).slice(-500);
+            },
+            onExit: (code) => {
+              if (disposed) return;
+              useTerminalStore.getState().update(api.id, { exited: true });
+              if (code === 0) {
+                api.close(); // normal `exit` closes the tab, like VS Code
+              } else {
+                term.write(`\r\n\x1b[90m[Proces zakończony${code === null ? "" : `, kod ${code}`}]\x1b[0m\r\n`);
+              }
+            },
+          },
+        );
+      })
       .then((handle) => {
         if (disposed) {
           void handle.kill();

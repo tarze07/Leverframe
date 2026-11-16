@@ -65,6 +65,10 @@ pub struct PtySpawnRequest {
     #[serde(default)]
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
+    /// Container profiles: the working directory in the container (from
+    /// `docker_prepare_container`; the project folder when it is mounted).
+    #[serde(default)]
+    pub container_dir: Option<String>,
     #[serde(default)]
     pub env: Vec<(String, String)>,
     pub cols: u16,
@@ -212,6 +216,17 @@ pub fn resolve_request(
                 opts.args = wsl_with_cwd(opts.args, dir);
             }
         }
+        if let (ProfileKind::Container, Some(target)) = (profile.kind, &profile.container) {
+            // `docker exec` in the container; the local folder matters only for the history.
+            opts.program = Some(
+                crate::docker::commands::docker(profiles.settings())
+                    .program()
+                    .to_string(),
+            );
+            opts.args =
+                crate::docker::terminal::terminal_args(target, request.container_dir.as_deref());
+            opts.cwd = None;
+        }
     }
     let agent_command =
         agent.map(|a| agents.command_for(&a, profile.as_ref().map(|p| p.id.as_str())));
@@ -343,6 +358,7 @@ mod tests {
                 icon: None,
                 description: None,
                 ssh: None,
+                container: None,
                 source: ProfileSource::Detected,
             }]
         })
@@ -481,6 +497,7 @@ mod tests {
             icon: None,
             description: None,
             ssh: None,
+            container: None,
             source: ProfileSource::User,
         };
         let resolved = |agent: Option<&str>| Resolved {
@@ -528,5 +545,51 @@ mod tests {
             Some(PathBuf::from("/local/project")),
             "local profiles unchanged"
         );
+    }
+
+    #[test]
+    fn container_profiles_run_docker_exec_in_the_project_folder() {
+        let dir = std::env::temp_dir().join(format!("lf-pty-container-{}", std::process::id()));
+        let svc = ProfileService::with_detector(&dir, || {
+            vec![Profile {
+                id: "container:sklep".into(),
+                name: "sklep".into(),
+                kind: ProfileKind::Container,
+                command: String::new(),
+                args: vec![],
+                env: BTreeMap::new(),
+                cwd: None,
+                icon: None,
+                description: None,
+                ssh: None,
+                container: Some(crate::profiles::ContainerTarget {
+                    name: "sklep".into(),
+                    auto_start: true,
+                    ..Default::default()
+                }),
+                source: ProfileSource::Detected,
+            }]
+        });
+        svc.settings()
+            .set(
+                "dockerPath",
+                serde_json::Value::String("/opt/docker/bin/docker".into()),
+            )
+            .unwrap();
+        let mut req = request();
+        req.profile_id = Some("container:sklep".into());
+        req.cwd = Some(PathBuf::from("/home/me/sklep/src"));
+        req.container_dir = Some("/workspace/src".into());
+        let r = resolve_request(req, &svc, &agents()).unwrap();
+        assert_eq!(r.opts.program.as_deref(), Some("/opt/docker/bin/docker"));
+        assert_eq!(r.opts.args[..4], ["exec", "-it", "-w", "/workspace/src"]);
+        assert!(r.opts.args.contains(&"sklep".to_string()));
+        assert_eq!(r.opts.cwd, None, "the local folder is not the terminal's");
+        assert_eq!(
+            r.opts.meta.cwd.as_deref(),
+            Some("/home/me/sklep/src"),
+            "but it is the session's"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

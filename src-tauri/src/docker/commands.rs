@@ -8,10 +8,12 @@ use tauri::State;
 
 use super::actions::plan;
 use super::jobs::{build_args, logs_args, pull_args};
+use super::terminal::PreparedContainer;
 use super::{
     ContainerDetails, ContainerSpec, CreatePlan, Docker, DockerContainer, DockerImage, DockerInfo,
     DockerJobs, DockerVolume, JobEvent, JobEvents,
 };
+use crate::profiles::ProfileService;
 use crate::settings::SettingsStore;
 
 pub const DOCKER_PATH_KEY: &str = "dockerPath";
@@ -204,4 +206,35 @@ pub fn docker_logs(
 #[tauri::command]
 pub fn docker_cancel(jobs: State<'_, DockerJobs>, job: u64) {
     jobs.cancel(job);
+}
+
+/// Before a container profile's terminal opens: the container's state (started when `start`, or
+/// when the profile starts it by itself) and the project folder's path in the container.
+#[tauri::command]
+pub async fn docker_prepare_container(
+    settings: State<'_, SettingsStore>,
+    profiles: State<'_, ProfileService>,
+    profile_id: String,
+    cwd: Option<String>,
+    start: bool,
+) -> Result<PreparedContainer, String> {
+    let profile = profiles
+        .resolve(&profile_id)
+        .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
+    let target = profile
+        .container
+        .ok_or_else(|| format!("{} nie jest profilem kontenera", profile.name))?;
+    let d = docker(&settings);
+    blocking(move || {
+        let start = start || target.auto_start;
+        d.prepare(&target, cwd.as_deref().map(std::path::Path::new), start)
+            .map_err(|e| match e {
+                super::DockerError::NoSuchObject(_) => format!(
+                    "Kontenera {} już nie ma. Utwórz go ponownie w widoku Kontenery albo usuń profil.",
+                    target.name
+                ),
+                e => e.to_string(),
+            })
+    })
+    .await
 }

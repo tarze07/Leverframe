@@ -5,6 +5,8 @@ import { isTauri } from "../../lib/tauri";
 import { useAgentsStore } from "../../store/agents";
 import { useDockerStore, type DockerJob } from "../../store/docker";
 import { openContainerLogs } from "../../workbench/commands";
+import { useProfilesStore } from "../../store/profiles";
+import { addContainerProfile, openContainerTerminal } from "./containerTerminal";
 import { dockerClient, imageName, type DockerContainer, type DockerImage } from "./dockerClient";
 import { NewContainerForm, fieldClass } from "./NewContainerForm";
 
@@ -279,6 +281,12 @@ const STATE: Record<string, string> = {
 function ContainerRow({ container: c }: { container: DockerContainer }) {
   const { act, busy } = useDockerStore();
   const [confirm, setConfirm] = useState(false);
+  const projectDir = useAgentsStore((s) => s.projectDir);
+  const hasProfile = useProfilesStore((s) => s.profiles.some((p) => p.kind === "container" && p.container?.name === c.name));
+  const terminal = () =>
+    void openContainerTerminal(c.name, { leverframe: c.leverframe, projectDir }).catch((e: unknown) =>
+      useDockerStore.setState({ error: String(e) }),
+    );
   const running = c.state === "running";
   const working = !!busy[c.name];
   const run = (action: "start" | "stop" | "restart") => void act(c.name, () => dockerClient.containerAction(c.name, action));
@@ -309,6 +317,20 @@ function ContainerRow({ container: c }: { container: DockerContainer }) {
             <span className="codicon codicon-play" aria-hidden />
           </button>
         )}
+        <button type="button" aria-label={`Terminal w ${c.name}`} title="Terminal w kontenerze" className={iconButton} disabled={working} onClick={terminal}>
+          <span className="codicon codicon-terminal" aria-hidden />
+        </button>
+        {!c.leverframe && !hasProfile && (
+          <button
+            type="button"
+            aria-label={`Dodaj ${c.name} jako profil`}
+            title="Dodaj jako profil terminala"
+            className={iconButton}
+            onClick={() => void addContainerProfile(c.name).catch((e: unknown) => useDockerStore.setState({ error: String(e) }))}
+          >
+            <span className="codicon codicon-add" aria-hidden />
+          </button>
+        )}
         <button type="button" aria-label={`Logi ${c.name}`} title="Logi kontenera" className={iconButton} onClick={() => openContainerLogs(c.name)}>
           <span className="codicon codicon-output" aria-hidden />
         </button>
@@ -322,7 +344,10 @@ function ContainerRow({ container: c }: { container: DockerContainer }) {
           onNo={() => setConfirm(false)}
           onYes={() => {
             setConfirm(false);
-            void act(c.name, () => dockerClient.removeContainer(c.name, running));
+            void act(c.name, () => dockerClient.removeContainer(c.name, running)).then(
+              // Its detected profile goes away with it.
+              () => c.leverframe && void useProfilesStore.getState().refresh(),
+            );
           }}
         />
       )}
