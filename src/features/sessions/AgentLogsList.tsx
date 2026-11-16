@@ -23,7 +23,9 @@ export function AgentLogsList() {
 
   const wslSources = profiles.filter((p) => p.kind === "wsl");
   const sshSources = profiles.filter((p) => p.kind === "ssh");
+  const containerSources = profiles.filter((p) => p.kind === "container");
   const remote = source.startsWith("ssh:");
+  const inContainer = source.startsWith("docker:");
 
   const visible = useMemo(() => {
     const q = text.trim().toLowerCase();
@@ -64,6 +66,11 @@ export function AgentLogsList() {
               SSH: {p.name}
             </option>
           ))}
+          {containerSources.map((p) => (
+            <option key={p.id} value={`docker:${p.id}`}>
+              Kontener: {p.name}
+            </option>
+          ))}
         </select>
         <select aria-label="Agent" value={agent} onChange={(e) => setAgent(e.target.value as "" | LogAgent)} className={selectClass}>
           <option value="">Wszyscy agenci</option>
@@ -90,6 +97,11 @@ export function AgentLogsList() {
       {remote && (
         <p className="text-[11px] leading-relaxed text-lf-subtle">
           Host SSH jest sprawdzany na żądanie (przycisk „Odśwież”) i wymaga logowania kluczem.
+        </p>
+      )}
+      {inContainer && (
+        <p className="text-[11px] leading-relaxed text-lf-subtle">
+          Kontener jest sprawdzany na żądanie (przycisk „Odśwież”) i musi działać.
         </p>
       )}
       {error && <p className="text-[11px] text-lf-danger">{error}</p>}

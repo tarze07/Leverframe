@@ -87,7 +87,9 @@ Widok **Kontenery** (ikona paczki na pasku aktywności) pokazuje Dockera (Docker
 { "profiles": [{ "id": "", "name": "sklep", "kind": "container", "container": { "name": "sklep-agenci", "user": "agent", "shell": "/bin/zsh", "workdir": "/workspace", "autoStart": true } }] }
 ```
 
-Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host`. Agenci w kontenerze (wykrywanie, tryb rozmowy) – w kolejnych etapach ([docs/DOCKER.md](docs/DOCKER.md)).
+**Agenci w kontenerze**: wybierz profil kontenera w panelu „Agenci” – Leverframe sprawdza agentów zainstalowanych w kontenerze (działającym; profil z automatycznym uruchamianiem go uruchomi) i uruchamia je w jego terminalu, w folderze projektu. Sesje są nagrywane jak inne, a logi Claude Code i Codex z kontenera są w „Sesje → Rozmowy” (źródło „Kontener: …”, odczyt na żądanie; kontener musi działać) – pliki z montowanego folderu otwierają się w edytorze, a „Wznów” wznawia rozmowę w terminalu kontenera. Agenta najlepiej zainstalować w obrazie (plik `Dockerfile`), bo instalacja w działającym kontenerze zniknie razem z nim. Tryb rozmowy w kontenerze – w kolejnym etapie.
+
+Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host` ([docs/DOCKER.md](docs/DOCKER.md)).
 
 ## Układ okna
 

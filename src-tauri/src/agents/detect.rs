@@ -338,6 +338,9 @@ pub fn detect(
                 "Brak odpowiedzi z hosta SSH. Sprawdzanie wymaga logowania kluczem (bez hasła)."
                     .into()
             }
+            ProfileKind::Container => {
+                "Brak odpowiedzi z kontenera. Sprawdź w widoku „Kontenery”, czy działa.".into()
+            }
             _ => "Skrypt sprawdzający nie zwrócił wyniku".into(),
         });
     }

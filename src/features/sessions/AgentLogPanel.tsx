@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { logFilePath, openCommandInTerminal, openFile } from "../../workbench/commands";
+import { isWindows } from "../terminal/keys";
+import { useProfilesStore } from "../../store/profiles";
+import { dockerClient } from "../docker/dockerClient";
+import { hostPath } from "../docker/paths";
 import { plural } from "../../lib/plural";
 import {
   agentLogsClient,
@@ -11,6 +15,7 @@ import {
   resumeCommand,
   toolLabel,
   type LogDetail,
+  type LogSummary,
   type TimelineItem,
 } from "./agentLogsClient";
 
@@ -27,6 +32,7 @@ const time = (ts: number | null) =>
 export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
   const [detail, setDetail] = useState<LogDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [onlyCommands, setOnlyCommands] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
 
@@ -103,6 +109,11 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
       {files.length > 0 && !onlyCommands && (
         <section className="mx-5 mt-3 rounded border border-lf-border p-2" aria-label="Zmienione pliki">
           <p className="mb-1 text-[11px] font-semibold uppercase text-lf-muted">Zmienione pliki</p>
+          {fileError && (
+            <p role="alert" className="mb-1 text-[11px] text-lf-danger">
+              {fileError}
+            </p>
+          )}
           <ul className="flex flex-col">
             {files.map((f) => (
               <li key={f} className="group flex items-center gap-2 font-mono text-xs text-lf-fg">
@@ -115,7 +126,10 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
                   type="button"
                   title="Otwórz w edytorze"
                   aria-label={`Otwórz ${f} w edytorze`}
-                  onClick={() => openFile(logFilePath(f, s.cwd, s.source))}
+                  onClick={() => {
+                    setFileError(null);
+                    void openLogFile(f, s).catch((e: unknown) => setFileError(e instanceof Error ? e.message : String(e)));
+                  }}
                   className="hidden text-lf-muted hover:text-lf-fg group-focus-within:inline group-hover:inline"
                 >
                   <span className="codicon codicon-go-to-file" aria-hidden />
@@ -228,4 +242,18 @@ function IconButton({ icon, label, onClick }: { icon: string; label: string; onC
       <span className={`codicon codicon-${icon}`} aria-hidden />
     </button>
   );
+}
+
+/** Opens a file a log mentions. In a container: the file of this machine its mounts point to. */
+export async function openLogFile(file: string, s: Pick<LogSummary, "source" | "cwd">) {
+  if (!s.source.startsWith("docker:")) {
+    openFile(logFilePath(file, s.cwd, s.source));
+    return;
+  }
+  const name = useProfilesStore.getState().byId(s.source.slice("docker:".length))?.container?.name;
+  if (!name) throw new Error("Profil tego kontenera już nie istnieje");
+  const { mounts } = await dockerClient.inspect(name);
+  const path = hostPath(mounts, file, s.cwd, isWindows());
+  if (!path) throw new Error(`Plik ${file} jest tylko w kontenerze – jego folder nie jest zamontowany na tym komputerze.`);
+  openFile(path);
 }

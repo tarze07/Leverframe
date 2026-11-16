@@ -5,7 +5,18 @@ vi.mock("../features/acp/acpClient", () => ({ startAcp: vi.fn(() => new Promise(
 import type { DockviewApi } from "dockview-react";
 import { useUiStore } from "../store/ui";
 import { dockRegistry } from "./docks";
-import { endAgentChat, logFilePath, openAgentChat, openChatPanel, openTerminal, shellQuote, terminalPanels, toggleTerminalPanel } from "./commands";
+import {
+  endAgentChat,
+  logFilePath,
+  openAgentChat,
+  openChatPanel,
+  openCommandInTerminal,
+  openTerminal,
+  profileForSource,
+  shellQuote,
+  terminalPanels,
+  toggleTerminalPanel,
+} from "./commands";
 import { endAllChats, useChatsStore } from "../store/chats";
 import { useAgentsStore } from "../store/agents";
 import { useProfilesStore } from "../store/profiles";
@@ -157,5 +168,24 @@ describe("shellQuote", () => {
   it("quotes for POSIX shells", () => {
     expect(shellQuote("/home/me/my app")).toBe("'/home/me/my app'");
     expect(shellQuote("it's")).toBe("'it'\\''s'");
+  });
+
+  it("resumes a container's agent conversation in its terminal, in the log's folder there", () => {
+    const panel = fakeDock();
+    dockRegistry.set("panel", panel);
+    useProfilesStore.setState({
+      profiles: [
+        { id: "local:bash", name: "bash", kind: "local", command: "/bin/bash", args: [], source: "detected" },
+        { id: "container:sklep", name: "sklep", kind: "container", command: "docker", args: [], source: "detected", container: { name: "sklep", autoStart: true } },
+      ],
+      defaultProfileId: "local:bash",
+    } as Partial<ReturnType<typeof useProfilesStore.getState>>);
+    expect(profileForSource("docker:container:sklep")).toBe("container:sklep");
+    expect(profileForSource("docker:container:nie-ma")).toBeUndefined();
+    openCommandInTerminal({ command: "claude --resume 5f1c", source: "docker:container:sklep", cwd: "/workspace/src", submit: true });
+    expect(panel.addPanel.mock.calls[0][0]).toMatchObject({
+      // The folder is the container's: changed into in the shell, not given as this machine's.
+      params: { profileId: "container:sklep", cwd: undefined, initialCommand: "cd '/workspace/src' && claude --resume 5f1c", submitInitial: true },
+    });
   });
 });

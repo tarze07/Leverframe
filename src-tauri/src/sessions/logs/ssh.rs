@@ -1,6 +1,7 @@
 //! Agent logs on SSH hosts, read on demand with the system `ssh` client (key authentication,
-//! BatchMode). One call lists the newest logs with the beginning of each file; reading a log
-//! fetches the whole file. Only paths returned by the last listing of that host can be read.
+//! BatchMode), and in Docker containers (`docker exec`). One call lists the newest logs with the
+//! beginning of each file; reading a log fetches the whole file. Only paths returned by the last
+//! listing of that host or container can be read.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -17,6 +18,8 @@ const READ_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_FILES: usize = 100;
 const HEAD_BYTES: usize = 32 * 1024;
 const MAX_READ_BYTES: usize = 100 * 1024 * 1024;
+/// The last line of a listing: without it the host or container did not run the script.
+const DONE: &str = "@@LF-DONE@@";
 
 /// POSIX sh script run on the host. GNU and BSD `stat` are both supported.
 pub fn list_script() -> String {
@@ -36,6 +39,7 @@ done | sort -rn | head -n {MAX_FILES} | while IFS="$tab" read -r m s a f; do
   head -c {HEAD_BYTES} "$f"
   printf '\n@@LF-END@@\n'
 done
+printf '{DONE}\n'
 "#
     )
 }
@@ -125,13 +129,16 @@ pub struct SshLogs {
 
 impl SshLogs {
     pub fn list(&self, profile: &Profile, source: &str) -> Result<Vec<LogSummary>, String> {
-        if profile.kind != ProfileKind::Ssh {
-            return Err("To nie jest profil SSH".into());
+        let hint = match profile.kind {
+            ProfileKind::Ssh => "Logi z hostów SSH wymagają logowania kluczem (bez hasła).",
+            ProfileKind::Container => "Kontener musi działać – uruchom go w widoku „Kontenery”.",
+            _ => return Err("To nie jest profil SSH ani kontenera".into()),
+        };
+        let out = run_script(&detect_command(profile), &list_script(), LIST_TIMEOUT)
+            .map_err(|e| format!("{e}. {hint}"))?;
+        if !out.contains(DONE) {
+            return Err(format!("Brak odpowiedzi. {hint}"));
         }
-        let out =
-            run_script(&detect_command(profile), &list_script(), LIST_TIMEOUT).map_err(|e| {
-                format!("{e}. Logi z hostów SSH wymagają logowania kluczem (bez hasła).")
-            })?;
         let list = parse_listing(&out, source);
         self.listed.lock().unwrap().insert(
             source.to_string(),

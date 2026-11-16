@@ -5,6 +5,10 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 ## [Unreleased]
 
 ### Dodane
+- **Agenci w kontenerze** ([#66](https://github.com/tarze07/Leverframe/issues/66), etap D4 obsługi Dockera): panel „Agenci” wykrywa agentów w kontenerze (uruchamia go, gdy profil na to pozwala) i uruchamia ich w terminalu kontenera, w folderze projektu. Logi Claude Code i Codex z kontenera są w „Sesje → Rozmowy” (źródło „Kontener: …”), z otwieraniem plików z montowanego folderu i wznawianiem rozmowy w kontenerze.
+
+### Poprawione
+- Lista rozmów z hosta SSH, który nie wykonał skryptu (np. przerwane połączenie), kończy się komunikatem zamiast pustej listy.
 - **Terminal w kontenerze** ([#65](https://github.com/tarze07/Leverframe/issues/65), etap D3 obsługi Dockera): nowy rodzaj profilu – kontener (`docker exec`), w folderze projektu, gdy jest zamontowany. Kontenery utworzone w Leverframe są profilami od razu (grupa „Kontenery” w „Terminalach”), inne można dodać („Dodaj jako profil”). Zatrzymany kontener uruchamia się przy otwarciu terminala (albo po pytaniu, gdy profil tak ustawia). Tryb rozmowy w kontenerze – w kolejnym etapie.
 - **Widok „Kontenery”** ([#64](https://github.com/tarze07/Leverframe/issues/64), etap D2 obsługi Dockera [#60](https://github.com/tarze07/Leverframe/issues/60)): obrazy, kontenery i wolumeny Leverframe; pobieranie i budowanie obrazów z postępem (z przerwaniem), **Nowy kontener** z folderem projektu jako `/workspace` i wolumenem na logowania agentów – z podglądem polecenia `docker run` i ostrzeżeniami przed utworzeniem; uruchamianie, zatrzymywanie, ponowne uruchamianie, logi kontenera na żywo, usuwanie po potwierdzeniu.
 - Leverframe wykrywa Dockera (wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień); ustawienie **Program Docker** (`dockerPath`) ([#63](https://github.com/tarze07/Leverframe/issues/63)).

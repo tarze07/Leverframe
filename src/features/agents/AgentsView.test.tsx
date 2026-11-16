@@ -35,6 +35,7 @@ const agents = [
 const profiles = [
   { id: "local:bash", name: "bash", kind: "local", command: "/bin/bash", args: [], source: "detected" },
   { id: "user-1", name: "prod", kind: "ssh", command: "ssh", args: [], source: "user", ssh: { host: "prod" } },
+  { id: "container:sklep", name: "sklep", kind: "container", command: "docker", args: [], source: "detected", container: { name: "sklep", autoStart: true } },
 ];
 
 function mockBackend(detectResult: (profileId: string) => unknown) {
@@ -112,6 +113,19 @@ describe("AgentsView", () => {
     expect(invoke).toHaveBeenCalledWith("agents_detect", { profileId: "user-1", force: false });
     fireEvent.click(within(screen.getByRole("listitem", { name: "Claude Code" })).getByText("Terminal"));
     expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "user-1", cwd: null }));
+  });
+
+  it("runs agents in a container with the project folder; no conversation mode there yet", async () => {
+    mockBackend((p) => [{ id: "claude", installed: p === "container:sklep", command: "claude", version: p === "container:sklep" ? "w kontenerze 1.0" : null }]);
+    render(<AgentsView />);
+    await screen.findAllByText("nie znaleziono");
+    fireEvent.change(screen.getByLabelText("Uruchamiaj w terminalu"), { target: { value: "container:sklep" } });
+    expect(await screen.findByText("w kontenerze 1.0")).toBeInTheDocument();
+    expect(screen.getByText(/jeśli kontener go montuje/)).toBeInTheDocument();
+    const card = screen.getByRole("listitem", { name: "Claude Code" });
+    expect(within(card).queryByText("Rozmowa")).toBeNull();
+    fireEvent.click(within(card).getByText("Terminal"));
+    expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "container:sklep", cwd: "/home/me/projects/app" }));
   });
 
   it("keeps a directory on the server for each SSH profile", async () => {

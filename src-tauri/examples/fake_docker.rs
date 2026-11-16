@@ -3,7 +3,8 @@
 //! scenario: `ok` (default), `down` (daemon not running), `denied` (no access to the socket),
 //! `garbage` (output that is not JSON), `hang` (never answers). Changes (`run`, `start`, `rm`, …)
 //! answer like Docker; `pull`, `build` and `logs --follow` stream their output (`pull` of an
-//! image named `nope` fails, `logs --follow` waits until it is killed). `FAKE_DOCKER_LOG` appends every
+//! image named `nope` fails, `logs --follow` waits until it is killed). `exec -i -- <c> sh -s`
+//! runs the script locally with HOME=FAKE_DOCKER_HOME (Unix). `FAKE_DOCKER_LOG` appends every
 //! argument list to a file (one line, arguments separated by `|`).
 
 use std::io::Write;
@@ -74,6 +75,26 @@ fn main() {
             println!("[]");
             eprintln!("Error: No such container: {}", words[4]);
             std::process::exit(1);
+        }
+        // A command in the container: a local `sh` with the script on stdin and the container's
+        // home directory from FAKE_DOCKER_HOME (`baza` is stopped).
+        ["exec", "-i", "--", name, "sh", "-s"] => {
+            if *name == "baza" {
+                eprintln!("Error response from daemon: container baza is not running");
+                std::process::exit(1);
+            }
+            let mut sh = std::process::Command::new("sh");
+            sh.arg("-s");
+            if let Ok(home) = std::env::var("FAKE_DOCKER_HOME") {
+                // Programs installed in the container: $HOME/bin.
+                let path = std::env::var("PATH").unwrap_or_default();
+                // A container has its own login shell, not this machine's.
+                sh.env("PATH", format!("{home}/bin:{path}"))
+                    .env("HOME", home)
+                    .env("SHELL", "/bin/sh");
+            }
+            let status = sh.status().expect("sh");
+            std::process::exit(status.code().unwrap_or(1));
         }
         ["run", "-d", ..] => {
             "4f1d2e3c5b6a79880000000000000000000000000000000000000000000000ab".into()
