@@ -102,6 +102,8 @@ pub fn run() {
             docker::commands::docker_prune_images,
             docker::commands::docker_pull,
             docker::commands::docker_build,
+            docker::commands::docker_agents_image,
+            docker::commands::docker_build_agents_image,
             docker::commands::docker_logs,
             docker::commands::docker_cancel,
             docker::commands::docker_prepare_container,

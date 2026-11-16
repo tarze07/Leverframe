@@ -81,6 +81,28 @@ Widok **Kontenery** (ikona paczki na pasku aktywności) pokazuje Dockera (Docker
 - **Nowy kontener** z obrazu: nazwa, folder projektu (domyślnie folder z panelu „Agenci”) montowany jako `/workspace`, wolumen na katalog domowy (logowania agentów przetrwają usunięcie kontenera), opcjonalnie zmienne, porty, sieć i użytkownik. Przed utworzeniem widać dokładne polecenie `docker run` i ostrzeżenia (np. o montowaniu całego katalogu domowego; zmienne środowiskowe są widoczne w `docker inspect`).
 - **Kontenery**: uruchom, zatrzymaj, uruchom ponownie, logi (na żywo w karcie w obszarze edytora), usuń (po potwierdzeniu; wolumeny zostają, wolumen Leverframe usuwa się osobno).
 
+### Obraz z agentami
+
+Przycisk **Zbuduj obraz Leverframe** w widoku „Kontenery” buduje u Ciebie obraz `leverframe-agents:<wersja Leverframe>` z pliku [`packaging/docker/agents/Dockerfile`](packaging/docker/agents/Dockerfile) (jest wbudowany w aplikację; obraz nie jest publikowany w żadnym rejestrze). Zawiera Node.js 22, `git`, `ripgrep`, `openssh-client`, agentów Claude Code, Codex i Gemini CLI oraz adaptery trybu rozmowy (`claude-agent-acp`, `codex-acp`) – w wersjach przypiętych w pliku. Działa jako użytkownik `agent` (UID 1000, z `sudo` bez hasła do doinstalowania narzędzi w kontenerze) w `/workspace`, a etykieta `io.leverframe.agents=1` sprawia, że kontener z niego od razu jest profilem w Leverframe. Bez Leverframe:
+
+```bash
+docker build -t leverframe-agents packaging/docker/agents
+```
+
+Potem *Nowy kontener* przy obrazie: folder projektu trafia do `/workspace`, a wolumen na `/home/agent` przechowuje logowania agentów. **Logowanie** odbywa się raz, w kontenerze: otwórz jego terminal i uruchom `claude` (albo `codex`, `gemini`) – albo zacznij rozmowę, a Leverframe poprowadzi przez logowanie; dane logowania zostają w wolumenie także po usunięciu kontenera. Klucze API można podać jako zmienne środowiskowe w formularzu nowego kontenera (np. `ANTHROPIC_API_KEY=…`).
+
+**Własny obraz projektu**: obraz Leverframe to punkt startowy – dodaj narzędzia projektu we własnym `Dockerfile` i zbuduj go przyciskiem *Zbuduj…*:
+
+```dockerfile
+# Wersja obrazu jak w widoku „Kontenery” (wersja Leverframe, która go zbudowała).
+FROM leverframe-agents:0.7.1
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv && rm -rf /var/lib/apt/lists/*
+USER agent
+```
+
+Etykieta przechodzi na obraz pochodny, więc jego kontenery też są profilami Leverframe. Skrypt `packaging/docker/agents/check.sh` sprawdza obraz (agenci, adaptery trybu rozmowy, użytkownik): `docker run --rm -i <obraz> sh -s < packaging/docker/agents/check.sh`.
+
 **Terminal w kontenerze**: przycisk z ikoną terminala przy kontenerze otwiera powłokę w nim (`docker exec`, powłoka profilu albo bash, a bez niego sh) – w folderze projektu, jeśli jest zamontowany (np. `/workspace/src`), inaczej w `/workspace`. Kontenery utworzone w Leverframe są od razu profilami terminala (grupa **Kontenery** w „Terminalach” i wybór profilu w „Agentach”); inne dodaje się przyciskiem „Dodaj jako profil” albo w „Terminalach” (ikona paczki). Zatrzymany kontener uruchamia się przy otwarciu terminala (w profilu własnym z `"autoStart": false` – po pytaniu). Profil kontenera w `profiles.json`:
 
 ```json

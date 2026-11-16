@@ -32,6 +32,8 @@ interface DockerStore {
   images: DockerImage[];
   containers: DockerContainer[];
   volumes: DockerVolume[];
+  /** The image with agents of this version (`leverframe-agents:<version>`), once known. */
+  agentsImage: string | null;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   /** What is being changed (container / image / volume name → true). */
@@ -42,6 +44,8 @@ interface DockerStore {
   act: (key: string, change: () => Promise<unknown>) => Promise<boolean>;
   pull: (image: string) => Promise<void>;
   build: (dir: string, tag: string) => Promise<void>;
+  /** Builds the image with agents (`leverframe-agents:<version>`). */
+  buildAgentsImage: () => Promise<void>;
   cancelJob: (key: number) => void;
   dismissJob: (key: number) => void;
   clearError: () => void;
@@ -77,6 +81,7 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
     images: [],
     containers: [],
     volumes: [],
+    agentsImage: null,
     status: "idle",
     error: null,
     busy: {},
@@ -90,8 +95,13 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
           set({ info, images: [], containers: [], volumes: [], status: "ready" });
           return;
         }
-        const [images, containers, volumes] = await Promise.all([dockerClient.images(), dockerClient.containers(), dockerClient.volumes()]);
-        set({ info, images, containers, volumes, status: "ready" });
+        const [images, containers, volumes, agentsImage] = await Promise.all([
+          dockerClient.images(),
+          dockerClient.containers(),
+          dockerClient.volumes(),
+          get().agentsImage ?? dockerClient.agentsImage().catch(() => null),
+        ]);
+        set({ info, images, containers, volumes, agentsImage, status: "ready" });
       } catch (e) {
         set({ status: "error", error: message(e) });
       }
@@ -115,6 +125,8 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
     },
     pull: (image) => startJob("pull", `Pobieranie ${image}`, (onEvent) => dockerClient.pull(image, onEvent)),
     build: (dir, tag) => startJob("build", `Budowanie ${tag}`, (onEvent) => dockerClient.build(dir, tag, onEvent)),
+    buildAgentsImage: () =>
+      startJob("build", `Budowanie ${get().agentsImage ?? "obrazu Leverframe"}`, (onEvent) => dockerClient.buildAgentsImage(onEvent)),
     cancelJob: (key) => {
       const job = get().jobs.find((j) => j.key === key);
       if (job?.id && !job.done) void dockerClient.cancel(job.id);

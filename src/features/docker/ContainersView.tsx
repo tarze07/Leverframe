@@ -12,6 +12,8 @@ import { NewContainerForm, fieldClass } from "./NewContainerForm";
 
 const smallButton = "rounded px-1.5 py-0.5 text-[11px] text-lf-fg hover:bg-lf-hover disabled:opacity-50";
 const iconButton = "rounded p-0.5 text-lf-muted hover:bg-lf-elevated hover:text-lf-fg disabled:opacity-50";
+const AGENTS_IMAGE_HINT =
+  "Zbuduj obraz z agentami Claude Code, Codex i Gemini CLI oraz adapterami trybu rozmowy (plik Dockerfile dołączony do Leverframe, packaging/docker/agents)";
 
 /** Sidebar view: Docker's images, containers and Leverframe's volumes, managed from here. */
 export function ContainersView() {
@@ -26,7 +28,7 @@ export function ContainersView() {
 }
 
 function Containers() {
-  const { info, images, containers, volumes, status, error, refresh, clearError, jobs } = useDockerStore();
+  const { info, images, containers, volumes, agentsImage, status, error, refresh, clearError, jobs, buildAgentsImage } = useDockerStore();
   const [newFrom, setNewFrom] = useState<DockerImage | null>(null);
 
   useEffect(() => {
@@ -75,6 +77,17 @@ function Containers() {
           )}
 
           <Section title={`Obrazy (${images.length})`} actions={<ImageActions />}>
+            {agentsImage && !images.some((i) => imageName(i) === agentsImage) && !jobs.some((j) => !j.done && j.title.endsWith(agentsImage)) && (
+              <div aria-label="Obraz Leverframe" className="mb-1 flex flex-col gap-1 rounded border border-lf-border p-2">
+                <p className="text-lf-fg">
+                  Obraz z agentami (<span className="font-mono">{agentsImage}</span>): Claude Code, Codex i Gemini CLI z trybem rozmowy, gotowy na kontener
+                  projektu.
+                </p>
+                <button type="button" title={AGENTS_IMAGE_HINT} onClick={() => void buildAgentsImage()} className="self-start rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg hover:opacity-90">
+                  Zbuduj obraz Leverframe
+                </button>
+              </div>
+            )}
             {newFrom && <NewContainerForm image={newFrom} onDone={() => setNewFrom(null)} />}
             <ul aria-label="Obrazy" className="flex flex-col gap-0.5">
               {images.map((i) => (
@@ -138,7 +151,7 @@ function Confirm({ question, onYes, onNo }: { question: string; onYes: () => voi
 }
 
 function ImageActions() {
-  const { pull, build, act } = useDockerStore();
+  const { pull, build, buildAgentsImage, act } = useDockerStore();
   const [mode, setMode] = useState<"pull" | "build" | "prune" | null>(null);
   const [image, setImage] = useState("");
   const [dir, setDir] = useState<string | null>(null);
@@ -154,6 +167,9 @@ function ImageActions() {
 
   return (
     <>
+      <button type="button" title={AGENTS_IMAGE_HINT} aria-label="Zbuduj obraz Leverframe" className={iconButton} onClick={() => void buildAgentsImage()}>
+        <span className="codicon codicon-package" aria-hidden />
+      </button>
       <button type="button" className={smallButton} onClick={() => setMode(mode === "pull" ? null : "pull")} aria-expanded={mode === "pull"}>
         Pobierz…
       </button>

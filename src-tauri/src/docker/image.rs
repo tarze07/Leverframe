@@ -1,0 +1,82 @@
+//! The image with agents (D6, #68): the `Dockerfile` of `packaging/docker/agents`, shipped inside
+//! the app, built as `leverframe-agents:<app version>` from a folder Leverframe writes it to.
+
+use std::path::{Path, PathBuf};
+
+/// `packaging/docker/agents/Dockerfile` (it copies nothing from its folder).
+pub const AGENTS_DOCKERFILE: &str = include_str!("../../../packaging/docker/agents/Dockerfile");
+
+/// Name of the image with agents for this version of the app.
+pub fn agents_image_tag() -> String {
+    format!("leverframe-agents:{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Writes the `Dockerfile` to `<base>/leverframe-agents-<version>` (the build folder); returns it.
+pub fn agents_build_dir(base: &Path) -> std::io::Result<PathBuf> {
+    let dir = base.join(format!("leverframe-agents-{}", env!("CARGO_PKG_VERSION")));
+    std::fs::create_dir_all(&dir)?;
+    let file = dir.join("Dockerfile");
+    if std::fs::read_to_string(&file).ok().as_deref() != Some(AGENTS_DOCKERFILE) {
+        std::fs::write(&file, AGENTS_DOCKERFILE)?;
+    }
+    Ok(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shipped_dockerfile_makes_an_image_for_leverframe() {
+        let f = AGENTS_DOCKERFILE;
+        assert!(f.contains("LABEL io.leverframe.agents=\"1\""));
+        assert!(f.contains("WORKDIR /workspace"));
+        assert!(f.contains("USER agent"));
+        // Pinned versions only.
+        let from = f.lines().find(|l| l.starts_with("FROM ")).unwrap();
+        assert!(
+            from.contains(":22.") && from.ends_with("-bookworm-slim"),
+            "{from}"
+        );
+        for l in f.lines().filter(|l| l.starts_with("ARG ")) {
+            let version = l.split('=').nth(1).unwrap_or_default();
+            assert!(
+                version.split('.').count() == 3
+                    && version.chars().all(|c| c.is_ascii_digit() || c == '.'),
+                "{l}"
+            );
+        }
+        for pkg in [
+            "claude-code",
+            "codex",
+            "gemini-cli",
+            "claude-agent-acp",
+            "codex-acp",
+        ] {
+            assert!(f.contains(&format!("/{pkg}@${{")), "{pkg}");
+        }
+        assert!(
+            f.lines()
+                .all(|l| !l.trim_start().starts_with("COPY") && !l.trim_start().starts_with("ADD")),
+            "the build folder holds only the Dockerfile"
+        );
+        assert_eq!(
+            agents_image_tag(),
+            format!("leverframe-agents:{}", env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
+    fn the_build_folder_holds_the_current_dockerfile() {
+        let base = std::env::temp_dir().join(format!("lf-agents-image-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let dir = agents_build_dir(&base).unwrap();
+        std::fs::write(dir.join("Dockerfile"), "FROM stary").unwrap();
+        assert_eq!(agents_build_dir(&base).unwrap(), dir);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("Dockerfile")).unwrap(),
+            AGENTS_DOCKERFILE
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

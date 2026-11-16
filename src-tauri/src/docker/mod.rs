@@ -6,6 +6,7 @@
 pub mod actions;
 mod cli;
 pub mod commands;
+pub mod image;
 pub mod jobs;
 mod model;
 pub mod terminal;
