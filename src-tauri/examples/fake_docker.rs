@@ -1,7 +1,9 @@
 //! A stand-in for the `docker` CLI in tests: canned answers of `docker version`, `images`, `ps`,
 //! `volume ls` and `inspect` in the formats Leverframe asks for. `FAKE_DOCKER_MODE` chooses a
 //! scenario: `ok` (default), `down` (daemon not running), `denied` (no access to the socket),
-//! `garbage` (output that is not JSON), `hang` (never answers). `FAKE_DOCKER_LOG` appends every
+//! `garbage` (output that is not JSON), `hang` (never answers). Changes (`run`, `start`, `rm`, …)
+//! answer like Docker; `pull`, `build` and `logs --follow` stream their output (`pull` of an
+//! image named `nope` fails, `logs --follow` waits until it is killed). `FAKE_DOCKER_LOG` appends every
 //! argument list to a file (one line, arguments separated by `|`).
 
 use std::io::Write;
@@ -69,6 +71,57 @@ fn main() {
             println!("[]");
             eprintln!("Error: No such container: {}", words[4]);
             std::process::exit(1);
+        }
+        ["run", "-d", ..] => {
+            "4f1d2e3c5b6a79880000000000000000000000000000000000000000000000ab".into()
+        }
+        ["volume", "create", "--label", _, name] => name.to_string(),
+        ["start" | "stop" | "restart" | "rmi", "--", name]
+        | ["rm", "--", name]
+        | ["rm", "--force", "--", name]
+        | ["volume", "rm", "--", name] => {
+            if *name == "nie-ma" {
+                eprintln!("Error response from daemon: No such container: nie-ma");
+                std::process::exit(1);
+            }
+            name.to_string()
+        }
+        ["image", "prune", "--all", "--force"] => {
+            "Deleted Images:\nuntagged: node:20\n\nTotal reclaimed space: 1.2GB".into()
+        }
+        ["pull", "--", image] => {
+            if image.starts_with("nope") {
+                eprintln!("Error response from daemon: pull access denied for nope, repository does not exist or may require 'docker login'");
+                std::process::exit(1);
+            }
+            for line in [
+                "22: Pulling from library/node",
+                "a1b2c3: Pull complete",
+                "Digest: sha256:0123",
+                &format!("Status: Downloaded newer image for {image}"),
+            ] {
+                println!("{line}");
+            }
+            return;
+        }
+        ["build", "--progress=plain", "-t", tag, "-f", _, "--", _] => {
+            for line in [
+                "#1 [internal] load build definition from Dockerfile",
+                "#2 [1/2] FROM node:22",
+                "#3 [2/2] RUN npm i -g @anthropic-ai/claude-code",
+                &format!("#4 naming to docker.io/library/{tag} done"),
+            ] {
+                eprintln!("{line}");
+            }
+            return;
+        }
+        ["logs", "--follow", "--tail", "1000", "--", _] => {
+            println!("start kontenera");
+            println!("gotowy");
+            let _ = std::io::stdout().flush();
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
         }
         _ => {
             eprintln!("fake docker: unknown command {}", words.join(" "));

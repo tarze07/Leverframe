@@ -6,6 +6,7 @@ import { AgentLogPanel } from "../features/sessions/AgentLogPanel";
 import { EditorPanel } from "../features/editor/EditorPanel";
 import { EditorTab } from "../features/editor/EditorTab";
 import { ChatTab } from "../features/acp/ChatTab";
+import { ContainerLogsPanel } from "../features/docker/ContainerLogsPanel";
 import { AgentChatPanel } from "../features/acp/AgentChatPanel";
 import { DiffPanel } from "../features/editor/DiffPanel";
 import { DockArea } from "../workbench/DockArea";
@@ -19,6 +20,7 @@ const components = {
   agentLog: AgentLogPanel,
   editor: EditorPanel,
   agentChat: AgentChatPanel,
+  containerLogs: ContainerLogsPanel,
   diff: DiffPanel,
 };
 

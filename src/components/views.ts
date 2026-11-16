@@ -11,6 +11,7 @@ export const VIEWS: ViewDef[] = [
   { id: "terminals", title: "Terminale", icon: "terminal" },
   { id: "agents", title: "Agenci", icon: "hubot" },
   { id: "chats", title: "Rozmowy", icon: "comment-discussion" },
+  { id: "containers", title: "Kontenery", icon: "package" },
   { id: "sessions", title: "Sesje", icon: "history" },
   { id: "files", title: "Pliki", icon: "files" },
   { id: "settings", title: "Ustawienia", icon: "settings-gear" },

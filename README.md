@@ -73,6 +73,16 @@ Otwarte rozmowy są w widoku **Rozmowy** na pasku aktywności (ikona dymków): z
 
 Rozmowy trafiają do historii w panelu „Sesje” (zakładka **Historia**, obok nagrań terminala; filtr „Rodzaj”) i można je przeszukiwać po treści wiadomości, także bez polskich znaków („zolto” znajdzie „żółto”). Kliknięcie otwiera rozmowę tylko do odczytu; jeśli agent pozwala wczytywać zapisane sesje (`session/load` lub `session/resume`), przycisk **Wznów rozmowę** kontynuuje ją w tym samym panelu, a dalszy ciąg dopisuje się do tej samej pozycji historii. Agenci udostępniający listę swoich sesji (`session/list`) mają w nagłówku rozmowy przycisk **Rozmowy agenta** – można tam otworzyć np. sesję rozpoczętą w terminalu, a na wyraźne żądanie usunąć ją u agenta. Historia zapisuje wiadomości, narzędzia, skrócone diffy i wyjście poleceń (bez treści plików); nagrywanie wyłącza to samo ustawienie co nagrania terminala.
 
+## Kontenery Docker
+
+Widok **Kontenery** (ikona paczki na pasku aktywności) pokazuje Dockera (Docker Engine albo Docker Desktop) – jego obrazy, kontenery i wolumeny Leverframe – i pozwala nimi zarządzać:
+
+- **Obrazy**: *Pobierz…* (np. `node:22-bookworm-slim`) i *Zbuduj…* z folderu z plikiem `Dockerfile` – z postępem, który można przerwać; usuwanie obrazu i *Usuń nieużywane* (po potwierdzeniu).
+- **Nowy kontener** z obrazu: nazwa, folder projektu (domyślnie folder z panelu „Agenci”) montowany jako `/workspace`, wolumen na katalog domowy (logowania agentów przetrwają usunięcie kontenera), opcjonalnie zmienne, porty, sieć i użytkownik. Przed utworzeniem widać dokładne polecenie `docker run` i ostrzeżenia (np. o montowaniu całego katalogu domowego; zmienne środowiskowe są widoczne w `docker inspect`).
+- **Kontenery**: uruchom, zatrzymaj, uruchom ponownie, logi (na żywo w karcie w obszarze edytora), usuń (po potwierdzeniu; wolumeny zostają, wolumen Leverframe usuwa się osobno).
+
+Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host`. Terminal i agenci w kontenerze – w kolejnych etapach ([docs/DOCKER.md](docs/DOCKER.md)).
+
 ## Układ okna
 
 Panel terminala może być pod edytorem albo obok niego (przycisk w nagłówku panelu, ustawienia lub paleta poleceń: „Przenieś panel terminala obok edytora”). Przycisk maksymalizacji w nagłówku panelu (Ctrl+Shift+M) ukrywa edytor, a ten sam przycisk na pasku zakładek edytora ukrywa terminal; ponowne kliknięcie przywraca układ. Przeciągnięcie separatora do końca działa tak samo. Uruchomione terminale działają dalej przy każdej zmianie układu.

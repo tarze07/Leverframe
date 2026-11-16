@@ -21,6 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyManager::new())
         .manage(acp::AcpService::default())
+        .manage(docker::DockerJobs::default())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             app.manage(profiles::ProfileService::new(&config_dir));
@@ -92,6 +93,17 @@ pub fn run() {
             docker::commands::docker_containers,
             docker::commands::docker_volumes,
             docker::commands::docker_inspect,
+            docker::commands::docker_create_plan,
+            docker::commands::docker_create,
+            docker::commands::docker_container_action,
+            docker::commands::docker_remove_container,
+            docker::commands::docker_remove_image,
+            docker::commands::docker_remove_volume,
+            docker::commands::docker_prune_images,
+            docker::commands::docker_pull,
+            docker::commands::docker_build,
+            docker::commands::docker_logs,
+            docker::commands::docker_cancel,
             acp::commands::acp_list_sessions,
             acp::commands::acp_load_session,
             acp::commands::acp_delete_session,
@@ -103,6 +115,7 @@ pub fn run() {
             if let RunEvent::Exit = event {
                 app.state::<pty::PtyManager>().kill_all();
                 app.state::<acp::AcpService>().stop_all();
+                app.state::<docker::DockerJobs>().cancel_all();
             }
         });
 }

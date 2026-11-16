@@ -5,6 +5,10 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 ## [Unreleased]
 
 ### Dodane
+- **Widok „Kontenery”** ([#64](https://github.com/tarze07/Leverframe/issues/64), etap D2 obsługi Dockera [#60](https://github.com/tarze07/Leverframe/issues/60)): obrazy, kontenery i wolumeny Leverframe; pobieranie i budowanie obrazów z postępem (z przerwaniem), **Nowy kontener** z folderem projektu jako `/workspace` i wolumenem na logowania agentów – z podglądem polecenia `docker run` i ostrzeżeniami przed utworzeniem; uruchamianie, zatrzymywanie, ponowne uruchamianie, logi kontenera na żywo, usuwanie po potwierdzeniu.
+- Leverframe wykrywa Dockera (wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień); ustawienie **Program Docker** (`dockerPath`) ([#63](https://github.com/tarze07/Leverframe/issues/63)).
+
+### Dodane
 - Początek obsługi kontenerów Docker ([#60](https://github.com/tarze07/Leverframe/issues/60), etap D1 – [#63](https://github.com/tarze07/Leverframe/issues/63)): Leverframe wykrywa Dockera (wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień) i odczytuje obrazy, kontenery, wolumeny oraz szczegóły kontenera (montowania). Ustawienie **Program Docker** (`dockerPath`). Widok „Kontenery” – w kolejnym etapie.
 
 ## [0.7.1] – 2026-11-16

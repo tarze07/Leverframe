@@ -165,6 +165,20 @@ export function openAgentChatHistory(session: SessionRecord) {
   return openChatPanel(id);
 }
 
+/** Opens (or focuses) a container's logs in the editor area; they are followed while the tab is open. */
+export function openContainerLogs(container: string) {
+  const api = dockRegistry.get("main");
+  if (!api) return null;
+  const id = `container-logs-${container}`;
+  const existing = api.getPanel(id);
+  if (existing) {
+    existing.api.setActive();
+    return id;
+  }
+  api.addPanel({ id, component: "containerLogs", title: `Logi: ${container}`, params: { container } });
+  return id;
+}
+
 /** Opens (or focuses) the player for a recorded session in the editor area. */
 export function openSessionPlayer(session: SessionRecord, query?: string) {
   const api = dockRegistry.get("main");

@@ -12,7 +12,7 @@ use super::model::{
 
 /// `docker version` may wait for Docker Desktop that is still starting.
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
-const LIST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(super) const LIST_TIMEOUT: Duration = Duration::from_secs(30);
 const JSON: &str = "{{json .}}";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,8 +136,8 @@ impl Docker {
         &self.program
     }
 
-    fn run(&self, args: &[&str], timeout: Duration) -> Result<Output, DockerError> {
-        let timeout = self.timeout.unwrap_or(timeout);
+    /// The CLI with these arguments, output piped, no console window on Windows.
+    pub(super) fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::new(&self.program);
         command
             .args(args)
@@ -152,12 +152,24 @@ impl Docker {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
-        let mut child = command.spawn().map_err(|e| match e.kind() {
+        command
+    }
+
+    pub(super) fn spawn_error(&self, e: std::io::Error) -> DockerError {
+        match e.kind() {
             std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied => {
                 DockerError::NotInstalled(self.program.clone())
             }
             _ => DockerError::Other(format!("nie można uruchomić {}: {e}", self.program)),
-        })?;
+        }
+    }
+
+    fn run(&self, args: &[&str], timeout: Duration) -> Result<Output, DockerError> {
+        let timeout = self.timeout.unwrap_or(timeout);
+        let mut child = self
+            .command(args)
+            .spawn()
+            .map_err(|e| self.spawn_error(e))?;
         let read = |mut pipe: Box<dyn Read + Send>| {
             std::thread::spawn(move || {
                 let mut buf = Vec::new();
@@ -189,7 +201,7 @@ impl Docker {
     }
 
     /// Runs a command that must succeed; its standard output.
-    fn ok(&self, args: &[&str], timeout: Duration) -> Result<String, DockerError> {
+    pub(super) fn ok(&self, args: &[&str], timeout: Duration) -> Result<String, DockerError> {
         let out = self.run(args, timeout)?;
         if out.success {
             Ok(out.stdout)

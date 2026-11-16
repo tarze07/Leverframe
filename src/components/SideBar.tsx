@@ -5,6 +5,7 @@ import { TerminalsView } from "../features/profiles/TerminalsView";
 import { AgentsView } from "../features/agents/AgentsView";
 import { SessionsView } from "../features/sessions/SessionsView";
 import { ChatsView } from "../features/acp/ChatsView";
+import { ContainersView } from "../features/docker/ContainersView";
 import { FilesView } from "../features/files/FilesView";
 import { SettingsView } from "../features/settings/SettingsView";
 
@@ -12,6 +13,7 @@ const VIEW_COMPONENTS: Record<ViewId, ComponentType> = {
   terminals: TerminalsView,
   agents: AgentsView,
   chats: ChatsView,
+  containers: ContainersView,
   sessions: SessionsView,
   files: FilesView,
   settings: SettingsView,
