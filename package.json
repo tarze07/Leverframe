@@ -12,7 +12,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "tauri": "tauri",
-    "e2e": "node --test --test-concurrency=1 e2e/app.test.mjs"
+    "e2e": "node --test --test-concurrency=1 e2e/app.test.mjs",
+    "e2e:docker": "node --test --test-concurrency=1 e2e/docker.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

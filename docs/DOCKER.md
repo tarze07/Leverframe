@@ -4,7 +4,7 @@ Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
 z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
-**Stan:** D1–D6 (#63–#68) zrobione – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
+**Stan:** D1–D7 (#63–#69) zrobione (ręczne sprawdzenie na Docker Desktop w Windows – w PR wydania) – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
 i zmiany, `jobs.rs` – pull / build / logs z postępem, `terminal.rs` – terminal profilu kontenera, ścieżki z montowań,
 profile wykryte), widok „Kontenery”, profil `kind: "container"` (program `docker` z `dockerPath`), agenci w kontenerze
 (wykrywanie przez `docker exec -i … sh -s`, terminal, logi Claude / Codex jako źródło `docker:<profil>`), ustawienie
@@ -14,6 +14,8 @@ a gdy katalog rozmowy nie jest zamontowany, agent dostaje własny dostęp do pli
 agenta w PTY przez `docker exec -it`; UI uruchamia zatrzymany kontener przed rozmową i mapuje ścieżki na pliki projektu. Obraz z
 agentami: `packaging/docker/agents/Dockerfile` (wbudowany przez `include_str!`, `docker/image.rs`), przycisk „Zbuduj obraz
 Leverframe” (`leverframe-agents:<wersja>`), workflow `docker-image.yml` z `check.sh` (wersje agentów, `initialize` adapterów).
+E2E z prawdziwym Dockerem: `e2e/docker.test.mjs` (`npm run e2e:docker`, w CI po zwykłych E2E) – obraz testowy z busyboxa
+i atrapy agenta ACP budowany w widoku, kontener, terminal, agent, rozmowa ze zmianą pliku przez edytor, historia.
 
 **Decyzje (16.11.2026):** na początek **tylko Docker** (Podman później); obraz z agentami jako **`Dockerfile` w
 repozytorium**, bez publikacji w rejestrze (GHCR). Pozostałe pytania z § 9 – na razie według tej propozycji.
@@ -199,6 +201,7 @@ projektu (Python, Rust, …). Publikacja w GHCR – do ewentualnej decyzji póź
 | **D5** ([#67](https://github.com/tarze07/Leverframe/issues/67)) | Tryb rozmowy w kontenerze: uruchamianie ACP przez `docker exec -i`, `FsKind::Container` (mapowanie montowań), polecenia agenta w PTY kontenera, otwieranie ścieżek w edytorze | rozmowa z agentem w kontenerze, zmiany plików pod kontrolą |
 | **D6** ([#68](https://github.com/tarze07/Leverframe/issues/68)) | Obraz z agentami: `packaging/docker/agents/Dockerfile` (także w zasobach aplikacji), „Zbuduj obraz Leverframe” w widoku, budowanie obrazu w CI (bez publikacji) | obraz z agentami zbudowany jednym kliknięciem |
 | **D7** ([#69](https://github.com/tarze07/Leverframe/issues/69)) | Testy E2E na prawdziwym Dockerze (runner ubuntu ma Dockera) z atrapą agenta w obrazie testowym, ręczne sprawdzenie na Docker Desktop (Windows), dokumentacja, wydanie | wersja z obsługą kontenerów |
+| **D8** ([#79](https://github.com/tarze07/Leverframe/issues/79)) | Zdalny Docker przez SSH: źródło Dockera z profilu SSH (`DOCKER_HOST=ssh://…`), profile kontenerów zdalnych, folder projektu na serwerze, tryb rozmowy bez plików przez Leverframe, E2E ze zdalnym demonem (§ 10) | kontenery na serwerze z Leverframe na tym komputerze |
 
 Kolejność daje wartość po każdym etapie: po D3 można już pracować w kontenerze w terminalu, po D5 – w trybie
 rozmowy. D6 można zrobić równolegle z D2–D5.
@@ -210,8 +213,9 @@ rozmowy. D6 można zrobić równolegle z D2–D5.
   użytkowników (rootless, `--userns`); po D7 osobne zadanie: wybór programu `podman` i testy.
 - **Windows** – Docker Desktop daje `docker.exe` w PATH Windows; Docker w dystrybucji WSL (bez Desktop) to
   profil WSL + `docker` w środku – do obsłużenia przez wybór programu `wsl.exe -d <dystrybucja> docker`.
-- **Uprawnienia plików** w montowaniu na Linuksie (UID kontenera ≠ UID użytkownika) – obraz z UID 1000,
-  opcja „użytkownik” w formularzu; do sprawdzenia w D7.
+- **Uprawnienia plików** w montowaniu na Linuksie (UID kontenera ≠ UID użytkownika) – sprawdzone w D7: agent
+  z UID 1000 nie zapisze folderu innego właściciela. „Nowy kontener” ostrzega i podaje `-u <UID>:<GID>` (pole
+  „Użytkownik”); obraz ma `HOME=/home/agent` zapisywalny dla każdego UID, więc logowania działają i wtedy.
 - **Wydajność montowań** na Windows/macOS (Docker Desktop) – znana wolniejsza praca na dużych projektach;
   w dokumentacji: projekt w WSL dla Windows.
 - Pytania:
@@ -219,6 +223,72 @@ rozmowy. D6 można zrobić równolegle z D2–D5.
   2. Kontener **trwały** (tworzony raz, profil wskazuje kontener) – jak w tej propozycji – czy także
      **jednorazowy** (`docker run --rm` przy każdym otwarciu terminala z obrazu)? *Na razie: trwały.*
   3. ~~Publikacja obrazu w GHCR?~~ – **nie**, `Dockerfile` w repozytorium.
-  4. Czy **zdalny Docker** (kontekst / `ssh://`) jest potrzebny w pierwszej wersji? *Na razie: nie.*
+  4. Czy **zdalny Docker** (kontekst / `ssh://`) jest potrzebny w pierwszej wersji? *Nie w pierwszej wersji –
+     osobny etap D8 (§ 10, [#79](https://github.com/tarze07/Leverframe/issues/79)).*
   5. Później: **Docker Compose** i **`devcontainer.json`** (VS Code Dev Containers) – czy są w planach?
      *Na razie poza zakresem.*
+
+## 10. Zdalny Docker przez SSH (D8)
+
+Cel: Leverframe na tym komputerze, kontenery na innej maszynie (serwer, maszyna z GPU, mocniejszy komputer
+w sieci). Widok „Kontenery”, terminal, agenci i tryb rozmowy działają jak lokalnie, a Docker i pliki projektu są
+na serwerze.
+
+**Co działa przed D8:** profil SSH i ręczne `docker exec -it …` w jego terminalu; agent w trybie rozmowy na hoście
+SSH (nie w kontenerze). Uruchomienie Leverframe z `DOCKER_HOST=ssh://…` nie jest obsługiwane: folder projektu
+i mapowanie ścieżek zakładają pliki na tym komputerze.
+
+### 10.1 Połączenie
+
+- Docker CLI sam obsługuje demona przez SSH: `DOCKER_HOST=ssh://[user@]host[:port]` (albo `docker context` z takim
+  adresem) – uruchamia `ssh … docker system dial-stdio` na serwerze. Leverframe nie potrzebuje własnego tunelu:
+  dalej woła lokalny `docker`, tylko z tą zmienną środowiskową.
+- **Źródło Dockera** wybierane w widoku „Kontenery”: „Ten komputer” albo profil SSH (host, użytkownik, port,
+  klucz z profilu). Zmienna powstaje z danych profilu (walidacja: bez spacji i znaków powłoki, IPv6 w `[…]`).
+  SSH bez pytania o hasło (`BatchMode`, klucz albo agent SSH) – jak przy profilach SSH.
+- Warunek na serwerze: Docker i dostęp do niego dla użytkownika SSH (grupa `docker`); komunikat, gdy go nie ma
+  (`docker info` przez SSH: „brak uprawnień”, „Docker nie działa”, „SSH nie łączy”).
+- Opcjonalnie: lista `docker context ls` jako dodatkowe źródła (użytkownicy, którzy mają je już skonfigurowane).
+
+### 10.2 Profile i polecenia
+
+- `ContainerTarget` dostaje źródło (`host`: id profilu SSH; brak = lokalny Docker). Terminal (`docker exec -it`),
+  wykrywanie agentów, logi agentów, logi kontenera i tryb rozmowy (`docker exec -i`) używają tego samego
+  `DOCKER_HOST`.
+- Profile wykryte: `container:<profil SSH>:<nazwa>`, grupa „Kontenery na <host>” w „Terminalach”; wykrywanie
+  zdalnych kontenerów tylko dla wybranych źródeł (nie przy każdym budowaniu listy profili – SSH bywa wolne).
+
+### 10.3 Folder projektu i pliki
+
+- W „Nowy kontener” dla zdalnego Dockera folder projektu to **ścieżka na serwerze** (jak „Katalog na serwerze”
+  profilu SSH, #26), wpisywana ręcznie – okno wyboru folderu pokazuje tylko ten komputer. Montowanie
+  `-v <ścieżka na serwerze>:/workspace` wykonuje demon na serwerze.
+- **Tryb rozmowy** jak przy SSH: bez `fs` i `terminal` od Leverframe – agent czyta i zapisuje pliki oraz uruchamia
+  polecenia sam, w kontenerze (pliki projektu nie są na tym komputerze, `FsKind::Container` nie ma czego mapować).
+  Ścieżki z rozmowy i z logów agentów nie otwierają się w lokalnym edytorze – UI to mówi.
+- Później (osobne zadanie): pliki projektu przez SFTP w edytorze i w trybie rozmowy (zgody, diffy jak lokalnie).
+
+### 10.4 Obrazy
+
+- „Zbuduj obraz Leverframe” działa na zdalnym demonie: kontekst budowania (tylko `Dockerfile`) wysyła CLI.
+  „Zbuduj…” z folderu: folder jest na tym komputerze, a kontekst idzie przez SSH – przy dużych folderach wolno;
+  UI pokazuje rozmiar kontekstu z wyjścia budowania.
+- Pobieranie obrazów i ich lista – na serwerze.
+
+### 10.5 Testy
+
+- Rust: `DOCKER_HOST` z profilu SSH (użytkownik, port, IPv6, odrzucane znaki), atrapa CLI `docker` sprawdzająca
+  zmienną, profile zdalne, tryb rozmowy bez `fs` / `terminal`.
+- E2E w CI ze zdalnym demonem: `sshd` na runnerze (klucz testowy, użytkownik w grupie `docker`) i źródło
+  `ssh://…@localhost` – widok „Kontenery”, nowy kontener z folderem na „serwerze”, terminal, agent w terminalu,
+  rozmowa z atrapą agenta.
+
+### 10.6 Ryzyka
+
+- **Opóźnienia SSH**: każde polecenie `docker` otwiera połączenie – lista, `inspect` i wykrywanie agentów mogą
+  być wolne. Rozwiązanie: `ControlMaster` / `ControlPersist` w opcjach SSH dla `DOCKER_HOST` (Docker CLI
+  korzysta z `~/.ssh/config`), krótsze odświeżanie tylko na żądanie.
+- **Windows**: Docker CLI z `ssh://` używa `ssh.exe` z OpenSSH Windows – jak profile SSH; do sprawdzenia
+  z Docker Desktop i bez niego (sam `docker.exe`).
+- **Bezpieczeństwo**: dostęp do Dockera na serwerze to w praktyce root na serwerze – opis w UI przy wyborze
+  źródła; te same zasady co lokalnie (bez gniazda w kontenerach, bez `--privileged`, potwierdzenia).

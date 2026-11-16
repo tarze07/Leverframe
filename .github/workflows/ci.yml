@@ -115,10 +115,18 @@ jobs:
         run: xvfb-run -a npm run e2e
         env:
           E2E_SCREENSHOT: ${{ runner.temp }}/e2e-final.png
-      - name: Upload screenshot
+      - name: Run end-to-end tests with Docker
+        if: ${{ !cancelled() }}
+        run: xvfb-run -a npm run e2e:docker
+        env:
+          E2E_DOCKER_REQUIRED: "1"
+          E2E_SCREENSHOT: ${{ runner.temp }}/e2e-docker.png
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: e2e-screenshot
-          path: ${{ runner.temp }}/e2e-final.png
+          path: |
+            ${{ runner.temp }}/e2e-final.png
+            ${{ runner.temp }}/e2e-docker.png
           if-no-files-found: ignore

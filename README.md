@@ -75,6 +75,8 @@ Rozmowy trafiają do historii w panelu „Sesje” (zakładka **Historia**, obok
 
 ## Kontenery Docker
 
+**Wymagania**: Docker Engine (Linux) albo Docker Desktop (Windows, macOS) z kontenerami Linuksa, program `docker` w `PATH` (inną ścieżkę ustawia się w ustawieniach: **Program Docker**, `dockerPath`) i uprawnienia do niego (w Linuksie zwykle grupa `docker`). Leverframe korzysta z wiersza poleceń `docker` – nie potrzebuje niczego więcej; bez Dockera widok „Kontenery” mówi, czego brakuje.
+
 Widok **Kontenery** (ikona paczki na pasku aktywności) pokazuje Dockera (Docker Engine albo Docker Desktop) – jego obrazy, kontenery i wolumeny Leverframe – i pozwala nimi zarządzać:
 
 - **Obrazy**: *Pobierz…* (np. `node:22-bookworm-slim`) i *Zbuduj…* z folderu z plikiem `Dockerfile` – z postępem, który można przerwać; usuwanie obrazu i *Usuń nieużywane* (po potwierdzeniu).
@@ -89,7 +91,7 @@ Przycisk **Zbuduj obraz Leverframe** w widoku „Kontenery” buduje u Ciebie ob
 docker build -t leverframe-agents packaging/docker/agents
 ```
 
-Potem *Nowy kontener* przy obrazie: folder projektu trafia do `/workspace`, a wolumen na `/home/agent` przechowuje logowania agentów. **Logowanie** odbywa się raz, w kontenerze: otwórz jego terminal i uruchom `claude` (albo `codex`, `gemini`) – albo zacznij rozmowę, a Leverframe poprowadzi przez logowanie; dane logowania zostają w wolumenie także po usunięciu kontenera. Klucze API można podać jako zmienne środowiskowe w formularzu nowego kontenera (np. `ANTHROPIC_API_KEY=…`).
+Potem *Nowy kontener* przy obrazie: folder projektu trafia do `/workspace`, a wolumen na `/home/agent` przechowuje logowania agentów. **Logowanie** odbywa się raz, w kontenerze: otwórz jego terminal i uruchom `claude` (albo `codex`, `gemini`) – albo zacznij rozmowę, a Leverframe poprowadzi przez logowanie; dane logowania zostają w wolumenie także po usunięciu kontenera. Klucz API (zamiast logowania) najlepiej wpisać w terminalu kontenera przy pierwszym uruchomieniu agenta – zmienne środowiskowe z formularza „Nowy kontener” też działają, ale zostają w konfiguracji kontenera i są widoczne w `docker inspect`.
 
 **Własny obraz projektu**: obraz Leverframe to punkt startowy – dodaj narzędzia projektu we własnym `Dockerfile` i zbuduj go przyciskiem *Zbuduj…*:
 
@@ -113,7 +115,11 @@ Etykieta przechodzi na obraz pochodny, więc jego kontenery też są profilami L
 
 **Rozmowa w kontenerze**: przycisk „Rozmowa” przy agencie z wybranym profilem kontenera uruchamia tryb rozmowy (ACP) w kontenerze – adapter (np. `claude-agent-acp`) musi być zainstalowany w kontenerze. Zatrzymany kontener uruchamia się najpierw (w profilu z `"autoStart": false` – po pytaniu). Agent pracuje w folderze projektu w kontenerze (np. `/workspace`), a jego pliki z zamontowanego folderu czyta i zapisuje Leverframe na tym komputerze – z niezapisanymi zmianami edytora, diffami i zgodami jak lokalnie; plików spoza montowań (tylko w kontenerze) Leverframe nie udostępnia. Polecenia agenta wykonują się w kontenerze (`docker exec`), po zgodzie, z wyjściem w rozmowie. Ścieżki z rozmowy otwierają się w edytorze, gdy są w zamontowanym folderze.
 
-Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host` ([docs/DOCKER.md](docs/DOCKER.md)).
+**Pliki w Linuksie**: agenci w obrazie Leverframe działają jako UID 1000 i z tym UID zapisują pliki w zamontowanym folderze. Gdy folder projektu należy do innego użytkownika, formularz „Nowy kontener” ostrzega i podaje, co wpisać w polu *Użytkownik* (np. `1001:1001`) – kontener działa wtedy z Twoim UID, a katalog domowy agentów zostaje zapisywalny. W Windows i macOS uprawnieniami zarządza Docker Desktop.
+
+**Docker Desktop w Windows**: folder projektu z dysku Windows (`C:\…`) działa – ścieżki z kontenera (`/workspace/…`) otwierają się jako pliki `C:\…`, a rozmowa zapisuje je przez Leverframe. Montowanie folderów Windows jest jednak wolne przy dużych projektach (wiele plików, `node_modules`); szybciej, gdy projekt leży w dystrybucji WSL (`\\wsl.localhost\…`).
+
+**Bezpieczeństwo**: dostęp do Dockera to w praktyce uprawnienia administratora komputera, dlatego Leverframe nie montuje gniazda Dockera w kontenerach, nie używa `--privileged` ani sieci `host`. Do kontenera trafia tylko wskazany folder projektu (ostrzeżenie przy katalogu domowym albo `/`), każde polecenie `docker run` / `docker build` jest pokazane przed wykonaniem, a usuwanie kontenera, obrazu czy wolumenu wymaga potwierdzenia. Agent w kontenerze widzi tylko folder projektu i swój wolumen; pliki spoza montowań w trybie rozmowy są niedostępne przez Leverframe, a polecenia agenta wykonują się w kontenerze po Twojej zgodzie. Leverframe nie przechowuje kluczy – logowania agentów są w wolumenie kontenera. Szczegóły: [docs/DOCKER.md](docs/DOCKER.md).
 
 ## Układ okna
 
