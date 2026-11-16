@@ -117,6 +117,10 @@ export const dockerClient = {
   pull: (image: string, onEvent: (e: JobEvent) => void) => job("docker_pull", { image }, onEvent),
   build: (dir: string, tag: string, onEvent: (e: JobEvent) => void, dockerfile?: string | null) =>
     job("docker_build", { dir, tag, dockerfile: dockerfile ?? null }, onEvent),
+  /** Name of the image with agents of this version: `leverframe-agents:<version>`. */
+  agentsImage: () => invoke<string>("docker_agents_image"),
+  /** Builds the image with agents from the Dockerfile shipped with the app. */
+  buildAgentsImage: (onEvent: (e: JobEvent) => void) => job("docker_build_agents_image", {}, onEvent),
   logs: (container: string, onEvent: (e: JobEvent) => void) => job("docker_logs", { container }, onEvent),
   cancel: (jobId: number) => invoke<void>("docker_cancel", { job: jobId }),
 };

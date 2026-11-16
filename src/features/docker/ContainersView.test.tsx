@@ -51,6 +51,8 @@ const client = {
   pruneImages: vi.fn(async () => "Total reclaimed space: 1.2GB"),
   pull: vi.fn(async (_image: string, onEvent: (e: JobEvent) => void) => ((emit = onEvent), 7)),
   build: vi.fn(async (_d: string, _t: string, onEvent: (e: JobEvent) => void) => ((emit = onEvent), 8)),
+  agentsImage: vi.fn(async () => "leverframe-agents:0.8.0"),
+  buildAgentsImage: vi.fn(async (onEvent: (e: JobEvent) => void) => ((emit = onEvent), 9)),
   cancel: vi.fn(async () => undefined),
   createPlan: vi.fn(async (spec: ContainerSpec): Promise<CreatePlan> => ({
     args: [],
@@ -77,7 +79,7 @@ const row = (name: RegExp | string) => screen.findByRole("listitem", { name });
 describe("ContainersView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useDockerStore.setState({ info: null, images: [], containers: [], volumes: [], status: "idle", error: null, busy: {}, jobs: [] });
+    useDockerStore.setState({ info: null, images: [], containers: [], volumes: [], agentsImage: null, status: "idle", error: null, busy: {}, jobs: [] });
     useAgentsStore.setState({ projectDir: "/home/me/sklep" });
   });
 
@@ -171,6 +173,33 @@ describe("ContainersView", () => {
     fireEvent.click(screen.getByLabelText("Usuń nieużywane obrazy"));
     fireEvent.click(screen.getByText("Usuń"));
     expect(await screen.findByText("Total reclaimed space: 1.2GB")).toBeInTheDocument();
+  });
+
+  it("builds the image with agents with one button", async () => {
+    render(<ContainersView />);
+    await row("Obraz node:22");
+    // Built already: only the button in the toolbar.
+    expect(screen.queryByLabelText("Obraz Leverframe")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Zbuduj obraz Leverframe" }));
+    const job = await screen.findByRole("listitem", { name: "Budowanie leverframe-agents:0.8.0" });
+    expect(client.buildAgentsImage).toHaveBeenCalledTimes(1);
+    act(() => emit({ type: "line", text: "#7 [3/5] RUN npm install -g" }));
+    expect(within(job).getByRole("status")).toHaveTextContent("npm install");
+    fireEvent.click(within(job).getByText("Przerwij"));
+    expect(client.cancel).toHaveBeenCalledWith(9);
+    act(() => emit({ type: "done", ok: true, message: null }));
+    expect(await within(job).findByText("Gotowe.")).toBeInTheDocument();
+  });
+
+  it("offers the image with agents of this version when it is not built", async () => {
+    client.agentsImage.mockResolvedValueOnce("leverframe-agents:0.9.0");
+    render(<ContainersView />);
+    const offer = await screen.findByLabelText("Obraz Leverframe");
+    expect(offer).toHaveTextContent("leverframe-agents:0.9.0");
+    fireEvent.click(within(offer).getByText("Zbuduj obraz Leverframe"));
+    expect(await screen.findByRole("listitem", { name: "Budowanie leverframe-agents:0.9.0" })).toBeInTheDocument();
+    // While it builds, the offer waits.
+    expect(screen.queryByLabelText("Obraz Leverframe")).toBeNull();
   });
 
   it("creates a container for agents after showing the command", async () => {

@@ -192,6 +192,29 @@ pub fn docker_build(
     )
 }
 
+/// Name of the image with agents of this version (`leverframe-agents:<version>`).
+#[tauri::command]
+pub fn docker_agents_image() -> String {
+    super::image::agents_image_tag()
+}
+
+/// Builds the image with agents from the `Dockerfile` shipped with the app.
+#[tauri::command]
+pub fn docker_build_agents_image(
+    settings: State<'_, SettingsStore>,
+    jobs: State<'_, DockerJobs>,
+    on_event: Channel<JobEvent>,
+) -> Result<u64, String> {
+    let dir = super::image::agents_build_dir(&std::env::temp_dir())
+        .map_err(|e| format!("Nie można zapisać pliku Dockerfile: {e}"))?;
+    let args = build_args(
+        &dir.to_string_lossy(),
+        &super::image::agents_image_tag(),
+        None,
+    );
+    start_job(&settings, &jobs, args, on_event)
+}
+
 /// Follows a container's logs until `docker_cancel`.
 #[tauri::command]
 pub fn docker_logs(
