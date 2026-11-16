@@ -2,7 +2,7 @@
 
 Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues/60): jak łączyć się z kontenerem
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
-z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania – zob. § 8.
+z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
 **Decyzje (16.11.2026):** na początek **tylko Docker** (Podman później); obraz z agentami jako **`Dockerfile` w
 repozytorium**, bez publikacji w rejestrze (GHCR). Pozostałe pytania z § 9 – na razie według tej propozycji.
@@ -181,13 +181,13 @@ projektu (Python, Rust, …). Publikacja w GHCR – do ewentualnej decyzji póź
 
 | Etap | Zakres | Wynik |
 |---|---|---|
-| **D1** | `DockerService` przez CLI: wykrycie Dockera (wersja, czy działa), lista obrazów, kontenerów i wolumenów, `inspect`; atrapa CLI `docker` do testów; komunikaty o braku Dockera | Leverframe widzi Dockera i jego zasoby |
-| **D2** | Widok „Kontenery”: obrazy i kontenery, pobieranie i budowanie z postępem, start / stop / restart / usuń, logi kontenera, formularz „Nowy kontener” (montowanie projektu, wolumeny logowań) | zarządzanie obrazami i kontenerami z aplikacji |
-| **D3** | Profil kontenera (`ProfileKind::Container`): terminal w kontenerze (`docker exec -it`), automatyczny start zatrzymanego kontenera, profile wykryte (etykieta), „Dodaj jako profil” | terminal w kontenerze jednym kliknięciem |
-| **D4** | Agenci w kontenerze: wykrywanie, uruchamianie w terminalu, nagrania sesji, logi agentów z kontenera w „Sesje” | agent w trybie terminalowym w kontenerze |
-| **D5** | Tryb rozmowy w kontenerze: uruchamianie ACP przez `docker exec -i`, `FsKind::Container` (mapowanie montowań), polecenia agenta w PTY kontenera, otwieranie ścieżek w edytorze | rozmowa z agentem w kontenerze, zmiany plików pod kontrolą |
-| **D6** | Obraz z agentami: `packaging/docker/agents/Dockerfile` (także w zasobach aplikacji), „Zbuduj obraz Leverframe” w widoku, budowanie obrazu w CI (bez publikacji) | obraz z agentami zbudowany jednym kliknięciem |
-| **D7** | Testy E2E na prawdziwym Dockerze (runner ubuntu ma Dockera) z atrapą agenta w obrazie testowym, ręczne sprawdzenie na Docker Desktop (Windows), dokumentacja, wydanie | wersja z obsługą kontenerów |
+| **D1** ([#63](https://github.com/tarze07/Leverframe/issues/63)) | `DockerService` przez CLI: wykrycie Dockera (wersja, czy działa), lista obrazów, kontenerów i wolumenów, `inspect`; atrapa CLI `docker` do testów; komunikaty o braku Dockera | Leverframe widzi Dockera i jego zasoby |
+| **D2** ([#64](https://github.com/tarze07/Leverframe/issues/64)) | Widok „Kontenery”: obrazy i kontenery, pobieranie i budowanie z postępem, start / stop / restart / usuń, logi kontenera, formularz „Nowy kontener” (montowanie projektu, wolumeny logowań) | zarządzanie obrazami i kontenerami z aplikacji |
+| **D3** ([#65](https://github.com/tarze07/Leverframe/issues/65)) | Profil kontenera (`ProfileKind::Container`): terminal w kontenerze (`docker exec -it`), automatyczny start zatrzymanego kontenera, profile wykryte (etykieta), „Dodaj jako profil” | terminal w kontenerze jednym kliknięciem |
+| **D4** ([#66](https://github.com/tarze07/Leverframe/issues/66)) | Agenci w kontenerze: wykrywanie, uruchamianie w terminalu, nagrania sesji, logi agentów z kontenera w „Sesje” | agent w trybie terminalowym w kontenerze |
+| **D5** ([#67](https://github.com/tarze07/Leverframe/issues/67)) | Tryb rozmowy w kontenerze: uruchamianie ACP przez `docker exec -i`, `FsKind::Container` (mapowanie montowań), polecenia agenta w PTY kontenera, otwieranie ścieżek w edytorze | rozmowa z agentem w kontenerze, zmiany plików pod kontrolą |
+| **D6** ([#68](https://github.com/tarze07/Leverframe/issues/68)) | Obraz z agentami: `packaging/docker/agents/Dockerfile` (także w zasobach aplikacji), „Zbuduj obraz Leverframe” w widoku, budowanie obrazu w CI (bez publikacji) | obraz z agentami zbudowany jednym kliknięciem |
+| **D7** ([#69](https://github.com/tarze07/Leverframe/issues/69)) | Testy E2E na prawdziwym Dockerze (runner ubuntu ma Dockera) z atrapą agenta w obrazie testowym, ręczne sprawdzenie na Docker Desktop (Windows), dokumentacja, wydanie | wersja z obsługą kontenerów |
 
 Kolejność daje wartość po każdym etapie: po D3 można już pracować w kontenerze w terminalu, po D5 – w trybie
 rozmowy. D6 można zrobić równolegle z D2–D5.
