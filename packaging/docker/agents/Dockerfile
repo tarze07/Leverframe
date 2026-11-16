@@ -36,15 +36,20 @@ RUN npm install -g --no-fund --no-audit \
 # Użytkownik bez roota: agent (UID 1000 – pliki w zamontowanym folderze mają w Linuksie
 # właściciela jak na komputerze). Obraz node ma już użytkownika node z UID 1000 – zmiana nazwy.
 # sudo bez hasła: agent może doinstalować narzędzia w kontenerze (zniknie razem z nim).
+# Na Linuksie, gdy projekt należy do innego UID, kontener działa z `-u <UID>:<GID>` (ostrzeżenie
+# w „Nowy kontener”): HOME zostaje /home/agent, a katalog domowy (i wolumen z niego) jest
+# zapisywalny dla każdego użytkownika.
 RUN groupmod -n agent node \
  && usermod -l agent -d /home/agent -m -s /bin/bash node \
  && echo "agent ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/agent \
  && chmod 0440 /etc/sudoers.d/agent \
+ && chmod 0777 /home/agent \
  && mkdir -p /workspace \
  && chown agent:agent /workspace
 
 USER agent
-ENV SHELL=/bin/bash \
+ENV HOME=/home/agent \
+    SHELL=/bin/bash \
     TINI_SUBREAPER=1
 WORKDIR /workspace
 

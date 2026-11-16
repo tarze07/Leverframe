@@ -107,6 +107,37 @@ fn is_home_or_root(dir: &Path) -> bool {
     dir.parent().is_none() || home.is_some_and(|h| h == dir)
 }
 
+/// Owner (UID, GID) of a folder; `None` where Docker maps owners itself (Windows, macOS).
+fn folder_owner(dir: &Path) -> Option<(u32, u32)> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let m = std::fs::metadata(dir).ok()?;
+        Some((m.uid(), m.gid()))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = dir;
+        None
+    }
+}
+
+/// UID of the user in the image with agents (`packaging/docker/agents/Dockerfile`).
+const AGENTS_IMAGE_UID: u32 = 1000;
+
+/// On Linux the container's user writes the project folder with its own UID: the image with
+/// agents runs as UID 1000, so a folder of another user needs `-u <UID>:<GID>`.
+fn owner_warning(image: &str, user: Option<&str>, owner: Option<(u32, u32)>) -> Option<String> {
+    let (uid, gid) = owner?;
+    let repository = image.rsplit('/').next().unwrap_or(image);
+    if uid == AGENTS_IMAGE_UID || user.is_some() || !repository.starts_with("leverframe-agents") {
+        return None;
+    }
+    Some(format!(
+        "Folder projektu należy do użytkownika o UID {uid}, a agenci w obrazie Leverframe działają jako UID {AGENTS_IMAGE_UID} – polecenia w kontenerze nie zapiszą plików projektu. Wpisz w polu „Użytkownik” (Więcej): {uid}:{gid}."
+    ))
+}
+
 /// Checks the form and builds `docker run`.
 pub fn plan(spec: &ContainerSpec) -> Result<CreatePlan, String> {
     let image = spec.image.trim();
@@ -139,6 +170,12 @@ pub fn plan(spec: &ContainerSpec) -> Result<CreatePlan, String> {
                 "Do kontenera trafi cały folder {dir} – agent będzie miał dostęp do wszystkich jego plików. Lepiej wybrać folder projektu."
             ));
         }
+        let user = spec
+            .user
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty());
+        warnings.extend(owner_warning(image, user, folder_owner(path)));
         args.extend(["-v".into(), format!("{dir}:{WORKSPACE}")]);
     }
     let volume = spec.home_volume.then(|| home_volume_name(name));
@@ -308,5 +345,34 @@ impl Docker {
             .find(|l| l.starts_with("Total reclaimed space"))
             .map(|l| l.trim().to_string())
             .unwrap_or_default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_project_of_another_uid_needs_the_user_of_the_container() {
+        let w = owner_warning("leverframe-agents:0.8.0", None, Some((1001, 1002))).unwrap();
+        assert!(w.contains("UID 1001") && w.contains(": 1001:1002."), "{w}");
+        assert!(
+            owner_warning("ghcr.io/me/leverframe-agents-python:1", None, Some((0, 0))).is_some()
+        );
+        // The same UID, a user chosen, another image, or no owners (Docker Desktop): nothing.
+        assert_eq!(
+            owner_warning("leverframe-agents:0.8.0", None, Some((1000, 1000))),
+            None
+        );
+        assert_eq!(
+            owner_warning(
+                "leverframe-agents:0.8.0",
+                Some("1001:1002"),
+                Some((1001, 1002))
+            ),
+            None
+        );
+        assert_eq!(owner_warning("node:22", None, Some((1001, 1002))), None);
+        assert_eq!(owner_warning("leverframe-agents:0.8.0", None, None), None);
     }
 }

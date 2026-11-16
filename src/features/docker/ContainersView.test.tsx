@@ -170,6 +170,14 @@ describe("ContainersView", () => {
     expect(await screen.findByText("Gotowe.")).toBeInTheDocument();
     await waitFor(() => expect(client.images.mock.calls.length).toBeGreaterThan(1)); // refreshed
 
+    // The folder can also be typed in (or pasted).
+    fireEvent.click(screen.getByText("Zbuduj…"));
+    const again = screen.getByRole("form", { name: "Zbuduj obraz" });
+    fireEvent.change(within(again).getByLabelText("Folder z plikiem Dockerfile"), { target: { value: " /srv/obraz " } });
+    fireEvent.change(within(again).getByLabelText("Nazwa obrazu"), { target: { value: "obraz:2" } });
+    fireEvent.click(within(again).getByText("Zbuduj"));
+    await waitFor(() => expect(client.build).toHaveBeenCalledWith("/srv/obraz", "obraz:2", expect.any(Function)));
+
     fireEvent.click(screen.getByLabelText("Usuń nieużywane obrazy"));
     fireEvent.click(screen.getByText("Usuń"));
     expect(await screen.findByText("Total reclaimed space: 1.2GB")).toBeInTheDocument();

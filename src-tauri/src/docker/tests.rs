@@ -202,7 +202,12 @@ fn real_docker_when_available() {
     let containers = d.containers().unwrap();
     d.volumes().unwrap();
     if let Some(c) = containers.first() {
-        assert_eq!(d.inspect(&c.id).unwrap().id, c.id);
+        // Other tests may remove their containers meanwhile.
+        match d.inspect(&c.id) {
+            Ok(details) => assert_eq!(details.id, c.id),
+            Err(DockerError::NoSuchObject(_)) => {}
+            Err(e) => panic!("{e}"),
+        }
     }
     assert!(matches!(
         d.inspect("leverframe-no-such-container-42"),
@@ -262,7 +267,14 @@ fn a_new_container_is_planned_and_checked() {
         ]
     );
     assert_eq!(p.volume.as_deref(), Some("leverframe-sklep-agenci-home"));
-    assert!(p.warnings.is_empty());
+    // Only the owner of the folder may matter here (it depends on who runs the tests).
+    assert!(
+        p.warnings
+            .iter()
+            .all(|w| w.starts_with("Folder projektu należy")),
+        "{:?}",
+        p.warnings
+    );
     assert!(p.command.starts_with("docker run -d --name sklep-agenci"));
 
     // Everything the form offers.

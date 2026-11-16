@@ -4,7 +4,7 @@ Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
 z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
-**Stan:** D1–D6 (#63–#68) zrobione – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
+**Stan:** D1–D7 (#63–#69) zrobione (ręczne sprawdzenie na Docker Desktop w Windows – w PR wydania) – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
 i zmiany, `jobs.rs` – pull / build / logs z postępem, `terminal.rs` – terminal profilu kontenera, ścieżki z montowań,
 profile wykryte), widok „Kontenery”, profil `kind: "container"` (program `docker` z `dockerPath`), agenci w kontenerze
 (wykrywanie przez `docker exec -i … sh -s`, terminal, logi Claude / Codex jako źródło `docker:<profil>`), ustawienie
@@ -14,6 +14,8 @@ a gdy katalog rozmowy nie jest zamontowany, agent dostaje własny dostęp do pli
 agenta w PTY przez `docker exec -it`; UI uruchamia zatrzymany kontener przed rozmową i mapuje ścieżki na pliki projektu. Obraz z
 agentami: `packaging/docker/agents/Dockerfile` (wbudowany przez `include_str!`, `docker/image.rs`), przycisk „Zbuduj obraz
 Leverframe” (`leverframe-agents:<wersja>`), workflow `docker-image.yml` z `check.sh` (wersje agentów, `initialize` adapterów).
+E2E z prawdziwym Dockerem: `e2e/docker.test.mjs` (`npm run e2e:docker`, w CI po zwykłych E2E) – obraz testowy z busyboxa
+i atrapy agenta ACP budowany w widoku, kontener, terminal, agent, rozmowa ze zmianą pliku przez edytor, historia.
 
 **Decyzje (16.11.2026):** na początek **tylko Docker** (Podman później); obraz z agentami jako **`Dockerfile` w
 repozytorium**, bez publikacji w rejestrze (GHCR). Pozostałe pytania z § 9 – na razie według tej propozycji.
@@ -210,8 +212,9 @@ rozmowy. D6 można zrobić równolegle z D2–D5.
   użytkowników (rootless, `--userns`); po D7 osobne zadanie: wybór programu `podman` i testy.
 - **Windows** – Docker Desktop daje `docker.exe` w PATH Windows; Docker w dystrybucji WSL (bez Desktop) to
   profil WSL + `docker` w środku – do obsłużenia przez wybór programu `wsl.exe -d <dystrybucja> docker`.
-- **Uprawnienia plików** w montowaniu na Linuksie (UID kontenera ≠ UID użytkownika) – obraz z UID 1000,
-  opcja „użytkownik” w formularzu; do sprawdzenia w D7.
+- **Uprawnienia plików** w montowaniu na Linuksie (UID kontenera ≠ UID użytkownika) – sprawdzone w D7: agent
+  z UID 1000 nie zapisze folderu innego właściciela. „Nowy kontener” ostrzega i podaje `-u <UID>:<GID>` (pole
+  „Użytkownik”); obraz ma `HOME=/home/agent` zapisywalny dla każdego UID, więc logowania działają i wtedy.
 - **Wydajność montowań** na Windows/macOS (Docker Desktop) – znana wolniejsza praca na dużych projektach;
   w dokumentacji: projekt w WSL dla Windows.
 - Pytania:

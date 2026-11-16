@@ -207,13 +207,20 @@ function ImageActions() {
               className="mt-1 flex flex-col gap-1"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!dir || !tag.trim()) return;
-                void build(dir, tag.trim());
+                if (!dir?.trim() || !tag.trim()) return;
+                void build(dir.trim(), tag.trim());
                 setMode(null);
               }}
             >
               <div className="flex gap-1">
-                <input value={dir ?? ""} readOnly placeholder="folder z plikiem Dockerfile" aria-label="Folder z plikiem Dockerfile" title={dir ?? undefined} className={`${fieldClass} min-w-0 flex-1 font-mono`} />
+                <input
+                  value={dir ?? ""}
+                  onChange={(e) => setDir(e.target.value || null)}
+                  placeholder="folder z plikiem Dockerfile"
+                  aria-label="Folder z plikiem Dockerfile"
+                  title={dir ?? undefined}
+                  className={`${fieldClass} min-w-0 flex-1 font-mono`}
+                />
                 <button type="button" onClick={() => void pickDir()} className="shrink-0 rounded border border-lf-border px-2 text-lf-fg hover:bg-lf-hover">
                   Wybierz…
                 </button>
@@ -222,7 +229,7 @@ function ImageActions() {
                 Nazwa obrazu
               </label>
               <input id={tagId} value={tag} onChange={(e) => setTag(e.target.value)} placeholder="nazwa obrazu, np. moj-obraz:1.0" className={`${fieldClass} font-mono`} />
-              <button type="submit" disabled={!dir || !tag.trim()} className="self-start rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg disabled:opacity-50">
+              <button type="submit" disabled={!dir?.trim() || !tag.trim()} className="self-start rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg disabled:opacity-50">
                 Zbuduj
               </button>
             </form>
