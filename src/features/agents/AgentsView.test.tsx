@@ -115,7 +115,7 @@ describe("AgentsView", () => {
     expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "user-1", cwd: null }));
   });
 
-  it("runs agents in a container with the project folder; no conversation mode there yet", async () => {
+  it("runs agents and conversations in a container with the project folder", async () => {
     mockBackend((p) => [{ id: "claude", installed: p === "container:sklep", command: "claude", version: p === "container:sklep" ? "w kontenerze 1.0" : null }]);
     render(<AgentsView />);
     await screen.findAllByText("nie znaleziono");
@@ -123,9 +123,10 @@ describe("AgentsView", () => {
     expect(await screen.findByText("w kontenerze 1.0")).toBeInTheDocument();
     expect(screen.getByText(/jeśli kontener go montuje/)).toBeInTheDocument();
     const card = screen.getByRole("listitem", { name: "Claude Code" });
-    expect(within(card).queryByText("Rozmowa")).toBeNull();
     fireEvent.click(within(card).getByText("Terminal"));
     expect(openAgent).toHaveBeenCalledWith("claude", expect.objectContaining({ profileId: "container:sklep", cwd: "/home/me/projects/app" }));
+    fireEvent.click(within(card).getByText("Rozmowa"));
+    expect(openAgentChat).toHaveBeenCalledWith("claude", { profileId: "container:sklep", cwd: "/home/me/projects/app" });
   });
 
   it("keeps a directory on the server for each SSH profile", async () => {

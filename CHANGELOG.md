@@ -5,6 +5,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 ## [Unreleased]
 
 ### Dodane
+- **Rozmowa z agentem w kontenerze** ([#67](https://github.com/tarze07/Leverframe/issues/67), etap D5 obsługi Dockera): „Rozmowa” przy agencie działa także z profilem kontenera – tryb rozmowy (ACP) przez `docker exec`, w folderze projektu w kontenerze. Pliki z zamontowanego folderu agent czyta i zapisuje przez Leverframe (diffy, zgody, niezapisane zmiany edytora), pliki tylko w kontenerze są odrzucane, a polecenia agenta wykonują się w kontenerze. Zatrzymany kontener uruchamia się przed rozmową.
 - **Agenci w kontenerze** ([#66](https://github.com/tarze07/Leverframe/issues/66), etap D4 obsługi Dockera): panel „Agenci” wykrywa agentów w kontenerze (uruchamia go, gdy profil na to pozwala) i uruchamia ich w terminalu kontenera, w folderze projektu. Logi Claude Code i Codex z kontenera są w „Sesje → Rozmowy” (źródło „Kontener: …”), z otwieraniem plików z montowanego folderu i wznawianiem rozmowy w kontenerze.
 
 ### Poprawione

@@ -13,6 +13,20 @@ pub enum FsKind {
     Local,
     /// A WSL distribution, reached from Windows through `\\wsl.localhost\<distro>`.
     Wsl(String),
+    /// A Docker container: its files are reached through its bind mounts (the project folder),
+    /// its commands through `docker exec`.
+    Container(ContainerFs),
+}
+
+/// The container of an ACP session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerFs {
+    /// The docker CLI.
+    pub program: String,
+    pub name: String,
+    pub user: Option<String>,
+    /// Mounts of the container (only bind mounts are on this machine).
+    pub mounts: Vec<crate::docker::ContainerMount>,
 }
 
 /// A path the agent sent, as a path on this machine. ACP requires absolute paths.
@@ -45,6 +59,17 @@ pub fn to_local(kind: &FsKind, agent_path: &str) -> Result<PathBuf, String> {
                 "\\\\wsl.localhost\\{distro}\\{}",
                 parts.join("\\")
             )))
+        }
+        FsKind::Container(c) => {
+            if !agent_path.starts_with('/') {
+                return Err(format!("Ścieżka musi być bezwzględna: {agent_path}"));
+            }
+            crate::docker::terminal::host_path(&c.mounts, agent_path).ok_or_else(|| {
+                format!(
+                    "{agent_path} jest tylko w kontenerze {} (poza zamontowanymi folderami)",
+                    c.name
+                )
+            })
         }
     }
 }
@@ -208,5 +233,60 @@ mod tests {
             "line numbers start at 1"
         );
         assert_eq!(slice_lines(text, Some(9), None), "");
+    }
+
+    #[test]
+    fn container_paths_map_through_bind_mounts() {
+        let kind = FsKind::Container(ContainerFs {
+            program: "docker".into(),
+            name: "sklep".into(),
+            user: None,
+            mounts: vec![
+                crate::docker::ContainerMount {
+                    kind: "bind".into(),
+                    source: "/home/me/sklep".into(),
+                    destination: "/workspace".into(),
+                    name: None,
+                    read_write: true,
+                },
+                crate::docker::ContainerMount {
+                    kind: "bind".into(),
+                    source: "/home/me/dane".into(),
+                    destination: "/workspace/dane".into(),
+                    name: None,
+                    read_write: true,
+                },
+                crate::docker::ContainerMount {
+                    kind: "volume".into(),
+                    source: "/var/lib/docker/volumes/h/_data".into(),
+                    destination: "/root".into(),
+                    name: None,
+                    read_write: true,
+                },
+            ],
+        });
+        let ok = |p: &str| to_local(&kind, p).unwrap();
+        assert_eq!(ok("/workspace"), PathBuf::from("/home/me/sklep"));
+        assert_eq!(
+            ok("/workspace/src/a.ts"),
+            PathBuf::from("/home/me/sklep/src/a.ts")
+        );
+        assert_eq!(
+            ok("/workspace/dane/x.csv"),
+            PathBuf::from("/home/me/dane/x.csv")
+        );
+        assert_eq!(
+            ok("/workspace/src/../b.ts"),
+            PathBuf::from("/home/me/sklep/b.ts")
+        );
+        // Not a prefix by characters only.
+        assert!(to_local(&kind, "/workspace2/a").is_err());
+        // Only in the container: outside the mounts, or in a volume.
+        assert!(to_local(&kind, "/etc/passwd")
+            .unwrap_err()
+            .contains("tylko w kontenerze sklep"));
+        assert!(to_local(&kind, "/root/.claude.json").is_err());
+        assert!(to_local(&kind, "/workspace/../etc/passwd").is_err());
+        assert!(to_local(&kind, "src/a.ts").is_err());
     }
 }

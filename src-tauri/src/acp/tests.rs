@@ -1128,3 +1128,157 @@ fn real_turn(session: &Arc<AcpSession>, events: &Arc<Collector>, text: &str) {
     println!("  polecenia zakończone w terminalach Leverframe: {terminals}");
     println!("  odpowiedź: {}", answer.trim());
 }
+
+/// A conversation with an agent in a real Docker container (busybox with the scripted agent
+/// copied in): it runs there, in the mounted project folder; its files are read and written
+/// through Leverframe on this machine, files only in the container are refused, its commands
+/// run in the container. Skipped without Docker.
+#[cfg(unix)]
+#[test]
+fn real_docker_conversation_when_available() {
+    use crate::docker::{ContainerSpec, Docker};
+    use crate::profiles::{ContainerTarget, Profile, ProfileKind, ProfileSource};
+
+    let d = Docker::new("docker");
+    let info = d.info();
+    if !info.running || info.server_os.as_deref() != Some("linux") {
+        eprintln!("Docker with Linux containers not available, skipped");
+        return;
+    }
+    if !crate::docker::tests::ensure_busybox(&d) {
+        eprintln!("busybox could not be pulled, skipped");
+        return;
+    }
+    // The agent needs libgcc_s besides the glibc busybox has.
+    let agent = fake_agent();
+    let ldd = std::process::Command::new("ldd")
+        .arg(&agent)
+        .output()
+        .unwrap();
+    let libgcc = String::from_utf8_lossy(&ldd.stdout)
+        .lines()
+        .find(|l| l.contains("libgcc_s.so.1 => "))
+        .and_then(|l| l.split("=> ").nth(1))
+        .and_then(|l| l.split_whitespace().next())
+        .map(String::from);
+    let dir = temp_dir("docker");
+    std::fs::write(dir.join("README.md"), "# Sklep\n").unwrap();
+    let name = format!("lf-acp-{}", std::process::id());
+    let _ = d.remove(&name, true);
+    d.create(&ContainerSpec {
+        image: "busybox:1.36".into(),
+        name: name.clone(),
+        project_dir: Some(dir.to_string_lossy().into_owned()),
+        ..Default::default()
+    })
+    .unwrap();
+    let docker = |args: &[&str]| {
+        let out = std::process::Command::new("docker")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "docker {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        docker(&["exec", &name, "mkdir", "-p", "/usr/local/bin"]);
+        let target = format!("{name}:/usr/local/bin/claude-agent-acp");
+        docker(&["cp", &agent.to_string_lossy(), &target]);
+        if let Some(lib) = &libgcc {
+            docker(&["cp", "-L", lib, &format!("{name}:/lib/libgcc_s.so.1")]);
+        }
+        let profile = Profile {
+            id: format!("container:{name}"),
+            name: name.clone(),
+            kind: ProfileKind::Container,
+            command: "docker".into(),
+            args: vec![],
+            env: Default::default(),
+            cwd: None,
+            icon: None,
+            description: None,
+            ssh: None,
+            container: Some(ContainerTarget {
+                name: name.clone(),
+                auto_start: true,
+                ..Default::default()
+            }),
+            source: ProfileSource::Detected,
+        };
+        let mounts = d.inspect(&name).unwrap().mounts;
+        let (workdir, fs) = super::commands::container_fs(
+            profile.container.as_ref().unwrap(),
+            "docker".into(),
+            &mounts,
+            Some(&dir),
+        );
+        assert_eq!(workdir, "/workspace");
+        let launch = launch_for(
+            Some(&profile),
+            &["claude-agent-acp".to_string()],
+            Some(&dir),
+            Some(&workdir),
+            false,
+        );
+        let events = Arc::new(Collector::default());
+        let session = AcpSession::start(
+            &launch,
+            events.clone(),
+            fs,
+            Arc::new(PtyManager::new()),
+            None,
+        )
+        .unwrap();
+        assert_eq!(ready(&events), "/workspace", "the folder in the container");
+
+        // Files: the project's README through the mount, on this machine.
+        let s = session.clone();
+        let turn = std::thread::spawn(move || s.prompt("edit"));
+        let (read_id, path, inside, _) = fs_request(&events, "read", 0);
+        assert_eq!(PathBuf::from(&path), dir.join("README.md"));
+        assert!(inside);
+        session
+            .reply_fs(read_id, Ok(Some("# Sklep\n".into())))
+            .unwrap();
+        let (perm, _) = permission(&events);
+        session.reply_permission(perm, Some("allow")).unwrap();
+        let (write_id, path, inside, _) = fs_request(&events, "write", 0);
+        assert_eq!(
+            (PathBuf::from(&path), inside),
+            (dir.join("README.md"), true)
+        );
+        session.reply_fs(write_id, Ok(None)).unwrap();
+        assert_eq!(finish(turn), "end_turn");
+
+        // A file only in the container is refused at once (the UI never sees it).
+        let s = session.clone();
+        let turn = std::thread::spawn(move || s.prompt("fs"));
+        assert_eq!(finish(turn), "end_turn");
+        assert!(
+            events.message_text().ends_with("fs: -32602"),
+            "{}",
+            events.message_text()
+        );
+
+        // Commands run in the container, in the project folder there.
+        let s = session.clone();
+        let turn = std::thread::spawn(move || s.prompt("run"));
+        let (request, _, cwd) = terminal_request(&events, write_id);
+        assert_eq!(cwd.as_deref(), Some("/workspace"));
+        session.reply_terminal(request, true).unwrap();
+        assert_eq!(finish(turn), "end_turn");
+        let text = events.message_text();
+        assert!(text.contains("wynik: kod 3"), "{text}");
+        assert!(text.contains("hello-from-agent"), "{text}");
+        session.stop();
+    }));
+    let _ = d.remove(&name, true);
+    let _ = std::fs::remove_dir_all(&dir);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

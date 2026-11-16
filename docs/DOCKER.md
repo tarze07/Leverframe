@@ -4,11 +4,14 @@ Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
 z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
-**Stan:** D1–D4 (#63–#66) zrobione – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
+**Stan:** D1–D5 (#63–#67) zrobione – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
 i zmiany, `jobs.rs` – pull / build / logs z postępem, `terminal.rs` – terminal profilu kontenera, ścieżki z montowań,
 profile wykryte), widok „Kontenery”, profil `kind: "container"` (program `docker` z `dockerPath`), agenci w kontenerze
 (wykrywanie przez `docker exec -i … sh -s`, terminal, logi Claude / Codex jako źródło `docker:<profil>`), ustawienie
-`dockerPath`. Profile wykryte obejmują też zatrzymane kontenery z etykietą (ich terminal je uruchamia).
+`dockerPath`. Profile wykryte obejmują też zatrzymane kontenery z etykietą (ich terminal je uruchamia). Tryb rozmowy
+(ACP) w kontenerze: `docker exec -i` (potoki), `FsKind::Container` – pliki agenta przez montowania (poza nimi odmowa,
+a gdy katalog rozmowy nie jest zamontowany, agent dostaje własny dostęp do plików i poleceń, jak na SSH), polecenia
+agenta w PTY przez `docker exec -it`; UI uruchamia zatrzymany kontener przed rozmową i mapuje ścieżki na pliki projektu.
 
 **Decyzje (16.11.2026):** na początek **tylko Docker** (Podman później); obraz z agentami jako **`Dockerfile` w
 repozytorium**, bez publikacji w rejestrze (GHCR). Pozostałe pytania z § 9 – na razie według tej propozycji.

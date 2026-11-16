@@ -274,7 +274,7 @@ function AgentCard(props: {
   agent: Agent;
   status?: AgentStatus;
   checking: boolean;
-  /** Agents in a Docker container: the conversation mode there comes later. */
+  /** Agents in a Docker container (installed there, not on this machine). */
   inContainer?: boolean;
   onLaunch: (split?: "right") => void;
   onChat: () => void;
@@ -344,7 +344,7 @@ function AgentCard(props: {
         >
           <span className="codicon codicon-split-horizontal" aria-hidden />
         </button>
-        {acp && !props.inContainer && (
+        {acp && (
           <button
             type="button"
             onClick={props.onChat}

@@ -546,7 +546,7 @@ fn pulls_builds_and_follows_logs_as_jobs() {
 }
 
 /// busybox for the real-Docker tests: pulled only when missing (Docker Hub limits pulls).
-fn ensure_busybox(d: &Docker) -> bool {
+pub(crate) fn ensure_busybox(d: &Docker) -> bool {
     let present = d.images().is_ok_and(|images| {
         images
             .iter()

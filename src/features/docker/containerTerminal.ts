@@ -5,6 +5,7 @@ import type { Profile } from "../profiles/profilesClient";
 import type { PtySpawnRequest } from "../terminal/ptyClient";
 import { openTerminal } from "../../workbench/commands";
 import { dockRegistry } from "../../workbench/docks";
+import type { ContainerMount } from "./dockerClient";
 
 export interface PreparedContainer {
   running: boolean;
@@ -12,10 +13,30 @@ export interface PreparedContainer {
   started: boolean;
   /** Working directory in the container (the project folder when it is mounted). */
   workdir: string;
+  /** The container's mounts (paths in the container as files of this machine). */
+  mounts: ContainerMount[];
 }
 
 const prepare = (profileId: string, cwd: string | undefined, start: boolean) =>
   invoke<PreparedContainer>("docker_prepare_container", { profileId, cwd: cwd ?? null, start });
+
+/**
+ * The container of a profile, running: a stopped one is started by itself, or after asking when
+ * the profile says so (refusing throws). `null` for other profiles.
+ */
+export async function prepareContainer(profileId: string | null | undefined, cwd: string | null | undefined): Promise<PreparedContainer | null> {
+  const profiles = useProfilesStore.getState();
+  const profile: Profile | undefined = profiles.byId(profileId ?? profiles.defaultProfileId);
+  if (profile?.kind !== "container" || !profile.container) return null;
+  const name = profile.container.name;
+  let prepared = await prepare(profile.id, cwd ?? undefined, false);
+  if (!prepared.running) {
+    const yes = await ask(`Kontener ${name} jest zatrzymany. Uruchomić go?`, { title: "Kontener zatrzymany", kind: "info" });
+    if (!yes) throw new Error(`kontener ${name} jest zatrzymany`);
+    prepared = await prepare(profile.id, cwd ?? undefined, true);
+  }
+  return prepared;
+}
 
 /**
  * Before a terminal of a container profile starts: the container runs (a stopped one is started
@@ -24,18 +45,12 @@ const prepare = (profileId: string, cwd: string | undefined, start: boolean) =>
  */
 export async function prepareContainerTerminal(request: PtySpawnRequest): Promise<{ request: PtySpawnRequest; note: string | null }> {
   const profiles = useProfilesStore.getState();
-  const profile: Profile | undefined = profiles.byId(request.profileId ?? profiles.defaultProfileId);
-  if (profile?.kind !== "container" || !profile.container) return { request, note: null };
-  const name = profile.container.name;
-  let prepared = await prepare(profile.id, request.cwd, false);
-  if (!prepared.running) {
-    const yes = await ask(`Kontener ${name} jest zatrzymany. Uruchomić go?`, { title: "Kontener zatrzymany", kind: "info" });
-    if (!yes) throw new Error(`kontener ${name} jest zatrzymany`);
-    prepared = await prepare(profile.id, request.cwd, true);
-  }
+  const prepared = await prepareContainer(request.profileId, request.cwd);
+  if (!prepared) return { request, note: null };
+  const profile = profiles.byId(request.profileId ?? profiles.defaultProfileId);
   return {
-    request: { ...request, profileId: profile.id, containerDir: prepared.workdir },
-    note: prepared.started ? `Uruchomiono kontener ${name}` : null,
+    request: { ...request, profileId: profile?.id, containerDir: prepared.workdir },
+    note: prepared.started ? `Uruchomiono kontener ${profile?.container?.name ?? ""}` : null,
   };
 }
 

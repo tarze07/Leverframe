@@ -197,8 +197,8 @@ pub fn command_script(req: &CommandRequest) -> String {
     s
 }
 
-/// How to start the agent's command in a PTY: in the session's WSL distribution, through cmd.exe
-/// on Windows, or through `sh` with the login `PATH` elsewhere. `session_cwd` is the session's
+/// How to start the agent's command in a PTY: in the session's WSL distribution or container,
+/// through cmd.exe on Windows, or through `sh` with the login `PATH` elsewhere. `session_cwd` is the session's
 /// folder in the agent's file system (used when the agent gives none).
 pub fn spawn_options(
     kind: &FsKind,
@@ -228,6 +228,17 @@ pub fn spawn_options(
             args.push(command_script(req));
             opts.program = Some("wsl.exe".into());
             opts.args = args;
+        }
+        FsKind::Container(c) => {
+            // The agent's command runs in the container; `cwd` is a path there.
+            opts.program = Some(c.program.clone());
+            opts.args = crate::docker::terminal::exec_sh_args(
+                &c.name,
+                c.user.as_deref(),
+                agent_cwd,
+                true,
+                command_script(req),
+            );
         }
         FsKind::Local if windows => {
             // cmd.exe finds npm's .cmd shims; the agent's words are passed one by one.
@@ -368,5 +379,47 @@ mod tests {
         let mut relative = req("x", &[]);
         relative.cwd = Some("relative".into());
         assert!(spawn_options(&FsKind::Local, &relative, None, false).is_err());
+    }
+
+    #[test]
+    fn container_commands_run_with_docker_exec_in_the_container_folder() {
+        let kind = FsKind::Container(crate::acp::fs::ContainerFs {
+            program: "/usr/bin/docker".into(),
+            name: "sklep-agenci".into(),
+            user: Some("agent".into()),
+            mounts: vec![],
+        });
+        let mut r = req("npm", &["test"]);
+        r.env = vec![("CI".into(), "1".into())];
+        let o = spawn_options(&kind, &r, Some("/workspace"), true).unwrap();
+        assert_eq!(o.program.as_deref(), Some("/usr/bin/docker"));
+        assert_eq!(
+            &o.args[..12],
+            [
+                "exec",
+                "-it",
+                "-w",
+                "/workspace",
+                "-e",
+                "TERM=xterm-256color",
+                "-e",
+                "COLORTERM=truecolor",
+                "-u",
+                "agent",
+                "--",
+                "sklep-agenci"
+            ]
+        );
+        assert_eq!(&o.args[12..14], ["sh", "-c"]);
+        assert!(o.args[14].contains("export CI='1'\n"));
+        assert!(o.args[14].ends_with("exec 'npm' 'test'\n"));
+        assert_eq!(
+            o.cwd, None,
+            "a folder in the container, not on this machine"
+        );
+        // The agent's own folder wins.
+        r.cwd = Some("/workspace/api".into());
+        let o = spawn_options(&kind, &r, Some("/workspace"), false).unwrap();
+        assert_eq!(o.args[3], "/workspace/api");
     }
 }

@@ -7,7 +7,7 @@ use serde::Deserialize;
 use tauri::ipc::Channel;
 use tauri::State;
 
-use super::fs::FsKind;
+use super::fs::{ContainerFs, FsKind};
 use super::{launch_for, AcpEvent, AcpEvents, AcpService};
 use crate::agents::AgentService;
 use crate::profiles::{Profile, ProfileKind, ProfileService};
@@ -79,6 +79,68 @@ fn fs_kind(profile: Option<&Profile>) -> Option<FsKind> {
     }
 }
 
+/// The working directory of a conversation in a container (the project folder when a bind mount
+/// holds it, else the profile's) and its file access: through the bind mount on this machine when
+/// the directory is mounted, otherwise none (the agent uses its own files and commands, as on an
+/// SSH host). The container must run – the UI starts it first.
+async fn container_session(
+    settings: &SettingsStore,
+    profile: &Profile,
+    local_cwd: Option<PathBuf>,
+) -> Result<(String, Option<FsKind>), String> {
+    let target = profile
+        .container
+        .clone()
+        .ok_or_else(|| format!("{} nie jest profilem kontenera", profile.name))?;
+    let docker = crate::docker::commands::docker(settings);
+    let program = profile.launch_spec().program;
+    let details = blocking(move || {
+        docker.inspect(&target.name).map_err(|e| match e {
+            crate::docker::DockerError::NoSuchObject(_) => {
+                format!("Kontenera {} już nie ma", target.name)
+            }
+            e => e.to_string(),
+        })
+    })
+    .await?;
+    if !details.running {
+        return Err(format!(
+            "Kontener {} jest zatrzymany – uruchom go i spróbuj ponownie",
+            details.name
+        ));
+    }
+    let target = profile.container.as_ref().expect("checked above");
+    Ok(container_fs(
+        target,
+        program,
+        &details.mounts,
+        local_cwd.as_deref(),
+    ))
+}
+
+/// See [`container_session`]; without Docker, for tests.
+pub(crate) fn container_fs(
+    target: &crate::profiles::ContainerTarget,
+    program: String,
+    mounts: &[crate::docker::ContainerMount],
+    local_cwd: Option<&std::path::Path>,
+) -> (String, Option<FsKind>) {
+    use crate::docker::terminal::{container_dir, host_path};
+    let workdir = local_cwd
+        .and_then(|d| container_dir(mounts, d))
+        .or_else(|| target.workdir.clone())
+        .unwrap_or_else(|| crate::docker::actions::WORKSPACE.into());
+    let fs = host_path(mounts, &workdir).map(|_| {
+        FsKind::Container(ContainerFs {
+            program,
+            name: target.name.clone(),
+            user: target.user.clone(),
+            mounts: mounts.to_vec(),
+        })
+    });
+    (workdir, fs)
+}
+
 /// The ACP command line: the explicit command, or the agent's `acp` definition.
 fn resolve_command(
     request: &AcpStartRequest,
@@ -114,7 +176,7 @@ async fn blocking<T: Send + 'static>(
 /// Starts an agent in ACP mode; returns the session id. Progress (handshake, login, errors)
 /// arrives as events.
 #[tauri::command]
-pub fn acp_start(
+pub async fn acp_start(
     service: State<'_, AcpService>,
     profiles: State<'_, ProfileService>,
     agents: State<'_, AgentService>,
@@ -132,17 +194,21 @@ pub fn acp_start(
         ),
         None => profiles.default_profile(),
     };
-    if profile.as_ref().map(|p| p.kind) == Some(ProfileKind::Container) {
-        return Err(
-            "Tryb rozmowy w kontenerze nie jest jeszcze dostępny – uruchom agenta w terminalu kontenera (przycisk Terminal)."
-                .into(),
-        );
-    }
-    let remote_dir = profile
+    let local_cwd = request.cwd.clone().or_else(crate::pty::home_dir);
+    let container = match profile
         .as_ref()
-        .filter(|p| p.kind == ProfileKind::Ssh)
-        .and_then(|p| crate::settings::remote_dir(&settings, &p.id));
-    let local_cwd = request.cwd.or_else(crate::pty::home_dir);
+        .filter(|p| p.kind == ProfileKind::Container)
+    {
+        Some(p) => Some(container_session(&settings, p, local_cwd.clone()).await?),
+        None => None,
+    };
+    let remote_dir = match &container {
+        Some((workdir, _)) => Some(workdir.clone()),
+        None => profile
+            .as_ref()
+            .filter(|p| p.kind == ProfileKind::Ssh)
+            .and_then(|p| crate::settings::remote_dir(&settings, &p.id)),
+    };
     let launch = launch_for(
         profile.as_ref(),
         &command,
@@ -150,7 +216,10 @@ pub fn acp_start(
         remote_dir.as_deref(),
         cfg!(windows),
     );
-    let fs = fs_kind(profile.as_ref());
+    let fs = match container {
+        Some((_, fs)) => fs,
+        None => fs_kind(profile.as_ref()),
+    };
     let transcript = match request.resume.as_ref().and_then(|r| r.history_id) {
         Some(history_id) => sessions.resume_conversation(history_id)?,
         None => sessions.start_conversation(&ConversationInfo {
@@ -406,5 +475,55 @@ mod tests {
         assert!(resolve_command(&request(Some("nope"), None), &agents).is_err());
         assert!(resolve_command(&request(None, None), &agents).is_err());
         assert!(resolve_command(&request(None, Some(&[" "])), &agents).is_err());
+    }
+
+    #[test]
+    fn container_conversations_use_the_mounted_project_folder() {
+        let target = crate::profiles::ContainerTarget {
+            name: "sklep".into(),
+            ..Default::default()
+        };
+        let mounts = vec![
+            crate::docker::ContainerMount {
+                kind: "bind".into(),
+                source: "/home/me/sklep".into(),
+                destination: "/workspace".into(),
+                name: None,
+                read_write: true,
+            },
+            crate::docker::ContainerMount {
+                kind: "volume".into(),
+                source: "/var/lib/docker/volumes/h/_data".into(),
+                destination: "/root".into(),
+                name: None,
+                read_write: true,
+            },
+        ];
+        let (dir, fs) = container_fs(
+            &target,
+            "docker".into(),
+            &mounts,
+            Some(std::path::Path::new("/home/me/sklep/api")),
+        );
+        assert_eq!(dir, "/workspace/api");
+        assert!(
+            matches!(fs, Some(FsKind::Container(c)) if c.name == "sklep" && c.mounts.len() == 2)
+        );
+        // The project is not in the container: the profile's folder (mounted here).
+        let (dir, fs) = container_fs(
+            &target,
+            "docker".into(),
+            &mounts,
+            Some(std::path::Path::new("/home/me/inny")),
+        );
+        assert_eq!(dir, "/workspace");
+        assert!(fs.is_some());
+        // A folder only in the container: its own files and commands, as on an SSH host.
+        let in_volume = crate::profiles::ContainerTarget {
+            workdir: Some("/root/projekt".into()),
+            ..target
+        };
+        let (dir, fs) = container_fs(&in_volume, "docker".into(), &mounts, None);
+        assert_eq!((dir.as_str(), fs), ("/root/projekt", None));
     }
 }
