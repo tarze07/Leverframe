@@ -159,3 +159,7 @@ src/                 frontend (React)
   theme/             tokeny kolorów i style
 src-tauri/           backend (Rust): settings, pty, profiles, agents, sessions, fs
 ```
+
+## Licencja
+
+[MIT](LICENSE)

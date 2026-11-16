@@ -6,18 +6,19 @@ pkgrel=1
 pkgdesc="Terminal z edytorem dla agentów CLI"
 arch=('x86_64')
 url="https://github.com/tarze07/Leverframe"
-license=('unknown')
+license=('MIT')
 depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'glib2' 'cairo' 'gdk-pixbuf2' 'dbus' 'gcc-libs' 'glibc')
 optdepends=('openssh: profile SSH'
             'nodejs: adaptery trybu rozmowy (Claude, Codex, Gemini CLI)')
 options=('!strip' '!debug')
-source=("leverframe.deb")
+source=("leverframe.deb" "LICENSE")
 noextract=("leverframe.deb")
-sha256sums=('@SHA256@')
+sha256sums=('@SHA256@' '@LICENSE_SHA256@')
 
 package() {
   bsdtar -xOf leverframe.deb 'data.tar.*' | bsdtar -xf - -C "$pkgdir"
   # Only what the .deb installs under /usr.
   find "$pkgdir" -mindepth 1 -maxdepth 1 ! -name usr -exec rm -rf {} +
   chmod 755 "$pkgdir/usr/bin/leverframe"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

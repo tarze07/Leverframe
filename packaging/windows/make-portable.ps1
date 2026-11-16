@@ -17,6 +17,8 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item $Exe (Join-Path $stage "Leverframe.exe")
 Copy-Item (Join-Path $PSScriptRoot "CZYTAJ-MNIE.txt") $stage
 Copy-Item "CHANGELOG.md" $stage
+# Older tags have no license file.
+if (Test-Path "LICENSE") { Copy-Item "LICENSE" (Join-Path $stage "LICENSE.txt") }
 
 $zip = Join-Path $OutDir "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
