@@ -83,7 +83,8 @@ fn is_windows_shell(program: &str) -> bool {
 }
 
 /// Launch for `command` in `profile` (`None` = the user's default shell, locally).
-/// `local_cwd` is the project folder on this machine; `remote_dir` the directory on an SSH host.
+/// `local_cwd` is the project folder on this machine; `remote_dir` the directory on an SSH host
+/// or in a container.
 pub fn launch_for(
     profile: Option<&Profile>,
     command: &[String],
@@ -143,6 +144,30 @@ pub fn launch_for(
             AcpLaunch {
                 program: spec.program,
                 args,
+                raw_args: None,
+                env: vec![],
+                cwd: None,
+                session_cwd: None,
+            }
+        }
+        ProfileKind::Container => {
+            let spec = spec.expect("a container launch has a profile");
+            let target = profile
+                .and_then(|p| p.container.clone())
+                .unwrap_or_default();
+            // `remote_dir`: the project folder in the container (or the profile's directory).
+            let workdir = remote_dir
+                .or(target.workdir.as_deref())
+                .unwrap_or(crate::docker::actions::WORKSPACE);
+            AcpLaunch {
+                program: spec.program,
+                args: crate::docker::terminal::exec_sh_args(
+                    &target.name,
+                    target.user.as_deref(),
+                    Some(workdir),
+                    false,
+                    posix_script(command, None),
+                ),
                 raw_args: None,
                 env: vec![],
                 cwd: None,
@@ -323,5 +348,45 @@ mod tests {
         // Without a configured directory: the home directory.
         let l = launch_for(Some(&p), &cmd(&["x"]), None, None, false);
         assert!(l.args.last().unwrap().contains("cd -- ~ ||"));
+    }
+
+    #[test]
+    fn containers_run_the_agent_with_docker_exec_and_open_stdin() {
+        let mut p = profile(ProfileKind::Container, "/usr/bin/docker", &[]);
+        p.container = Some(crate::profiles::ContainerTarget {
+            name: "sklep-agenci".into(),
+            user: Some("agent".into()),
+            workdir: Some("/srv".into()),
+            ..Default::default()
+        });
+        let l = launch_for(
+            Some(&p),
+            &cmd(&["claude-agent-acp"]),
+            Some(Path::new("/home/me/sklep")),
+            Some("/workspace/api"),
+            true,
+        );
+        assert_eq!(l.program, "/usr/bin/docker");
+        assert_eq!(
+            &l.args[..9],
+            [
+                "exec",
+                "-i",
+                "-w",
+                "/workspace/api",
+                "-u",
+                "agent",
+                "--",
+                "sklep-agenci",
+                "sh"
+            ]
+        );
+        assert_eq!(l.args[9], "-c");
+        assert!(l.args[10].contains(CWD_MARKER));
+        assert!(l.args[10].ends_with("exec 'claude-agent-acp'\n"));
+        assert_eq!((l.cwd, l.session_cwd, l.raw_args), (None, None, None));
+        // No project folder in the container: the profile's directory.
+        let l = launch_for(Some(&p), &cmd(&["x"]), None, None, false);
+        assert_eq!(l.args[3], "/srv");
     }
 }

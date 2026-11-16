@@ -7,6 +7,10 @@ import { AgentEdits } from "../features/acp/agentEdits";
 import { sessionsClient } from "../features/sessions/sessionsClient";
 import { notifyFilesChanged } from "../lib/fileEvents";
 import { logFilePath } from "../workbench/commands";
+import { prepareContainer } from "../features/docker/containerTerminal";
+import type { ContainerMount } from "../features/docker/dockerClient";
+import { hostPath } from "../features/docker/paths";
+import { isWindows } from "../features/terminal/keys";
 import { agentTerminalKey, useAgentTerminalsStore } from "./agentTerminals";
 import { editorForPath } from "./editor";
 import { useProfilesStore } from "./profiles";
@@ -60,6 +64,8 @@ interface Runtime {
   /** Commands the user allowed "always" in this conversation. */
   allowedCommands: Set<string>;
   edits: AgentEdits;
+  /** Mounts of the conversation's container (container profiles). */
+  mounts: ContainerMount[] | null;
 }
 
 const runtimes = new Map<string, Runtime>();
@@ -68,7 +74,7 @@ let counter = 0;
 function runtime(id: string): Runtime {
   let r = runtimes.get(id);
   if (!r) {
-    r = { handle: null, stop: null, mtimes: new Map(), pendingFs: new Map(), allowedCommands: new Set(), edits: new AgentEdits() };
+    r = { handle: null, stop: null, mtimes: new Map(), pendingFs: new Map(), allowedCommands: new Set(), edits: new AgentEdits(), mounts: null };
     runtimes.set(id, r);
   }
   return r;
@@ -92,12 +98,19 @@ export const chatHandle = (id: string): AcpHandle | null => runtimes.get(id)?.ha
 /** The agent waits for the user (permission, file outside the folder, command). */
 export const isWaiting = (s: ChatState) => s.permissions.length + s.fileApprovals.length + s.commandApprovals.length > 0;
 
-/** A path the agent mentions, as a file this machine can open (none on SSH hosts). */
+/**
+ * A path the agent mentions, as a file this machine can open: none on SSH hosts, in a container
+ * through its bind mounts (none for files only in the container).
+ */
 export function chatToLocal(id: string, path: string): string | null {
   const chat = chatById(id);
   if (!chat) return null;
   const profiles = useProfilesStore.getState();
   const profile = profiles.byId(chat.params.profileId ?? profiles.defaultProfileId);
+  if (profile?.kind === "container") {
+    const mounts = runtimes.get(id)?.mounts;
+    return mounts ? hostPath(mounts, path, chat.state.cwd, isWindows()) : null;
+  }
   return profile?.kind === "ssh" ? null : logFilePath(path, chat.state.cwd, profile?.id ?? "");
 }
 
@@ -170,7 +183,7 @@ export function connectChat(id: string, resume?: AcpStartRequest["resume"]) {
   let disposed = false;
   let started: AcpHandle | null = null;
   const { agentId, profileId, cwd } = chat.params;
-  startAcp({ agentId, profileId, cwd, resume }, (event) => {
+  const onEvent = (event: AcpEvent) => {
     if (disposed) return;
     if (event.type === "terminalRequest") {
       // Without asking: when the user turned it off, or allowed this command for the conversation.
@@ -193,7 +206,20 @@ export function connectChat(id: string, resume?: AcpStartRequest["resume"]) {
       rt.handle = null;
       patch(id, () => ({ live: false }));
     }
-  })
+  };
+  // A container profile: the container runs first (started, or after asking); its mounts map
+  // the agent's paths to files of this machine.
+  const profiles = useProfilesStore.getState();
+  const start = () => startAcp({ agentId, profileId, cwd, resume }, onEvent);
+  const starting =
+    profiles.byId(profileId ?? profiles.defaultProfileId)?.kind === "container"
+      ? prepareContainer(profileId, cwd).then((prepared) => {
+          rt.mounts = prepared?.mounts ?? null;
+          if (disposed) throw new Error("ended");
+          return start();
+        })
+      : start();
+  starting
     .then((h) => {
       started = h;
       if (disposed) void h.stop().catch(() => undefined);

@@ -61,7 +61,7 @@ Komendy trzymamy w `agents.json` (nie w kodzie) – zmieniają się szybciej ni�
 ## 4. Architektura
 
 ```
-React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)──▶ proces agenta (lokalnie / WSL / SSH)
+React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)──▶ proces agenta (lokalnie / WSL / SSH / Docker)
    ▲  panel rozmowy, diffy,        │  sesje, routing session/update,
    │  zgody, edytory               │  obsługa fs/* i terminal/*
    └───────────── zdarzenia ◀──────┘
@@ -81,7 +81,8 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
 - **Uruchamianie zależne od profilu**, bez PTY (czyste potoki stdin/stdout):
   - lokalnie / PowerShell: bezpośrednio,
   - WSL: `wsl.exe -d <dystrybucja> --cd <katalog> -- <komenda>`,
-  - SSH: `ssh -T <host> 'cd <katalog> && <komenda>'` (katalog z ustawień profilu, #26).
+  - SSH: `ssh -T <host> 'cd <katalog> && <komenda>'` (katalog z ustawień profilu, #26),
+  - kontener Docker: `docker exec -i -w <folder projektu w kontenerze> <kontener> sh -c '… exec <komenda>'` (#67).
 - **Frontend**: stan rozmów i ich procesy agentów w store `src/store/chats.ts` (niezależnie od kart); panel
   dockview `agentChat` tylko pokazuje rozmowę (`{ chatId }`), więc zamknięcie karty nie kończy rozmowy. Widok
   „Rozmowy” (`ChatsView`) listuje otwarte rozmowy i je kończy. Strumień zdarzeń przez `Channel` (jak wyjście
@@ -89,7 +90,9 @@ React UI ──invoke/Channel──▶ Rust: AcpService ──stdio (JSON-RPC)�
   się ją z „Historii”.
 - **Ścieżki**: agent widzi ścieżki swojego systemu. WSL: `/home/…` ↔ `\\wsl.localhost\<dystrybucja>\home\…`
   (już mamy obie strony tej zamiany). SSH: plików zdalnych nie mamy lokalnie – w sesjach SSH **nie deklarujemy**
-  `fs` ani `terminal`, agent korzysta z własnych.
+  `fs` ani `terminal`, agent korzysta z własnych. Kontener: ścieżki w zamontowanych folderach ↔ pliki tego
+  komputera (`FsKind::Container`, z `docker inspect`), poza montowaniami odmowa; polecenia agenta przez
+  `docker exec -it` w PTY. Gdy katalog rozmowy nie jest zamontowany – jak na SSH (bez `fs` i `terminal`).
 
 ## 5. Bezpieczeństwo
 
