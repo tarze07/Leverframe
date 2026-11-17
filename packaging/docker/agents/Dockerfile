@@ -10,14 +10,12 @@
 FROM node:22.23.3-bookworm-slim
 
 ARG CLAUDE_CODE_VERSION=2.1.316
-ARG CODEX_VERSION=0.166.0
-ARG GEMINI_CLI_VERSION=0.66.0
 ARG CLAUDE_AGENT_ACP_VERSION=0.99.1
-ARG CODEX_ACP_VERSION=2.5.0
+ARG OPENCODE_VERSION=1.19.5
 
 LABEL io.leverframe.agents="1" \
       org.opencontainers.image.title="leverframe-agents" \
-      org.opencontainers.image.description="Agenci CLI (Claude Code, Codex, Gemini CLI) z adapterami trybu rozmowy (ACP) dla Leverframe" \
+      org.opencontainers.image.description="Agenci CLI (Claude Code, OpenCode) z trybem rozmowy (ACP) dla Leverframe" \
       org.opencontainers.image.source="https://github.com/tarze07/Leverframe"
 
 RUN apt-get update \
@@ -27,10 +25,8 @@ RUN apt-get update \
 
 RUN npm install -g --no-fund --no-audit \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-      "@openai/codex@${CODEX_VERSION}" \
-      "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
       "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" \
-      "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
+      "opencode-ai@${OPENCODE_VERSION}" \
  && npm cache clean --force
 
 # Użytkownik bez roota: agent (UID 1000 – pliki w zamontowanym folderze mają w Linuksie

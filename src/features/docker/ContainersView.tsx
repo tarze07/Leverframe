@@ -13,7 +13,7 @@ import { NewContainerForm, fieldClass } from "./NewContainerForm";
 const smallButton = "rounded px-1.5 py-0.5 text-[11px] text-lf-fg hover:bg-lf-hover disabled:opacity-50";
 const iconButton = "rounded p-0.5 text-lf-muted hover:bg-lf-elevated hover:text-lf-fg disabled:opacity-50";
 const AGENTS_IMAGE_HINT =
-  "Zbuduj obraz z agentami Claude Code, Codex i Gemini CLI oraz adapterami trybu rozmowy (plik Dockerfile dołączony do Leverframe, packaging/docker/agents)";
+  "Zbuduj obraz z agentami Claude Code i OpenCode z trybem rozmowy (plik Dockerfile dołączony do Leverframe, packaging/docker/agents)";
 
 /** Sidebar view: Docker's images, containers and Leverframe's volumes, managed from here. */
 export function ContainersView() {
@@ -108,7 +108,7 @@ function Containers() {
             {agentsImage && !images.some((i) => imageName(i) === agentsImage) && !jobs.some((j) => !j.done && j.title.endsWith(agentsImage)) && (
               <div aria-label="Obraz Leverframe" className="mb-1 flex flex-col gap-1 rounded border border-lf-border p-2">
                 <p className="text-lf-fg">
-                  Obraz z agentami (<span className="font-mono">{agentsImage}</span>): Claude Code, Codex i Gemini CLI z trybem rozmowy, gotowy na kontener
+                  Obraz z agentami (<span className="font-mono">{agentsImage}</span>): Claude Code i OpenCode z trybem rozmowy, gotowy na kontener
                   projektu.
                 </p>
                 <button type="button" title={AGENTS_IMAGE_HINT} onClick={() => void buildAgentsImage()} className="self-start rounded bg-lf-accent px-2 py-0.5 text-lf-accent-fg hover:opacity-90">
