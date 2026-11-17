@@ -15,6 +15,8 @@ export interface PreparedContainer {
   workdir: string;
   /** The container's mounts (paths in the container as files of this machine). */
   mounts: ContainerMount[];
+  /** On an SSH host: its mounts are that host's folders, not files of this machine. */
+  remote: boolean;
 }
 
 const prepare = (profileId: string, cwd: string | undefined, start: boolean) =>
@@ -54,20 +56,23 @@ export async function prepareContainerTerminal(request: PtySpawnRequest): Promis
   };
 }
 
-/** The profile of a container (detected or added by the user), if there is one. */
-export function profileForContainer(name: string): Profile | undefined {
-  return useProfilesStore.getState().profiles.find((p) => p.kind === "container" && p.container?.name === name);
+/** The profile of a container (detected or added by the user) on a Docker (`host`: SSH profile id), if there is one. */
+export function profileForContainer(name: string, host: string | null = null): Profile | undefined {
+  return useProfilesStore
+    .getState()
+    .profiles.find((p) => p.kind === "container" && p.container?.name === name && (p.container.host ?? null) === host);
 }
 
 /** Adds a container as a user profile (its terminal starts the container when needed). */
-export function addContainerProfile(name: string): Promise<Profile> {
+export function addContainerProfile(name: string, host: string | null = null): Promise<Profile> {
+  const ssh = host ? useProfilesStore.getState().byId(host) : undefined;
   return useProfilesStore.getState().save({
     id: "",
-    name,
+    name: ssh ? `${name} (${ssh.name})` : name,
     kind: "container",
     command: "",
     args: [],
-    container: { name, autoStart: true },
+    container: host ? { name, autoStart: true, host } : { name, autoStart: true },
     source: "user",
   });
 }
@@ -77,16 +82,18 @@ export function addContainerProfile(name: string): Promise<Profile> {
  * made for Leverframe has a detected profile (the list is detected again if it is new); any other
  * becomes a user profile.
  */
-export async function openContainerTerminal(name: string, options: { leverframe: boolean; projectDir: string | null }) {
+export async function openContainerTerminal(name: string, options: { leverframe: boolean; projectDir: string | null; host?: string | null }) {
+  const host = options.host ?? null;
   const profiles = useProfilesStore.getState();
   await profiles.load();
-  let profile = profileForContainer(name);
+  let profile = profileForContainer(name, host);
   if (!profile && options.leverframe) {
     await profiles.refresh();
-    profile = profileForContainer(name);
+    profile = profileForContainer(name, host);
   }
-  profile ??= await addContainerProfile(name);
-  const id = openTerminal({ params: { profileId: profile.id, cwd: options.projectDir ?? undefined } });
+  profile ??= await addContainerProfile(name, host);
+  // On an SSH host the folders of this machine mean nothing (the container has the host's).
+  const id = openTerminal({ params: { profileId: profile.id, cwd: host ? undefined : (options.projectDir ?? undefined) } });
   if (id) dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(profile.name);
   return id;
 }

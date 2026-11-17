@@ -41,6 +41,9 @@ pub struct ContainerSpec {
     pub network: Option<String>,
     /// `agent`, `1000`, `1000:1000`.
     pub user: Option<String>,
+    /// Docker on an SSH host: `project_dir` is a folder of that host (set by the backend).
+    #[serde(skip)]
+    pub on_ssh_host: bool,
 }
 
 /// What `docker run` will be, before it runs.
@@ -138,6 +141,12 @@ fn owner_warning(image: &str, user: Option<&str>, owner: Option<(u32, u32)>) -> 
     ))
 }
 
+/// `/`, `/root` or `/home/<user>` on a Linux host.
+fn remote_home_or_root(dir: &str) -> bool {
+    let parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+    matches!(parts.as_slice(), [] | ["root"] | ["home"] | ["home", _])
+}
+
 /// Checks the form and builds `docker run`.
 pub fn plan(spec: &ContainerSpec) -> Result<CreatePlan, String> {
     let image = spec.image.trim();
@@ -162,20 +171,34 @@ pub fn plan(spec: &ContainerSpec) -> Result<CreatePlan, String> {
         .filter(|d| !d.is_empty())
     {
         let path = Path::new(dir);
-        if !path.is_absolute() || !path.is_dir() {
-            return Err(format!("Folder projektu nie istnieje: {dir}"));
+        if spec.on_ssh_host {
+            // A folder of the SSH host: it cannot be checked from here.
+            if !dir.starts_with('/') || dir.contains(['\n', '\0']) {
+                return Err(format!(
+                    "Folder projektu na serwerze: ścieżka bezwzględna, np. /home/ja/projekt ({dir})"
+                ));
+            }
+            if remote_home_or_root(dir) {
+                warnings.push(format!(
+                    "Do kontenera trafi cały folder {dir} na serwerze – agent będzie miał dostęp do wszystkich jego plików. Lepiej wybrać folder projektu."
+                ));
+            }
+        } else {
+            if !path.is_absolute() || !path.is_dir() {
+                return Err(format!("Folder projektu nie istnieje: {dir}"));
+            }
+            if is_home_or_root(path) {
+                warnings.push(format!(
+                    "Do kontenera trafi cały folder {dir} – agent będzie miał dostęp do wszystkich jego plików. Lepiej wybrać folder projektu."
+                ));
+            }
+            let user = spec
+                .user
+                .as_deref()
+                .map(str::trim)
+                .filter(|u| !u.is_empty());
+            warnings.extend(owner_warning(image, user, folder_owner(path)));
         }
-        if is_home_or_root(path) {
-            warnings.push(format!(
-                "Do kontenera trafi cały folder {dir} – agent będzie miał dostęp do wszystkich jego plików. Lepiej wybrać folder projektu."
-            ));
-        }
-        let user = spec
-            .user
-            .as_deref()
-            .map(str::trim)
-            .filter(|u| !u.is_empty());
-        warnings.extend(owner_warning(image, user, folder_owner(path)));
         args.extend(["-v".into(), format!("{dir}:{WORKSPACE}")]);
     }
     let volume = spec.home_volume.then(|| home_volume_name(name));
@@ -351,6 +374,27 @@ impl Docker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_project_folder_on_an_ssh_host_is_not_checked_here() {
+        let spec = |dir: &str| ContainerSpec {
+            image: "leverframe-agents:0.8.0".into(),
+            name: "sklep-agenci".into(),
+            project_dir: Some(dir.into()),
+            home_volume: true,
+            home_dir: "/home/agent".into(),
+            on_ssh_host: true,
+            ..Default::default()
+        };
+        let p = plan(&spec("/srv/projekty/sklep")).unwrap();
+        assert!(p
+            .args
+            .contains(&"/srv/projekty/sklep:/workspace".to_string()));
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        assert_eq!(plan(&spec("/home/me")).unwrap().warnings.len(), 1);
+        assert!(plan(&spec("projekty/sklep")).is_err());
+        assert!(plan(&spec(r"C:\projekty")).is_err());
+    }
 
     #[test]
     fn a_project_of_another_uid_needs_the_user_of_the_container() {

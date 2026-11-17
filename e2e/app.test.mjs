@@ -161,6 +161,18 @@ describe("Leverframe", () => {
     await app.click(`${panel} button`, "Przenieś panel pod edytor");
     await app.waitFor(`const e = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(), p = document.querySelector('${panel}').getBoundingClientRect(); return p.width > 0 && p.y >= e.bottom - 2`);
     assert.equal(await pidAfter("pid-end.txt"), pid);
+
+    // A new terminal does not change the layout: the maximized panel stays maximized.
+    const editorHidden = "const r = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(); return r.width === 0 || r.height === 0";
+    await app.chord(KEY.ctrl, KEY.shift, "m");
+    await app.waitFor(editorHidden);
+    const terminals = await app.exec("return document.querySelectorAll('.xterm').length");
+    await app.chord(KEY.ctrl, KEY.shift, "`");
+    await app.waitFor(`return document.querySelectorAll('.xterm').length > ${terminals}`, 15_000);
+    await sleep(300);
+    assert.equal(await app.exec(editorHidden), true, "still maximized");
+    await app.chord(KEY.ctrl, KEY.shift, "m");
+    await app.waitFor(editorHidden.replace("return r.width === 0 || r.height === 0", "return r.width > 100 && r.height > 50"));
   });
 
   it("switches themes from the command palette and saves them", async () => {

@@ -51,6 +51,22 @@ describe("ui store", () => {
     expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: true });
   });
 
+  it("shows the terminal panel for a new terminal without changing the layout", () => {
+    const s = useUiStore.getState();
+    s.setPanelPosition("right");
+    s.togglePanelMaximized();
+    s.showBottomPanel(); // a new terminal while the panel is maximized: it stays so
+    expect(useUiStore.getState()).toMatchObject({ maximized: "panel", bottomPanelVisible: true, panelPosition: "right" });
+    s.togglePanelMaximized();
+    s.showBottomPanel();
+    expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: true });
+    // A hidden panel (editor maximized) has to come back for the terminal.
+    s.toggleEditorMaximized();
+    s.showBottomPanel();
+    expect(useUiStore.getState()).toMatchObject({ maximized: null, bottomPanelVisible: true, panelPosition: "right" });
+    s.setPanelPosition("bottom");
+  });
+
   it("falls back to defaults for invalid font settings and clamps size", () => {
     const s = useUiStore.getState();
     s.setFontMono("   ");

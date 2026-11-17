@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ContainerSpec, CreatePlan, DockerContainer, DockerImage, DockerInfo, JobEvent } from "./dockerClient";
+import type { ContainerSpec, CreatePlan, DockerContainer, DockerImage, DockerInfo, DockerSource, DockerSources, JobEvent } from "./dockerClient";
+
+const here: DockerSource = { id: null, name: "Ten komputer", url: null, warning: null };
+const gpu: DockerSource = { id: "ssh:gpu", name: "gpu", url: "ssh://me@gpu", warning: null };
 
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 const pickFolder = vi.fn(async () => "/home/me/projekty/Sklep Główny" as string | null);
@@ -52,6 +55,8 @@ const client = {
   pull: vi.fn(async (_image: string, onEvent: (e: JobEvent) => void) => ((emit = onEvent), 7)),
   build: vi.fn(async (_d: string, _t: string, onEvent: (e: JobEvent) => void) => ((emit = onEvent), 8)),
   agentsImage: vi.fn(async () => "leverframe-agents:0.8.0"),
+  sources: vi.fn(async (): Promise<DockerSources> => ({ sources: [here], current: null })),
+  setSource: vi.fn(async (id: string | null): Promise<DockerSources> => ({ sources: [here, gpu], current: id })),
   buildAgentsImage: vi.fn(async (onEvent: (e: JobEvent) => void) => ((emit = onEvent), 9)),
   cancel: vi.fn(async () => undefined),
   createPlan: vi.fn(async (spec: ContainerSpec): Promise<CreatePlan> => ({
@@ -79,7 +84,7 @@ const row = (name: RegExp | string) => screen.findByRole("listitem", { name });
 describe("ContainersView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useDockerStore.setState({ info: null, images: [], containers: [], volumes: [], agentsImage: null, status: "idle", error: null, busy: {}, jobs: [] });
+    useDockerStore.setState({ info: null, images: [], containers: [], volumes: [], agentsImage: null, sources: [], source: null, status: "idle", error: null, busy: {}, jobs: [] });
     useAgentsStore.setState({ projectDir: "/home/me/sklep" });
   });
 
@@ -108,13 +113,13 @@ describe("ContainersView", () => {
     fireEvent.click(within(sklep).getByLabelText("Logi sklep-agenci"));
     expect(openContainerLogs).toHaveBeenCalledWith("sklep-agenci");
     fireEvent.click(within(sklep).getByLabelText("Terminal w sklep-agenci"));
-    expect(openContainerTerminal).toHaveBeenCalledWith("sklep-agenci", { leverframe: true, projectDir: "/home/me/sklep" });
+    expect(openContainerTerminal).toHaveBeenCalledWith("sklep-agenci", { leverframe: true, projectDir: "/home/me/sklep", host: null });
     expect(within(sklep).queryByLabelText("Dodaj sklep-agenci jako profil")).toBeNull(); // detected profile
 
     const baza = await row("Kontener baza");
     expect(baza).toHaveTextContent("zatrzymany");
     fireEvent.click(within(baza).getByLabelText("Dodaj baza jako profil"));
-    expect(addContainerProfile).toHaveBeenCalledWith("baza");
+    expect(addContainerProfile).toHaveBeenCalledWith("baza", null);
     fireEvent.click(within(baza).getByLabelText("Uruchom baza"));
     await waitFor(() => expect(client.containerAction).toHaveBeenCalledWith("baza", "start"));
 
@@ -261,5 +266,31 @@ describe("ContainersView", () => {
     fireEvent.click(within(form).getByText("Anuluj"));
     expect(screen.queryByRole("form", { name: "Nowy kontener" })).toBeNull();
     client.createPlan.mockReset();
+  });
+
+  it("shows the Docker of an SSH host: its containers, folders on the server", async () => {
+    client.sources.mockResolvedValue({ sources: [here, gpu], current: null });
+    useAgentsStore.setState({ remoteDirs: { "ssh:gpu": "/srv/sklep" } });
+    render(<ContainersView />);
+    const select = await screen.findByLabelText("Docker na");
+    expect(within(select).getByText("gpu (SSH)")).toBeInTheDocument();
+    client.sources.mockResolvedValue({ sources: [here, { ...gpu, warning: "Docker łączy się przez ssh bez pliku klucza" }], current: "ssh:gpu" });
+    fireEvent.change(select, { target: { value: "ssh:gpu" } });
+    await waitFor(() => expect(client.setSource).toHaveBeenCalledWith("ssh:gpu"));
+    expect(await screen.findByText("ssh://me@gpu")).toBeInTheDocument();
+    expect(await screen.findByText(/bez pliku klucza/)).toBeInTheDocument();
+
+    // A container there: its terminal is on that host.
+    fireEvent.click(within(await row("Kontener sklep-agenci")).getByLabelText("Terminal w sklep-agenci"));
+    expect(openContainerTerminal).toHaveBeenLastCalledWith("sklep-agenci", { leverframe: true, projectDir: "/home/me/sklep", host: "ssh:gpu" });
+
+    // A new container: the folder is a path on the server, typed (no dialog of this machine).
+    fireEvent.click(within(await row("Obraz leverframe-agents:0.8.0")).getByText("Nowy kontener"));
+    const form = screen.getByRole("form", { name: "Nowy kontener" });
+    const dir = within(form).getByLabelText("Folder projektu na gpu (w kontenerze: /workspace)");
+    expect(dir).toHaveValue("/srv/sklep");
+    expect(within(form).queryByText("Wybierz…")).toBeNull();
+    fireEvent.change(dir, { target: { value: "/srv/inny" } });
+    await waitFor(() => expect(client.createPlan).toHaveBeenLastCalledWith(expect.objectContaining({ projectDir: "/srv/inny" })));
   });
 });

@@ -92,7 +92,7 @@ async fn container_session(
         .container
         .clone()
         .ok_or_else(|| format!("{} nie jest profilem kontenera", profile.name))?;
-    let docker = crate::docker::commands::docker(settings);
+    let docker = crate::docker::commands::for_profile(settings, profile);
     let program = profile.launch_spec().program;
     let details = blocking(move || {
         docker.inspect(&target.name).map_err(|e| match e {
@@ -126,6 +126,15 @@ pub(crate) fn container_fs(
     local_cwd: Option<&std::path::Path>,
 ) -> (String, Option<FsKind>) {
     use crate::docker::terminal::{container_dir, host_path};
+    // On an SSH host the mounts are that host's folders: the agent keeps its own files and
+    // commands (as on an SSH profile), in the profile's directory.
+    if target.host.is_some() {
+        let workdir = target
+            .workdir
+            .clone()
+            .unwrap_or_else(|| crate::docker::actions::WORKSPACE.into());
+        return (workdir, None);
+    }
     let workdir = local_cwd
         .and_then(|d| container_dir(mounts, d))
         .or_else(|| target.workdir.clone())
@@ -598,5 +607,29 @@ mod tests {
             with_agent_env(cmd.clone(), &Default::default(), false),
             (cmd, vec![])
         );
+    }
+
+    #[test]
+    fn a_container_on_an_ssh_host_keeps_its_own_files() {
+        let target = crate::profiles::ContainerTarget {
+            name: "sklep".into(),
+            host: Some("ssh:gpu".into()),
+            ..Default::default()
+        };
+        let mounts = vec![crate::docker::ContainerMount {
+            kind: "bind".into(),
+            source: "/home/me/sklep".into(),
+            destination: "/workspace".into(),
+            name: None,
+            read_write: true,
+        }];
+        // Even a folder of this machine with the same path is not the host's folder.
+        let (dir, fs) = container_fs(
+            &target,
+            "docker".into(),
+            &mounts,
+            Some(std::path::Path::new("/home/me/sklep")),
+        );
+        assert_eq!((dir.as_str(), fs), ("/workspace", None));
     }
 }

@@ -214,7 +214,8 @@ export function connectChat(id: string, resume?: AcpStartRequest["resume"]) {
   const starting =
     profiles.byId(profileId ?? profiles.defaultProfileId)?.kind === "container"
       ? prepareContainer(profileId, cwd).then((prepared) => {
-          rt.mounts = prepared?.mounts ?? null;
+          // On an SSH host the mounts are that host's folders: no files of this machine.
+          rt.mounts = prepared && !prepared.remote ? prepared.mounts : null;
           if (disposed) throw new Error("ended");
           return start();
         })

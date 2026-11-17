@@ -39,8 +39,12 @@ export function parseEnv(text: string): { name: string; value: string }[] {
  * come from the backend and are shown before it is created.
  */
 export function NewContainerForm({ image, onDone }: { image: DockerImage; onDone: () => void }) {
-  const projectDir = useAgentsStore((s) => s.projectDir);
+  const localDir = useAgentsStore((s) => s.projectDir);
   const act = useDockerStore((s) => s.act);
+  // Docker on an SSH host: the folder is a path on that host (its "Katalog na serwerze" by default).
+  const host = useDockerStore((s) => s.sources.find((x) => x.id !== null && x.id === s.source) ?? null);
+  const remoteDir = useAgentsStore((s) => (host?.id ? (s.remoteDirs[host.id] ?? null) : null));
+  const projectDir = host ? (remoteDir && remoteDir.startsWith("/") ? remoteDir : null) : localDir;
   const ids = { name: useId(), dir: useId(), home: useId(), env: useId(), ports: useId(), net: useId(), user: useId() };
   const [dir, setDir] = useState<string | null>(projectDir);
   const [name, setName] = useState(() => suggestedName(projectDir));
@@ -129,13 +133,24 @@ export function NewContainerForm({ image, onDone }: { image: DockerImage; onDone
       <input id={ids.name} value={name} onChange={(e) => setName(e.target.value)} className={`${fieldClass} font-mono`} />
 
       <label htmlFor={ids.dir} className={label}>
-        Folder projektu (w kontenerze: /workspace)
+        {host ? `Folder projektu na ${host.name} (w kontenerze: /workspace)` : "Folder projektu (w kontenerze: /workspace)"}
       </label>
       <div className="flex gap-1">
-        <input id={ids.dir} value={dir ?? ""} readOnly placeholder="bez folderu" title={dir ?? undefined} className={`${fieldClass} min-w-0 flex-1 font-mono`} />
-        <button type="button" onClick={() => void pickDir()} className="shrink-0 rounded border border-lf-border px-2 text-lf-fg hover:bg-lf-hover">
-          Wybierz…
-        </button>
+        <input
+          id={ids.dir}
+          value={dir ?? ""}
+          readOnly={!host}
+          onChange={(e) => setDir(e.target.value || null)}
+          placeholder={host ? "np. /home/ja/projekty/sklep" : "bez folderu"}
+          title={dir ?? undefined}
+          spellCheck={false}
+          className={`${fieldClass} min-w-0 flex-1 font-mono`}
+        />
+        {!host && (
+          <button type="button" onClick={() => void pickDir()} className="shrink-0 rounded border border-lf-border px-2 text-lf-fg hover:bg-lf-hover">
+            Wybierz…
+          </button>
+        )}
         {dir && (
           <button type="button" aria-label="Bez folderu projektu" onClick={() => setDir(null)} className="shrink-0 rounded px-1 text-lf-muted hover:bg-lf-hover">
             <span className="codicon codicon-close" aria-hidden />

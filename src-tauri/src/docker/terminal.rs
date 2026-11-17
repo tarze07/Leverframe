@@ -14,6 +14,8 @@ use crate::profiles::{ContainerTarget, Profile, ProfileKind, ProfileSource};
 
 /// Detection runs when the profile list is built: it must not wait long for Docker.
 const DETECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// On an SSH host the connection itself takes time.
+const REMOTE_DETECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
@@ -182,6 +184,8 @@ pub struct PreparedContainer {
     pub workdir: String,
     /// The container's mounts (paths in the container as files of this machine).
     pub mounts: Vec<ContainerMount>,
+    /// The container runs on an SSH host: its mounts are folders of that host, not of this machine.
+    pub remote: bool,
 }
 
 impl Docker {
@@ -206,6 +210,7 @@ impl Docker {
                 started: false,
                 workdir,
                 mounts,
+                remote: false,
             });
         }
         if !start {
@@ -214,6 +219,7 @@ impl Docker {
                 started: false,
                 workdir,
                 mounts,
+                remote: false,
             });
         }
         self.start(&target.name)?;
@@ -222,13 +228,24 @@ impl Docker {
             started: true,
             workdir,
             mounts,
+            remote: false,
         })
     }
 
     /// Containers made for Leverframe (label `io.leverframe.agents=1`) as profiles – running or
     /// not (their terminal starts them). Nothing when Docker is missing or not running.
     pub fn detect_profiles(&self) -> Vec<Profile> {
-        let docker = self.clone().with_timeout(DETECT_TIMEOUT);
+        self.detect_profiles_on(None)
+    }
+
+    /// The same for the Docker of an SSH host (`host`: the SSH profile's id and name): ids
+    /// `container:<profile>:<name>`, names with the host. This CLI must point at that Docker.
+    pub fn detect_profiles_on(&self, host: Option<(&str, &str)>) -> Vec<Profile> {
+        let docker = self.clone().with_timeout(if host.is_some() {
+            REMOTE_DETECT_TIMEOUT
+        } else {
+            DETECT_TIMEOUT
+        });
         let Ok(containers) = docker.containers() else {
             return Vec::new();
         };
@@ -236,8 +253,14 @@ impl Docker {
             .into_iter()
             .filter(|c| c.leverframe)
             .map(|c| Profile {
-                id: format!("container:{}", c.name),
-                name: c.name.clone(),
+                id: match host {
+                    Some((id, _)) => format!("container:{id}:{}", c.name),
+                    None => format!("container:{}", c.name),
+                },
+                name: match host {
+                    Some((_, name)) => format!("{} ({name})", c.name),
+                    None => c.name.clone(),
+                },
                 kind: ProfileKind::Container,
                 command: String::new(),
                 args: Vec::new(),
@@ -250,6 +273,7 @@ impl Docker {
                 container: Some(ContainerTarget {
                     name: c.name,
                     auto_start: true,
+                    host: host.map(|(id, _)| id.to_string()),
                     ..Default::default()
                 }),
                 source: ProfileSource::Detected,

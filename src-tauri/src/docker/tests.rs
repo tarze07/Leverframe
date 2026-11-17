@@ -718,6 +718,7 @@ fn a_container_terminal_is_docker_exec_with_a_shell_fallback() {
         shell: Some("/usr/bin/zsh".into()),
         workdir: Some("/srv/app".into()),
         auto_start: false,
+        host: None,
     };
     let args = terminal_args(&custom, None);
     assert_eq!(args[3], "/srv/app");

@@ -9,6 +9,7 @@ pub mod commands;
 pub mod image;
 pub mod jobs;
 mod model;
+pub mod remote;
 pub mod terminal;
 
 pub use actions::{ContainerSpec, CreatePlan};

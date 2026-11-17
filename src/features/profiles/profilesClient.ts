@@ -10,6 +10,8 @@ export interface ContainerTarget {
   workdir?: string;
   /** Start the container when its terminal opens (otherwise the user is asked). */
   autoStart: boolean;
+  /** The SSH profile whose Docker runs the container (absent: this machine). */
+  host?: string;
 }
 
 export interface SshTarget {

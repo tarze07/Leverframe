@@ -229,7 +229,8 @@ pub fn detect_command(profile: &Profile) -> DetectCommand {
                 args: ["exec", "-i", "--", &name, "sh", "-s"]
                     .map(String::from)
                     .to_vec(),
-                env: vec![],
+                // `DOCKER_HOST` of a container on an SSH host.
+                env: spec.env,
                 kind: ScriptKind::Posix,
             }
         }

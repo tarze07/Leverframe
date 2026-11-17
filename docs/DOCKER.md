@@ -4,7 +4,7 @@ Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
 z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
-**Stan:** D1–D7 (#63–#69) zrobione, wydane w 0.8.0 (ręczne sprawdzenie na Docker Desktop w Windows – w PR wydania) – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
+**Stan:** D1–D8 (#63–#69, #79) zrobione; D1–D7 wydane w 0.8.0 (ręczne sprawdzenie na Docker Desktop w Windows – w PR wydania) – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
 i zmiany, `jobs.rs` – pull / build / logs z postępem, `terminal.rs` – terminal profilu kontenera, ścieżki z montowań,
 profile wykryte), widok „Kontenery”, profil `kind: "container"` (program `docker` z `dockerPath`), agenci w kontenerze
 (wykrywanie przez `docker exec -i … sh -s`, terminal, logi Claude / Codex jako źródło `docker:<profil>`), ustawienie
@@ -234,9 +234,12 @@ Cel: Leverframe na tym komputerze, kontenery na innej maszynie (serwer, maszyna 
 w sieci). Widok „Kontenery”, terminal, agenci i tryb rozmowy działają jak lokalnie, a Docker i pliki projektu są
 na serwerze.
 
-**Co działa przed D8:** profil SSH i ręczne `docker exec -it …` w jego terminalu; agent w trybie rozmowy na hoście
-SSH (nie w kontenerze). Uruchomienie Leverframe z `DOCKER_HOST=ssh://…` nie jest obsługiwane: folder projektu
-i mapowanie ścieżek zakładają pliki na tym komputerze.
+**Stan (D8, #79):** zrobione wg 10.1–10.5 – `docker/remote.rs` (`DOCKER_HOST` z profilu SSH, ustawienie
+`dockerSource`), `commands::current` / `for_profile`, `ContainerTarget.host`, `DOCKER_HOST` w środowisku profilu
+kontenera (terminal, wykrywanie, logi, ACP), profile wykryte na serwerze (`container:<profil SSH>:<nazwa>`, cache do
+odświeżenia), plan z folderem na serwerze (`on_ssh_host`), ACP bez `fs` / `terminal`. Pominięte: lista
+`docker context ls` jako źródła (opcjonalne). Plik klucza z profilu SSH nie jest przekazywany (Docker CLI nie ma na to
+opcji) – UI ostrzega, a dokumentacja odsyła do agenta SSH / `~/.ssh/config`.
 
 ### 10.1 Połączenie
 

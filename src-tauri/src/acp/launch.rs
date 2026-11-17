@@ -169,7 +169,8 @@ pub fn launch_for(
                     posix_script(command, None),
                 ),
                 raw_args: None,
-                env: vec![],
+                // `DOCKER_HOST` of a container on an SSH host.
+                env: spec.env,
                 cwd: None,
                 session_cwd: None,
             }

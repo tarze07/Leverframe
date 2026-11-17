@@ -47,6 +47,11 @@ export interface UiState {
   setSidebarVisible: (visible: boolean) => void;
   toggleSidebar: () => void;
   setBottomPanelVisible: (visible: boolean) => void;
+  /**
+   * Makes the terminal panel visible without changing the layout: nothing happens when it is
+   * visible already (also maximized); a maximized editor gives way only when the panel was hidden.
+   */
+  showBottomPanel: () => void;
   toggleBottomPanel: () => void;
   setFontMono: (font: string) => void;
   setFontSize: (size: number) => void;
@@ -93,6 +98,9 @@ export const useUiStore = create<UiState>()(
       toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
       // Showing or hiding the panel ends a maximized state (the editor comes back with it).
       setBottomPanelVisible: (bottomPanelVisible) => set({ bottomPanelVisible, maximized: null }),
+      showBottomPanel: () => {
+        if (!get().bottomPanelVisible) set({ bottomPanelVisible: true, maximized: get().maximized === "editor" ? null : get().maximized });
+      },
       toggleBottomPanel: () => get().setBottomPanelVisible(!get().bottomPanelVisible),
       setFontMono: (fontMono) => set({ fontMono: fontMono.trim() || DEFAULT_FONT_MONO }),
       setFontSize: (fontSize) =>

@@ -4,6 +4,12 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Docker na serwerze przez SSH** ([#79](https://github.com/tarze07/Leverframe/issues/79), etap D8 obsługi Dockera): pole „Docker na” w widoku „Kontenery” wybiera Docker tego komputera albo serwera z profilu SSH (`DOCKER_HOST=ssh://…`). Obrazy, kontenery, budowanie, terminale, wykrywanie agentów, logi i tryb rozmowy działają na serwerze; folder projektu nowego kontenera to ścieżka na serwerze; kontenery Leverframe na serwerze są profilami „nazwa (serwer)”. W rozmowie agent korzysta z plików serwera sam. Test E2E z Dockerem przez SSH w CI.
+
+### Poprawione
+- Otwarcie nowego terminala nie zmienia już układu okna: zmaksymalizowany panel terminala zostaje zmaksymalizowany (wcześniej wracał edytor).
+
 ## [0.8.1] – 2026-11-17
 
 ### Poprawione
