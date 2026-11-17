@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Poprawione
+- Windows: terminal kontenera nie startował z Docker Desktop zainstalowanym dla użytkownika („%1 nie jest prawidłową aplikacją systemu Win32”) – w folderze Dockera obok `docker.exe` leży skrypt `docker` dla WSL, a terminal wybierał skrypt. Programy terminali są teraz szukane w `PATH` najpierw jako `.exe` / `.com`.
+
 ## [0.8.0] – 2026-11-17
 
 ### Dodane

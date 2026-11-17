@@ -113,6 +113,17 @@ impl PtyManager {
                 (shell.program, shell.args)
             }
         };
+        // On Windows a program found in PATH must be an executable (see `windows_program`).
+        #[cfg(windows)]
+        let program = {
+            let path = opts
+                .env
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
+                .map(|(_, v)| std::ffi::OsString::from(v))
+                .or_else(|| std::env::var_os("PATH"));
+            windows_program(&program, path.as_deref(), |p| p.is_file())
+        };
         let mut cmd = CommandBuilder::new(&program);
         cmd.args(&args);
         if let Some(cwd) = opts.cwd.filter(|p| p.is_dir()).or_else(home_dir) {
@@ -248,6 +259,76 @@ impl PtyManager {
 
 fn not_found(id: PtyId) -> String {
     format!("Terminal {id} nie istnieje lub już się zakończył")
+}
+
+/// The executable a Windows program name stands for. `portable-pty` takes a file named exactly
+/// like the program before trying `.exe`, and Docker Desktop keeps a `docker` shell script (for
+/// WSL) next to `docker.exe`: CreateProcess then fails ("%1 nie jest prawidłową aplikacją").
+/// Here `.exe` and `.com` come first – in each PATH directory, or next to a given path. Names
+/// with an extension, and programs not found, are left as they are.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn windows_program(
+    program: &str,
+    path_env: Option<&std::ffi::OsStr>,
+    exists: impl Fn(&std::path::Path) -> bool,
+) -> String {
+    let given = std::path::Path::new(program);
+    if program.is_empty() || given.extension().is_some() {
+        return program.to_string();
+    }
+    let with_ext = |base: &std::path::Path| {
+        ["exe", "com"].iter().find_map(|ext| {
+            let mut name = base.as_os_str().to_os_string();
+            name.push(format!(".{ext}"));
+            let candidate = std::path::PathBuf::from(name);
+            exists(&candidate).then(|| candidate.to_string_lossy().into_owned())
+        })
+    };
+    if program.contains(['\\', '/']) {
+        return with_ext(given).unwrap_or_else(|| program.to_string());
+    }
+    path_env
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .find_map(|dir| with_ext(&dir.join(program)))
+        .unwrap_or_else(|| program.to_string())
+}
+
+#[cfg(test)]
+mod program_tests {
+    use super::windows_program;
+    use std::path::Path;
+
+    #[test]
+    fn windows_programs_are_executables_before_scripts_of_the_same_name() {
+        let bin = Path::new("dd").join("DockerDesktop").join("bin");
+        let other = Path::new("other");
+        let path = std::env::join_paths([other, bin.as_path()]).unwrap();
+        let files = [
+            bin.join("docker"),
+            bin.join("docker.exe"),
+            other.join("tool.com"),
+        ];
+        let exists = |p: &Path| files.iter().any(|f| f == p);
+        // The script `docker` is skipped for `docker.exe` in the same directory.
+        assert_eq!(
+            windows_program("docker", Some(&path), exists),
+            bin.join("docker.exe").to_string_lossy()
+        );
+        assert_eq!(
+            windows_program("tool", Some(&path), exists),
+            other.join("tool.com").to_string_lossy()
+        );
+        // A path without an extension gets it; names with one and unknown names stay.
+        let script = bin.join("docker").to_string_lossy().into_owned();
+        assert_eq!(
+            windows_program(&script, None, exists),
+            bin.join("docker.exe").to_string_lossy()
+        );
+        assert_eq!(windows_program("wsl.exe", Some(&path), exists), "wsl.exe");
+        assert_eq!(windows_program("nope", Some(&path), exists), "nope");
+        assert_eq!(windows_program("docker", None, exists), "docker");
+    }
 }
 
 #[cfg(all(test, unix))]
