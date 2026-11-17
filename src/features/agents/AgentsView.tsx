@@ -371,6 +371,16 @@ function AgentCard(props: {
             </div>
           )}
         </div>
+        <button
+          type="button"
+          title="Ustawienia agenta: argumenty, zmienne, tryb rozmowy"
+          aria-label={`Ustawienia ${agent.name}`}
+          aria-expanded={showSettings}
+          onClick={() => setShowSettings((v) => !v)}
+          className={`-mr-1 -mt-1 shrink-0 rounded p-1 hover:bg-lf-hover hover:text-lf-fg ${showSettings ? "text-lf-fg" : "text-lf-muted"}`}
+        >
+          <span className="codicon codicon-gear" aria-hidden />
+        </button>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1">
         <button
@@ -420,18 +430,6 @@ function AgentCard(props: {
             Jak zainstalować?
           </button>
         )}
-        <button
-          type="button"
-          title="Ustawienia agenta: argumenty, zmienne, tryb rozmowy"
-          aria-label={`Ustawienia ${agent.name}`}
-          aria-expanded={showSettings}
-          onClick={() => setShowSettings((v) => !v)}
-          className={`rounded p-1 hover:bg-lf-hover hover:text-lf-fg ${showSettings ? "text-lf-fg" : "text-lf-muted"} ${
-            status && (hints.length > 0 || (!installed && agent.docsUrl)) ? "" : "ml-auto"
-          }`}
-        >
-          <span className="codicon codicon-gear" aria-hidden />
-        </button>
       </div>
       {showSettings && <AgentSettingsForm agent={agent} onDone={() => setShowSettings(false)} />}
       {showInstall && (
