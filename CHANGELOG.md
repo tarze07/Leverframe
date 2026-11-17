@@ -4,23 +4,27 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.8.0] – 2026-11-17
+
 ### Dodane
-- **OpenCode** w panelu „Agenci” ([#78](https://github.com/tarze07/Leverframe/issues/78)): wykrywanie (`opencode --version`), uruchamianie w terminalu i tryb rozmowy (`opencode acp`, z wczytywaniem i wznawianiem sesji). Kilo Code usunięty z wbudowanych agentów (można go dodać w `agents.json`).
-- **Ustawienia agenta** (przycisk ⚙ w „Agentach”, [#78](https://github.com/tarze07/Leverframe/issues/78)): argumenty w terminalu, zmienne środowiskowe (terminal i tryb rozmowy, każdy rodzaj profilu), program i argumenty trybu rozmowy, ukrywanie agenta (lista „Ukryci agenci”). Zapis jako nadpisania w `agents.json`; *Przywróć domyślne*. `"disabled": true` w `agents.json` ukrywa agenta zamiast go usuwać.
-- **Testy E2E z prawdziwym Dockerem** ([#69](https://github.com/tarze07/Leverframe/issues/69), etap D7 obsługi Dockera): CI buduje w widoku „Kontenery” obraz testowy, tworzy z niego kontener z folderem projektu, zatrzymuje i uruchamia go, otwiera terminal, uruchamia agenta w terminalu, prowadzi rozmowę zmieniającą plik przez edytor, wznawia ją z historii i usuwa kontener z wolumenem. README: wymagania, pliki w Linuksie, Docker Desktop w Windows, bezpieczeństwo.
-- „Nowy kontener” ostrzega w Linuksie, gdy folder projektu należy do innego UID niż agenci w obrazie Leverframe (1000), i podaje wartość pola *Użytkownik*; obraz z agentami ma zapisywalny katalog domowy dla każdego UID. Folder w „Zbuduj…” można też wpisać lub wkleić.
-- **Obraz z agentami** ([#68](https://github.com/tarze07/Leverframe/issues/68), etap D6 obsługi Dockera): przycisk „Zbuduj obraz Leverframe” w widoku „Kontenery” buduje `leverframe-agents:<wersja>` z wbudowanego pliku `Dockerfile` (`packaging/docker/agents`) – Node.js 22, Claude Code, Codex, Gemini CLI i adaptery trybu rozmowy w przypiętych wersjach, użytkownik `agent`, `/workspace`. Kontener z niego od razu ma wykrywanych agentów i tryb rozmowy. Obraz nie jest publikowany; CI buduje go i sprawdza przy zmianach.
-- **Rozmowa z agentem w kontenerze** ([#67](https://github.com/tarze07/Leverframe/issues/67), etap D5 obsługi Dockera): „Rozmowa” przy agencie działa także z profilem kontenera – tryb rozmowy (ACP) przez `docker exec`, w folderze projektu w kontenerze. Pliki z zamontowanego folderu agent czyta i zapisuje przez Leverframe (diffy, zgody, niezapisane zmiany edytora), pliki tylko w kontenerze są odrzucane, a polecenia agenta wykonują się w kontenerze. Zatrzymany kontener uruchamia się przed rozmową.
-- **Agenci w kontenerze** ([#66](https://github.com/tarze07/Leverframe/issues/66), etap D4 obsługi Dockera): panel „Agenci” wykrywa agentów w kontenerze (uruchamia go, gdy profil na to pozwala) i uruchamia ich w terminalu kontenera, w folderze projektu. Logi Claude Code i Codex z kontenera są w „Sesje → Rozmowy” (źródło „Kontener: …”), z otwieraniem plików z montowanego folderu i wznawianiem rozmowy w kontenerze.
+- **Kontenery Docker** ([#60](https://github.com/tarze07/Leverframe/issues/60)) – agenci w izolowanym środowisku, z Leverframe na tym komputerze:
+  - **Wykrywanie Dockera** ([#63](https://github.com/tarze07/Leverframe/issues/63)): wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień; ustawienie **Program Docker** (`dockerPath`).
+  - **Widok „Kontenery”** ([#64](https://github.com/tarze07/Leverframe/issues/64)): obrazy, kontenery i wolumeny Leverframe; pobieranie i budowanie obrazów z postępem (z przerwaniem; folder w „Zbuduj…” można wybrać, wpisać lub wkleić), **Nowy kontener** z folderem projektu jako `/workspace` i wolumenem na logowania agentów – z podglądem polecenia `docker run` i ostrzeżeniami przed utworzeniem; uruchamianie, zatrzymywanie, ponowne uruchamianie, logi kontenera na żywo, usuwanie po potwierdzeniu.
+  - **Terminal w kontenerze** ([#65](https://github.com/tarze07/Leverframe/issues/65)): nowy rodzaj profilu – kontener (`docker exec`), w folderze projektu, gdy jest zamontowany. Kontenery utworzone w Leverframe są profilami od razu (grupa „Kontenery” w „Terminalach”), inne można dodać („Dodaj jako profil”). Zatrzymany kontener uruchamia się przy otwarciu terminala (albo po pytaniu, gdy profil tak ustawia).
+  - **Agenci w kontenerze** ([#66](https://github.com/tarze07/Leverframe/issues/66)): panel „Agenci” wykrywa agentów w kontenerze i uruchamia ich w jego terminalu, w folderze projektu. Logi Claude Code i Codex z kontenera są w „Sesje → Rozmowy” (źródło „Kontener: …”), z otwieraniem plików z montowanego folderu i wznawianiem rozmowy w kontenerze.
+  - **Rozmowa z agentem w kontenerze** ([#67](https://github.com/tarze07/Leverframe/issues/67)): tryb rozmowy (ACP) przez `docker exec`, w folderze projektu w kontenerze. Pliki z zamontowanego folderu agent czyta i zapisuje przez Leverframe (diffy, zgody, niezapisane zmiany edytora), pliki tylko w kontenerze są odrzucane, a polecenia agenta wykonują się w kontenerze. Zatrzymany kontener uruchamia się przed rozmową.
+  - **Obraz z agentami** ([#68](https://github.com/tarze07/Leverframe/issues/68)): przycisk „Zbuduj obraz Leverframe” buduje `leverframe-agents:0.8.0` z wbudowanego pliku `Dockerfile` (`packaging/docker/agents`) – Node.js 22, Claude Code, Codex, Gemini CLI i adaptery trybu rozmowy w przypiętych wersjach, użytkownik `agent`, `/workspace`. Kontener z niego od razu ma wykrywanych agentów i tryb rozmowy. Obraz nie jest publikowany w rejestrze.
+  - **Uprawnienia plików w Linuksie** ([#69](https://github.com/tarze07/Leverframe/issues/69)): „Nowy kontener” ostrzega, gdy folder projektu należy do innego UID niż agenci w obrazie Leverframe (1000), i podaje wartość pola *Użytkownik*; katalog domowy w obrazie jest zapisywalny dla każdego UID.
+  - Testy E2E z prawdziwym Dockerem w CI ([#69](https://github.com/tarze07/Leverframe/issues/69)): budowanie obrazu w widoku, kontener z folderem projektu, stop / start, terminal, agent w terminalu, rozmowa zmieniająca plik przez edytor, wznowienie z historii, usunięcie. README: wymagania, pliki w Linuksie, Docker Desktop w Windows, bezpieczeństwo ([docs/DOCKER.md](docs/DOCKER.md)).
+- **OpenCode** w panelu „Agenci” ([#78](https://github.com/tarze07/Leverframe/issues/78)): wykrywanie (`opencode --version`), uruchamianie w terminalu i tryb rozmowy (`opencode acp`, z wczytywaniem i wznawianiem sesji).
+- **Ustawienia agenta** (przycisk ⚙ na karcie w „Agentach”, [#78](https://github.com/tarze07/Leverframe/issues/78)): argumenty w terminalu, zmienne środowiskowe (terminal i tryb rozmowy, każdy rodzaj profilu), program i argumenty trybu rozmowy, ukrywanie agenta (lista „Ukryci agenci”). Zapis jako nadpisania w `agents.json`; *Przywróć domyślne*.
+
+### Zmienione
+- Kilo Code usunięty z wbudowanych agentów – zastąpił go OpenCode (Kilo Code można dodać w `agents.json`) ([#78](https://github.com/tarze07/Leverframe/issues/78)).
+- `"disabled": true` w `agents.json` ukrywa agenta zamiast go usuwać – można go pokazać z panelu „Agenci” ([#78](https://github.com/tarze07/Leverframe/issues/78)).
 
 ### Poprawione
 - Lista rozmów z hosta SSH, który nie wykonał skryptu (np. przerwane połączenie), kończy się komunikatem zamiast pustej listy.
-- **Terminal w kontenerze** ([#65](https://github.com/tarze07/Leverframe/issues/65), etap D3 obsługi Dockera): nowy rodzaj profilu – kontener (`docker exec`), w folderze projektu, gdy jest zamontowany. Kontenery utworzone w Leverframe są profilami od razu (grupa „Kontenery” w „Terminalach”), inne można dodać („Dodaj jako profil”). Zatrzymany kontener uruchamia się przy otwarciu terminala (albo po pytaniu, gdy profil tak ustawia). Tryb rozmowy w kontenerze – w kolejnym etapie.
-- **Widok „Kontenery”** ([#64](https://github.com/tarze07/Leverframe/issues/64), etap D2 obsługi Dockera [#60](https://github.com/tarze07/Leverframe/issues/60)): obrazy, kontenery i wolumeny Leverframe; pobieranie i budowanie obrazów z postępem (z przerwaniem), **Nowy kontener** z folderem projektu jako `/workspace` i wolumenem na logowania agentów – z podglądem polecenia `docker run` i ostrzeżeniami przed utworzeniem; uruchamianie, zatrzymywanie, ponowne uruchamianie, logi kontenera na żywo, usuwanie po potwierdzeniu.
-- Leverframe wykrywa Dockera (wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień); ustawienie **Program Docker** (`dockerPath`) ([#63](https://github.com/tarze07/Leverframe/issues/63)).
-
-### Dodane
-- Początek obsługi kontenerów Docker ([#60](https://github.com/tarze07/Leverframe/issues/60), etap D1 – [#63](https://github.com/tarze07/Leverframe/issues/63)): Leverframe wykrywa Dockera (wersja, czy działa – z podpowiedzią, gdy nie działa lub brakuje uprawnień) i odczytuje obrazy, kontenery, wolumeny oraz szczegóły kontenera (montowania). Ustawienie **Program Docker** (`dockerPath`). Widok „Kontenery” – w kolejnym etapie.
 
 ## [0.7.1] – 2026-11-16
 
@@ -167,6 +171,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.8.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.8.0
 [0.7.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.1
 [0.7.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.6.0
