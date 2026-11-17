@@ -98,7 +98,23 @@ export type ContainerAction = "start" | "stop" | "restart";
 const job = (command: string, args: Record<string, unknown>, onEvent: (e: JobEvent) => void) =>
   invoke<number>(command, { ...args, onEvent: new Channel<JobEvent>(onEvent) });
 
+/** A Docker the "Kontenery" view can show: this machine (id null) or an SSH host. */
+export interface DockerSource {
+  id: string | null;
+  name: string;
+  /** DOCKER_HOST (ssh://…) of an SSH host. */
+  url: string | null;
+  warning: string | null;
+}
+
+export interface DockerSources {
+  sources: DockerSource[];
+  current: string | null;
+}
+
 export const dockerClient = {
+  sources: () => invoke<DockerSources>("docker_sources"),
+  setSource: (id: string | null) => invoke<DockerSources>("docker_set_source", { id }),
   info: () => invoke<DockerInfo>("docker_info"),
   images: () => invoke<DockerImage[]>("docker_images"),
   containers: () => invoke<DockerContainer[]>("docker_containers"),

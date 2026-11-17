@@ -42,7 +42,7 @@ export function addTerminalPanel(api: DockviewApi, { dock = "panel", split, para
 /** Opens a new terminal tab (bottom panel by default). Returns the panel id, or null if the dock is not ready. */
 export function openTerminal(options: OpenTerminalOptions = {}): string | null {
   const dock = options.dock ?? "panel";
-  if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
+  if (dock === "panel") useUiStore.getState().showBottomPanel();
   const api = dockRegistry.get(dock);
   return api ? addTerminalPanel(api, { ...options, dock }) : null;
 }
@@ -82,7 +82,7 @@ export function openDiff(change: { path: string; oldText: string | null; newText
 
 /** Shows an agent's command full size, read-only, in the terminal panel. */
 export function openAgentTerminal(storeKey: string, title: string) {
-  useUiStore.getState().setBottomPanelVisible(true);
+  useUiStore.getState().showBottomPanel();
   const api = dockRegistry.get("panel");
   if (!api) return null;
   const id = `agentterm-${storeKey}`;
@@ -130,13 +130,13 @@ export function openChatPanel(chatId: string, dock: DockId = "main") {
   for (const d of ["main", "panel"] as DockId[]) {
     const existing = dockRegistry.get(d)?.getPanel(chatId);
     if (existing) {
-      if (d === "panel") useUiStore.getState().setBottomPanelVisible(true);
+      if (d === "panel") useUiStore.getState().showBottomPanel();
       existing.api.setActive();
       requestChatScroll(chatId);
       return chatId;
     }
   }
-  if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
+  if (dock === "panel") useUiStore.getState().showBottomPanel();
   const api = dockRegistry.get(dock);
   if (!api) return null;
   api.addPanel({ id: chatId, component: "agentChat", tabComponent: "chat", title: chatTitle(chat), params: { chatId } });
@@ -292,7 +292,7 @@ export function logFilePath(file: string, cwd: string | null, source: string, wi
 
 /** Brings a running terminal to front and focuses it. */
 export function revealTerminal(panelId: string, dock: DockId) {
-  if (dock === "panel") useUiStore.getState().setBottomPanelVisible(true);
+  if (dock === "panel") useUiStore.getState().showBottomPanel();
   const panel = dockRegistry.get(dock)?.getPanel(panelId);
   panel?.api.setActive();
   requestAnimationFrame(() => terminalRegistry.get(panelId)?.focus());
@@ -325,7 +325,7 @@ export function toggleTerminalPanel() {
     ui.setBottomPanelVisible(false);
     return;
   }
-  ui.setBottomPanelVisible(true);
+  ui.showBottomPanel();
   if (terminalPanels(dockRegistry.get("panel")).length === 0) openTerminal();
   requestAnimationFrame(() => focusActiveTerminal());
 }

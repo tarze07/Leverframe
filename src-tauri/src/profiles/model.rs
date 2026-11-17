@@ -91,6 +91,9 @@ pub struct ContainerTarget {
     /// Start the container when its terminal opens (otherwise the user is asked).
     #[serde(default = "yes")]
     pub auto_start: bool,
+    /// The SSH profile whose Docker runs the container (`None`: this machine).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
 }
 
 fn yes() -> bool {
@@ -175,7 +178,12 @@ impl Profile {
                     self.command.clone()
                 },
                 args: crate::docker::terminal::terminal_args(target, None),
-                env: Vec::new(),
+                // `DOCKER_HOST` of a container on an SSH host (set by `ProfileService::all`).
+                env: self
+                    .env
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
                 cwd: None,
             };
         }

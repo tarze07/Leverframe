@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { isTauri } from "../lib/tauri";
+import { useProfilesStore } from "./profiles";
 import {
   dockerClient,
   type DockerContainer,
   type DockerImage,
   type DockerInfo,
+  type DockerSource,
   type DockerVolume,
   type JobEvent,
 } from "../features/docker/dockerClient";
@@ -34,6 +36,11 @@ interface DockerStore {
   volumes: DockerVolume[];
   /** The image with agents of this version (`leverframe-agents:<version>`), once known. */
   agentsImage: string | null;
+  /** This machine and the SSH profiles; `source`: the chosen one (null: this machine). */
+  sources: DockerSource[];
+  source: string | null;
+  /** Shows the Docker of an SSH host (or this machine); its containers become profiles. */
+  setSource: (id: string | null) => Promise<void>;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   /** What is being changed (container / image / volume name → true). */
@@ -82,6 +89,8 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
     containers: [],
     volumes: [],
     agentsImage: null,
+    sources: [],
+    source: null,
     status: "idle",
     error: null,
     busy: {},
@@ -90,6 +99,8 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
       if (!isTauri()) return;
       set({ status: "loading" });
       try {
+        const { sources, current } = await dockerClient.sources();
+        set({ sources, source: current });
         const info = await dockerClient.info();
         if (!info.running) {
           set({ info, images: [], containers: [], volumes: [], status: "ready" });
@@ -125,6 +136,20 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
     },
     pull: (image) => startJob("pull", `Pobieranie ${image}`, (onEvent) => dockerClient.pull(image, onEvent)),
     build: (dir, tag) => startJob("build", `Budowanie ${tag}`, (onEvent) => dockerClient.build(dir, tag, onEvent)),
+    setSource: async (id) => {
+      if (id === get().source) return;
+      try {
+        const { sources, current } = await dockerClient.setSource(id);
+        // Another Docker: other images, containers, jobs.
+        set({ sources, source: current, info: null, images: [], containers: [], volumes: [], error: null });
+      } catch (e) {
+        set({ error: message(e) });
+        return;
+      }
+      await get().refresh();
+      // Its containers made for Leverframe become profiles.
+      void useProfilesStore.getState().refresh();
+    },
     buildAgentsImage: () =>
       startJob("build", `Budowanie ${get().agentsImage ?? "obrazu Leverframe"}`, (onEvent) => dockerClient.buildAgentsImage(onEvent)),
     cancelJob: (key) => {

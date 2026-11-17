@@ -37,7 +37,7 @@ pub async fn agents_detect(
         .into_iter()
         .filter(|a| !a.hidden)
         .collect();
-    let docker = crate::docker::commands::docker(profiles.settings());
+    let docker = crate::docker::commands::for_profile(profiles.settings(), &profile);
     // Detection runs processes (and may wait on the network for SSH): keep it off the async workers.
     let result = tauri::async_runtime::spawn_blocking(move || {
         // A container must run to be checked: started when its profile starts it by itself.

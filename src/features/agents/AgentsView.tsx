@@ -172,11 +172,17 @@ export function AgentsView() {
               Folder z dysku Windows albo z WSL (w oknie wyboru: Linux → dystrybucja).
             </span>
           )}
-          {profile?.kind === "container" && (
-            <span className="text-[11px] text-lf-subtle">
-              Agent startuje w tym folderze w kontenerze, jeśli kontener go montuje (np. jako /workspace); inaczej w /workspace.
-            </span>
-          )}
+          {profile?.kind === "container" &&
+            (profile.container?.host ? (
+              <span className="text-[11px] text-lf-subtle">
+                Kontener na serwerze SSH: agent startuje w katalogu kontenera (zwykle /workspace – folder projektu na serwerze) i pracuje na
+                plikach serwera; ten folder nie ma tu znaczenia.
+              </span>
+            ) : (
+              <span className="text-[11px] text-lf-subtle">
+                Agent startuje w tym folderze w kontenerze, jeśli kontener go montuje (np. jako /workspace); inaczej w /workspace.
+              </span>
+            ))}
           {dirError && <span className="text-[11px] text-lf-danger">{dirError}</span>}
         </div>
       )}

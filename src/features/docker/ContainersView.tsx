@@ -28,7 +28,10 @@ export function ContainersView() {
 }
 
 function Containers() {
-  const { info, images, containers, volumes, agentsImage, status, error, refresh, clearError, jobs, buildAgentsImage } = useDockerStore();
+  const { info, images, containers, volumes, agentsImage, status, error, refresh, clearError, jobs, buildAgentsImage, sources, source, setSource } =
+    useDockerStore();
+  const sourceId = useId();
+  const chosen = sources.find((s) => s.id === source);
   const [newFrom, setNewFrom] = useState<DockerImage | null>(null);
 
   useEffect(() => {
@@ -39,6 +42,31 @@ function Containers() {
 
   return (
     <div className="flex flex-col gap-3 px-3 pb-4 text-xs">
+      {sources.length > 1 && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor={sourceId} className="text-[11px] text-lf-muted">
+            Docker na
+          </label>
+          <select
+            id={sourceId}
+            value={source ?? ""}
+            onChange={(e) => void setSource(e.target.value || null)}
+            className="rounded border border-lf-border bg-lf-editor px-1.5 py-1 text-xs text-lf-fg outline-none focus:border-lf-accent"
+          >
+            {sources.map((s) => (
+              <option key={s.id ?? ""} value={s.id ?? ""}>
+                {s.id ? `${s.name} (SSH)` : s.name}
+              </option>
+            ))}
+          </select>
+          {chosen?.url && (
+            <span className="text-[11px] text-lf-subtle">
+              Przez SSH: <code className="font-mono">{chosen.url}</code>. Foldery projektów są na tym serwerze; agent w kontenerze korzysta z własnych plików.
+            </span>
+          )}
+          {chosen?.warning && <span className="text-[11px] text-lf-danger">{chosen.warning}</span>}
+        </div>
+      )}
       <section aria-label="Docker" className="flex items-center gap-2">
         <span className={`codicon ${info?.running ? "codicon-pass-filled text-lf-accent" : "codicon-circle-slash text-lf-muted"}`} aria-hidden />
         <span className="min-w-0 flex-1 text-lf-fg">
@@ -305,9 +333,12 @@ function ContainerRow({ container: c }: { container: DockerContainer }) {
   const { act, busy } = useDockerStore();
   const [confirm, setConfirm] = useState(false);
   const projectDir = useAgentsStore((s) => s.projectDir);
-  const hasProfile = useProfilesStore((s) => s.profiles.some((p) => p.kind === "container" && p.container?.name === c.name));
+  const host = useDockerStore((s) => s.source);
+  const hasProfile = useProfilesStore((s) =>
+    s.profiles.some((p) => p.kind === "container" && p.container?.name === c.name && (p.container.host ?? null) === host),
+  );
   const terminal = () =>
-    void openContainerTerminal(c.name, { leverframe: c.leverframe, projectDir }).catch((e: unknown) =>
+    void openContainerTerminal(c.name, { leverframe: c.leverframe, projectDir, host }).catch((e: unknown) =>
       useDockerStore.setState({ error: String(e) }),
     );
   const running = c.state === "running";
@@ -349,7 +380,7 @@ function ContainerRow({ container: c }: { container: DockerContainer }) {
             aria-label={`Dodaj ${c.name} jako profil`}
             title="Dodaj jako profil terminala"
             className={iconButton}
-            onClick={() => void addContainerProfile(c.name).catch((e: unknown) => useDockerStore.setState({ error: String(e) }))}
+            onClick={() => void addContainerProfile(c.name, host).catch((e: unknown) => useDockerStore.setState({ error: String(e) }))}
           >
             <span className="codicon codicon-add" aria-hidden />
           </button>

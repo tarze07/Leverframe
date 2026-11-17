@@ -115,12 +115,23 @@ jobs:
         run: xvfb-run -a npm run e2e
         env:
           E2E_SCREENSHOT: ${{ runner.temp }}/e2e-final.png
+      - name: SSH to this runner (Docker over SSH)
+        run: |
+          sudo apt-get install -y openssh-server
+          chmod go-w ~ && mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519
+          cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh
+          ssh-keyscan -H localhost >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes "$USER@localhost" docker version --format '{{.Server.Version}}'
       - name: Run end-to-end tests with Docker
         if: ${{ !cancelled() }}
-        run: xvfb-run -a npm run e2e:docker
+        run: E2E_DOCKER_SSH="$USER@localhost" xvfb-run -a npm run e2e:docker
         env:
           E2E_DOCKER_REQUIRED: "1"
+          E2E_DOCKER_SSH_REQUIRED: "1"
           E2E_SCREENSHOT: ${{ runner.temp }}/e2e-docker.png
+          E2E_SCREENSHOT_SSH: ${{ runner.temp }}/e2e-docker-ssh.png
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v6
@@ -129,4 +140,5 @@ jobs:
           path: |
             ${{ runner.temp }}/e2e-final.png
             ${{ runner.temp }}/e2e-docker.png
+            ${{ runner.temp }}/e2e-docker-ssh.png
           if-no-files-found: ignore

@@ -29,6 +29,8 @@ pub struct ProfileService {
     profiles_path: PathBuf,
     settings: SettingsStore,
     detected: Mutex<Option<Vec<Profile>>>,
+    /// Detected containers on the SSH host of the "Kontenery" view: (`DOCKER_HOST`, profiles).
+    remote: Mutex<Option<(String, Vec<Profile>)>>,
     detector: Box<dyn Fn() -> Vec<Profile> + Send + Sync>,
 }
 
@@ -55,6 +57,7 @@ impl ProfileService {
             profiles_path: config_dir.join("profiles.json"),
             settings: SettingsStore::new(config_dir),
             detected: Mutex::new(None),
+            remote: Mutex::new(None),
             detector: Box::new(detector),
         }
     }
@@ -87,12 +90,55 @@ impl ProfileService {
     pub fn all(&self) -> Vec<Profile> {
         let mut all = self.detected();
         all.extend(self.user_profiles());
-        // Container profiles run the docker program from the settings (terminal, detection, logs).
+        all.extend(self.remote_containers(&all));
+        // Container profiles run the docker program from the settings (terminal, detection, logs);
+        // a container on an SSH host gets that host's `DOCKER_HOST`.
         let docker = crate::docker::commands::docker(&self.settings);
+        let urls: Vec<(String, Result<String, String>)> = all
+            .iter()
+            .filter_map(|p| p.container.as_ref()?.host.clone())
+            .map(|host| {
+                let url = crate::docker::remote::source(&all, &host).map(|(_, url)| url);
+                (host, url)
+            })
+            .collect();
         for p in all.iter_mut().filter(|p| p.kind == ProfileKind::Container) {
             p.command = docker.program().to_string();
+            let host = p.container.as_ref().and_then(|c| c.host.clone());
+            if let Some((_, url)) = host.and_then(|h| urls.iter().find(|(id, _)| *id == h)) {
+                match url {
+                    Ok(url) => {
+                        p.env
+                            .insert(crate::docker::remote::DOCKER_HOST.into(), url.clone());
+                    }
+                    // Started anyway, the CLI then reports the missing host.
+                    Err(e) => p.description = Some(e.clone()),
+                }
+            }
         }
         all
+    }
+
+    /// Containers made for Leverframe on the SSH host chosen in the "Kontenery" view, as
+    /// profiles (cached per host until `refresh`: SSH is slow).
+    fn remote_containers(&self, profiles: &[Profile]) -> Vec<Profile> {
+        let Some(id) = crate::docker::commands::source_id(&self.settings) else {
+            return Vec::new();
+        };
+        let Ok((ssh, url)) = crate::docker::remote::source(profiles, &id) else {
+            return Vec::new();
+        };
+        let mut cache = self.remote.lock().unwrap();
+        if let Some((cached_url, list)) = cache.as_ref() {
+            if *cached_url == url {
+                return list.clone();
+            }
+        }
+        let docker = crate::docker::commands::docker(&self.settings)
+            .with_env(crate::docker::remote::DOCKER_HOST, &url);
+        let list = docker.detect_profiles_on(Some((&ssh.id, &ssh.name)));
+        *cache = Some((url, list.clone()));
+        list
     }
 
     pub fn state(&self) -> ProfilesState {
@@ -108,6 +154,7 @@ impl ProfileService {
     /// Re-runs detection (after installing a WSL distro, editing `~/.ssh/config`, …).
     pub fn refresh(&self) -> ProfilesState {
         *self.detected.lock().unwrap() = None;
+        *self.remote.lock().unwrap() = None;
         self.state()
     }
 
@@ -315,5 +362,63 @@ mod tests {
         );
         assert_eq!(default_profile_id(&[], None), None);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn containers_on_an_ssh_host_get_its_docker_host() {
+        let dir = temp_dir("docker-host");
+        let mut ssh = profile("ssh:gpu", ProfileKind::Ssh);
+        ssh.ssh = Some(SshTarget {
+            host: "gpu.lan".into(),
+            port: Some(2222),
+            user: Some("me".into()),
+            identity_file: None,
+        });
+        let mut remote = profile("user-remote", ProfileKind::Container);
+        remote.container = Some(crate::profiles::ContainerTarget {
+            name: "sklep".into(),
+            auto_start: true,
+            host: Some("ssh:gpu".into()),
+            ..Default::default()
+        });
+        let mut gone = remote.clone();
+        gone.id = "user-gone".into();
+        gone.container.as_mut().unwrap().host = Some("ssh:nope".into());
+        let mut local = remote.clone();
+        local.id = "user-local".into();
+        local.container.as_mut().unwrap().host = None;
+        let detected = vec![ssh, remote, gone, local];
+        let svc = ProfileService::with_detector(&dir, move || detected.clone());
+        let all = svc.all();
+        let by = |id: &str| all.iter().find(|p| p.id == id).unwrap().clone();
+
+        let remote = by("user-remote");
+        assert_eq!(remote.env["DOCKER_HOST"], "ssh://me@gpu.lan:2222");
+        let spec = remote.launch_spec();
+        assert_eq!(spec.program, "docker");
+        assert!(spec
+            .env
+            .contains(&("DOCKER_HOST".into(), "ssh://me@gpu.lan:2222".into())));
+        // Detection, logs and the conversation mode run the same docker with the variable.
+        let detect = crate::agents::detect_command(&remote);
+        assert!(detect
+            .env
+            .contains(&("DOCKER_HOST".into(), "ssh://me@gpu.lan:2222".into())));
+        let launch = crate::acp::launch_for(
+            Some(&remote),
+            &["claude-agent-acp".into()],
+            None,
+            Some("/workspace"),
+            false,
+        );
+        assert!(launch
+            .env
+            .contains(&("DOCKER_HOST".into(), "ssh://me@gpu.lan:2222".into())));
+
+        assert!(by("user-local").env.is_empty(), "this machine's Docker");
+        let gone = by("user-gone");
+        assert!(!gone.env.contains_key("DOCKER_HOST"));
+        assert!(gone.description.unwrap().contains("ssh:nope"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

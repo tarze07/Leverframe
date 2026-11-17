@@ -258,3 +258,150 @@ describe("Leverframe with Docker", { skip: !available && "Docker is not availabl
     assert.equal(docker("ps", "-a", "-q", "--filter", `name=^${CONTAINER}$`), "");
   });
 });
+
+// Docker on an SSH host (D8): E2E_DOCKER_SSH=user@host[:port] – a host whose sshd accepts this
+// machine's key without questions (BatchMode) and runs Docker (in CI: sshd on the runner itself).
+// Its folders are the "server's": on the same machine the project folder is the same path.
+const sshTarget = /^([^@\s]+)@([^:\s]+)(?::(\d+))?$/.exec(process.env.E2E_DOCKER_SSH ?? "");
+if (!sshTarget && process.env.E2E_DOCKER_SSH_REQUIRED === "1") throw new Error("E2E_DOCKER_SSH=user@host[:port] is required");
+
+describe("Leverframe with Docker on an SSH host", { skip: (!available || !sshTarget) && "Docker over SSH is not configured (E2E_DOCKER_SSH)" }, () => {
+  const env = available && sshTarget ? makeHome() : null;
+  const SSH_IMAGE = "lf-e2e-agents:ssh";
+  const NAME = "shop-ssh";
+  const SSH_VOLUME = `leverframe-${NAME}-home`;
+  const HOST_ID = "user-dockerhost";
+  let driver;
+  let app;
+  const chat = "[data-testid=agent-chat]";
+  const showView = (label) => app.click("nav button", label);
+  const row = `li[aria-label="Kontener ${NAME}"]`;
+  const has = (text) => `return document.querySelector('${chat} [role=log]')?.textContent.includes(${JSON.stringify(text)})`;
+  const ready = () => app.waitFor(`return document.querySelector('${chat} [role=status]')?.textContent === 'Gotowy'`, 60_000);
+  const say = async (text) => {
+    await ready();
+    await app.waitFor(`const t = document.querySelector('${chat} textarea[aria-label="Wiadomość do agenta"]'); t.focus(); return document.activeElement === t`);
+    await app.type(`${text}${KEY.enter}`);
+  };
+  const fill = (selector, value, proto = "HTMLInputElement") =>
+    app.exec(
+      `const i = document.querySelector(arguments[0]); Object.getOwnPropertyDescriptor(${proto}.prototype, 'value').set.call(i, arguments[1]); i.dispatchEvent(new Event(arguments[2], { bubbles: true }));`,
+      [selector, value, proto === "HTMLSelectElement" ? "change" : "input"],
+    );
+  const press = (scope, text) =>
+    app.exec(
+      `const b = [...document.querySelectorAll(arguments[0] + ' button')].find(b => b.textContent.trim() === arguments[1]);
+       if (!b) throw new Error('no button ' + arguments[1]); b.click(); return true;`,
+      [scope, text],
+    );
+  const waitForFile = async (file, timeout = 30_000) => {
+    for (let i = 0; i < timeout / 100 && !(existsSync(file) && readFileSync(file, "utf8").trim()); i++) await sleep(100);
+    return existsSync(file) ? readFileSync(file, "utf8").trim() : null;
+  };
+
+  before(async () => {
+    quiet("rm", "-f", NAME);
+    quiet("volume", "rm", SSH_VOLUME);
+    try {
+      docker("image", "inspect", BASE);
+    } catch {
+      docker("pull", BASE);
+    }
+    docker("build", "-q", "-t", SSH_IMAGE, imageFolder(env.home));
+    // The SSH host as a user profile.
+    const [, user, host, port] = sshTarget;
+    writeFileSync(
+      join(env.config, "profiles.json"),
+      JSON.stringify({
+        profiles: [{ id: HOST_ID, name: "lf-docker", kind: "ssh", command: "ssh", args: [], ssh: { host, user, ...(port ? { port: Number(port) } : {}) } }],
+      }),
+    );
+    driver = await startDriver({ HOME: env.home, SHELL: "/bin/bash", XDG_CONFIG_HOME: "", XDG_DATA_HOME: "" });
+    app = await App.launch(APP);
+  });
+
+  after(async () => {
+    if (process.env.E2E_SCREENSHOT_SSH && app) writeFileSync(process.env.E2E_SCREENSHOT_SSH, await app.screenshot());
+    await app?.close();
+    driver?.kill();
+    quiet("rm", "-f", NAME);
+    quiet("volume", "rm", SSH_VOLUME);
+    quiet("rmi", SSH_IMAGE);
+    try {
+      rmSync(env.home, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (e) {
+      console.warn(`Could not remove ${env.home}: ${e.message}`);
+    }
+  });
+
+  it("shows the Docker of the SSH host and creates a container with a folder on the server", async () => {
+    await showView("Kontenery");
+    await app.waitFor(`return !!document.querySelector('select option[value="${HOST_ID}"]')`, 20_000);
+    const select = [...(await app.exec("return [...document.querySelectorAll('label')].map(l => l.textContent)"))].includes("Docker na");
+    assert.ok(select, "the source can be chosen");
+    await app.exec(
+      `const s = [...document.querySelectorAll('select')].find(s => s.querySelector('option[value="${HOST_ID}"]')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '${HOST_ID}'); s.dispatchEvent(new Event('change', { bubbles: true }));`,
+    );
+    await app.waitFor("return [...document.querySelectorAll('code')].some(c => c.textContent.startsWith('ssh://'))", 20_000);
+    await app.waitFor(`return !!document.querySelector('li[aria-label="Obraz ${SSH_IMAGE}"]')`, 60_000);
+
+    await app.click(`li[aria-label="Obraz ${SSH_IMAGE}"] button`, "Nowy kontener");
+    const form = 'form[aria-label="Nowy kontener"]';
+    await app.waitFor(`return !!document.querySelector('${form}')`);
+    assert.equal(await app.exec(`return [...document.querySelectorAll('${form} button')].some(b => b.textContent.trim() === 'Wybierz…')`), false, "no dialog of this machine");
+    const label = await app.exec(`return [...document.querySelectorAll('${form} label')].find(l => l.textContent.startsWith('Folder projektu')).textContent`);
+    assert.match(label, /Folder projektu na lf-docker/);
+    await fill(`${form} input[placeholder^="np. /home"]`, env.project);
+    await fill(`${form} input`, NAME);
+    await app.waitFor(`return document.querySelector('${form} [aria-label=Polecenie]')?.innerText.includes(${JSON.stringify(`${env.project}:/workspace`)}) && document.querySelector('${form} [aria-label=Polecenie]').innerText.includes('--name ${NAME}')`, 20_000);
+    await app.click(`${form} button[type=submit]`);
+    await app.waitFor(`return document.querySelector('${row}')?.innerText.includes('działa')`, 60_000);
+  });
+
+  it("opens a terminal in the container on the SSH host", async () => {
+    const before = await app.exec("return document.querySelectorAll('.xterm').length");
+    await app.click(`${row} button[aria-label="Terminal w ${NAME}"]`);
+    await app.waitFor(`return document.querySelectorAll('.xterm').length > ${before}`, 20_000);
+    await app.waitFor("const t = [...document.querySelectorAll('.xterm-helper-textarea')].pop(); t.focus(); return document.activeElement === t");
+    const file = join(env.project, "ssh-terminal.txt");
+    for (let i = 0; i < 5 && !existsSync(file); i++) {
+      await app.type(`[ -f /.dockerenv ] && pwd > /workspace/ssh-terminal.txt${KEY.enter}`);
+      await waitForFile(file, 5_000);
+    }
+    assert.equal(await waitForFile(file), "/workspace");
+  });
+
+  it("detects the agent there and talks to it; the agent keeps its own files", async () => {
+    const profileId = `container:${HOST_ID}:${NAME}`;
+    await showView("Agenci");
+    await app.waitFor(`return !!document.querySelector('select option[value="${profileId}"]')`, 30_000);
+    await app.exec(
+      `const s = document.querySelector('select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '${profileId}'); s.dispatchEvent(new Event('change', { bubbles: true }));`,
+    );
+    await app.waitFor("return document.querySelector('li[aria-label=\"Claude Code\"]')?.innerText.includes('7.7.7 (kontener)')", 60_000);
+    await app.click('li[aria-label="Claude Code"] button', "Terminal");
+    assert.equal(await waitForFile(join(env.project, "claude-ran.txt")), "/workspace");
+
+    await app.click('li[aria-label="Claude Code"] button', "Rozmowa");
+    await ready();
+    assert.match(await app.exec(`return document.querySelector('${chat} header').textContent`), new RegExp(`${NAME} \\(lf-docker\\) · /workspace`));
+    await say("pwd");
+    await app.waitFor(has("cwd=/workspace"), 20_000);
+    // Files of the SSH host are not this machine's: Leverframe does not offer file access.
+    await say("edit");
+    await app.waitFor(has("edit: klient nie udostępnia plików"), 20_000);
+  });
+
+  it("removes the container and its volume there", async () => {
+    await showView("Kontenery");
+    await app.click(`${row} button[aria-label="Usuń kontener ${NAME}"]`);
+    await press(row, "Usuń");
+    await app.waitFor(`return !document.querySelector('${row}')`, 60_000);
+    const volume = `li[aria-label="Wolumen ${SSH_VOLUME}"]`;
+    await app.waitFor(`return !!document.querySelector('${volume}')`, 20_000);
+    await app.click(`${volume} button[aria-label="Usuń wolumen ${SSH_VOLUME}"]`);
+    await press(volume, "Usuń");
+    await app.waitFor(`return !document.querySelector('${volume}')`, 30_000);
+    assert.equal(docker("ps", "-a", "-q", "--filter", `name=^${NAME}$`), "");
+  });
+});
