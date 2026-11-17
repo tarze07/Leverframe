@@ -1,11 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
 
 use super::detect::AgentStatus;
-use super::model::{hints_for, load_catalog_from_dir, AgentCatalog, AgentDef, InstallHint};
+use super::model::{
+    hints_for, load_catalog, load_catalog_from_dir, AgentCatalog, AgentDef, InstallHint,
+    BUILTIN_AGENTS_JSON,
+};
+use super::settings::{save_settings, AgentSettings};
 
 /// What the UI needs about an agent; install hints already filtered for this platform.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -19,6 +23,16 @@ pub struct AgentView {
     pub install: Vec<InstallHint>,
     /// ACP mode (conversation in Leverframe), if the agent has one.
     pub acp: Option<AcpView>,
+    /// Arguments added in a terminal (settings).
+    pub args: Vec<String>,
+    /// Environment of the agent (settings).
+    pub env: BTreeMap<String, String>,
+    /// Hidden in the view (settings).
+    pub hidden: bool,
+    /// Defined by Leverframe (not only in the user's `agents.json`).
+    pub builtin: bool,
+    /// The built-in conversation-mode command line (what "default" means in the settings).
+    pub default_acp: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -57,8 +71,18 @@ impl AgentService {
         load_catalog_from_dir(&self.config_dir)
     }
 
+    /// Saves an agent's settings; detection results are dropped (the conversation-mode program
+    /// may have changed).
+    pub fn save_settings(&self, id: &str, settings: &AgentSettings) -> Result<(), String> {
+        save_settings(&self.config_dir, id, settings)?;
+        self.statuses.lock().unwrap().clear();
+        Ok(())
+    }
+
     pub fn state(&self) -> AgentsState {
         let catalog = self.catalog();
+        let builtin = load_catalog(BUILTIN_AGENTS_JSON, None).agents;
+        let builtin_of = |id: &str| builtin.iter().find(|b| b.id == id);
         AgentsState {
             agents: catalog
                 .agents
@@ -78,6 +102,13 @@ impl AgentService {
                             .cloned()
                             .collect(),
                     }),
+                    args: a.args.clone(),
+                    env: a.env.clone(),
+                    hidden: a.hidden,
+                    builtin: builtin_of(&a.id).is_some(),
+                    default_acp: builtin_of(&a.id)
+                        .and_then(|b| b.acp.as_ref())
+                        .map(|acp| acp.command_line()),
                 })
                 .collect(),
             errors: catalog.errors,
@@ -120,21 +151,83 @@ mod tests {
 
     #[test]
     fn command_for_prefers_detected_executable() {
-        let svc = AgentService::new(&std::env::temp_dir().join("lf-agents-none"));
-        let kilo = svc.find("kilo").unwrap();
-        assert_eq!(svc.command_for(&kilo, Some("local:bash")), "kilo");
+        let dir = std::env::temp_dir().join(format!("lf-agents-cmd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("agents.json"),
+            r#"{ "agents": [{ "id": "aider", "name": "Aider", "commands": ["aider", "aider-chat"] }] }"#,
+        )
+        .unwrap();
+        let svc = AgentService::new(&dir);
+        let aider = svc.find("aider").unwrap();
+        assert_eq!(svc.command_for(&aider, Some("local:bash")), "aider");
         svc.store(
             "local:bash",
             vec![AgentStatus {
-                id: "kilo".into(),
+                id: "aider".into(),
                 installed: true,
-                command: Some("kilocode".into()),
+                command: Some("aider-chat".into()),
                 version: None,
                 acp: None,
             }],
         );
-        assert_eq!(svc.command_for(&kilo, Some("local:bash")), "kilocode");
-        assert_eq!(svc.command_for(&kilo, Some("other")), "kilo");
+        assert_eq!(svc.command_for(&aider, Some("local:bash")), "aider-chat");
+        assert_eq!(svc.command_for(&aider, Some("other")), "aider");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_are_saved_and_shown_with_the_defaults() {
+        let dir = std::env::temp_dir().join(format!("lf-agents-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let svc = AgentService::new(&dir);
+        let settings = AgentSettings {
+            args: vec!["--model".into(), "openai/gpt-5".into()],
+            env: [(
+                "OPENCODE_CONFIG".to_string(),
+                "/home/me/oc.json".to_string(),
+            )]
+            .into(),
+            acp: Some(vec!["opencode".into(), "acp".into(), "--print-logs".into()]),
+            hidden: false,
+        };
+        svc.save_settings("opencode", &settings).unwrap();
+        let state = svc.state();
+        let oc = state.agents.iter().find(|a| a.id == "opencode").unwrap();
+        assert_eq!(oc.args, settings.args);
+        assert_eq!(oc.env, settings.env);
+        assert_eq!(oc.acp.as_ref().unwrap().args, ["acp", "--print-logs"]);
+        assert_eq!(
+            oc.default_acp.as_deref(),
+            Some(&["opencode".to_string(), "acp".to_string()][..])
+        );
+        assert!(oc.builtin && !oc.hidden);
+        svc.save_settings(
+            "opencode",
+            &AgentSettings {
+                hidden: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            svc.state()
+                .agents
+                .iter()
+                .find(|a| a.id == "opencode")
+                .unwrap()
+                .hidden
+        );
+        assert!(svc
+            .save_settings(
+                "opencode",
+                &AgentSettings {
+                    args: vec!["`x`".into()],
+                    ..Default::default()
+                }
+            )
+            .is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

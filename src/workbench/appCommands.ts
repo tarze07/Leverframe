@@ -150,7 +150,7 @@ export function allCommands(): AppCommand[] {
     cmds.push({ id: `terminal.profile.${p.id}`, title: `Nowy terminal: ${p.name}`, category: "Terminal", run: () => void openProfile(p.id) });
   }
   const agents = useAgentsStore.getState();
-  for (const a of agents.agents) {
+  for (const a of agents.agents.filter((x) => !x.hidden)) {
     cmds.push({
       id: `agents.launch.${a.id}`,
       title: `Uruchom ${a.name} w terminalu`,

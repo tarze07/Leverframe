@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -33,7 +34,7 @@ pub struct AgentDef {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
-    /// Executable names, tried in order (e.g. `kilo`, then the older `kilocode`).
+    /// Executable names, tried in order (e.g. a new name, then an older one).
     pub commands: Vec<String>,
     #[serde(default = "default_version_args")]
     pub version_args: Vec<String>,
@@ -45,6 +46,15 @@ pub struct AgentDef {
     /// ACP mode; `None` = terminal only.
     #[serde(default)]
     pub acp: Option<AcpDef>,
+    /// Arguments added after the command in a terminal (e.g. `--model`); settings of the user.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment of the agent (terminal and conversation mode); settings of the user.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    /// Hidden in the "Agenci" view (`"disabled": true` in `agents.json`).
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 fn default_version_args() -> Vec<String> {
@@ -65,6 +75,8 @@ struct AgentEntry {
     /// Missing = keep the built-in value; `null` = remove ACP mode; object = replace it.
     #[serde(default, deserialize_with = "present")]
     acp: Option<Option<AcpDef>>,
+    args: Option<Vec<String>>,
+    env: Option<BTreeMap<String, String>>,
     #[serde(default)]
     disabled: bool,
 }
@@ -89,6 +101,20 @@ pub fn is_safe_token(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
             .all(|c| c.is_ascii_alphanumeric() || "._+-=".contains(c))
+}
+
+/// Arguments and values typed into shells or put into launch scripts, always quoted there: any
+/// text without control characters and without characters some shell would still expand inside
+/// quotes (`$`, `` ` ``, `"`, `%`).
+pub fn is_safe_arg(s: &str) -> bool {
+    !s.is_empty() && !s.chars().any(|c| c.is_control() || "$`\"%".contains(c))
+}
+
+/// Environment variable names: letters, digits and `_`, not starting with a digit.
+pub fn is_env_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn is_safe_command(s: &str) -> bool {
@@ -119,10 +145,30 @@ impl AgentDef {
         }
         if let Some(acp) = &self.acp {
             // The command also goes into the detection script, the arguments into the launch script.
-            if !is_safe_command(&acp.command) || !acp.args.iter().all(|a| is_safe_token(a)) {
+            if !is_safe_command(&acp.command) || !acp.args.iter().all(|a| is_safe_arg(a)) {
                 return Err(format!(
                     "Agent {}: nieprawidłowa komenda ACP {:?} {:?}",
                     self.id, acp.command, acp.args
+                ));
+            }
+        }
+        if let Some(bad) = self.args.iter().find(|a| !is_safe_arg(a)) {
+            return Err(format!(
+                "Agent {}: nieprawidłowy argument {bad:?} (bez znaków $ ` \" % i znaków sterujących)",
+                self.id
+            ));
+        }
+        for (name, value) in &self.env {
+            if !is_env_name(name) {
+                return Err(format!(
+                    "Agent {}: nieprawidłowa nazwa zmiennej {name:?}",
+                    self.id
+                ));
+            }
+            if !value.is_empty() && !is_safe_arg(value) {
+                return Err(format!(
+                    "Agent {}: nieprawidłowa wartość zmiennej {name} (bez znaków $ ` \" % i znaków sterujących)",
+                    self.id
                 ));
             }
         }
@@ -155,8 +201,9 @@ impl AcpDef {
 
 fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<String>) {
     for e in entries {
-        if e.disabled {
-            into.retain(|a| a.id != e.id);
+        let known = into.iter().any(|a| a.id == e.id);
+        // Hiding an agent that does not exist hides nothing.
+        if e.disabled && !known && e.commands.is_none() {
             continue;
         }
         let def = match into.iter().position(|a| a.id == e.id) {
@@ -172,8 +219,22 @@ fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<St
                     install: e.install.unwrap_or_else(|| base.install.clone()),
                     acp: match e.acp {
                         None => base.acp.clone(),
-                        Some(acp) => acp,
+                        // A changed command keeps the built-in install hints.
+                        Some(Some(mut acp)) => {
+                            if acp.install.is_empty() {
+                                acp.install = base
+                                    .acp
+                                    .as_ref()
+                                    .map(|b| b.install.clone())
+                                    .unwrap_or_default();
+                            }
+                            Some(acp)
+                        }
+                        Some(None) => None,
                     },
+                    args: e.args.unwrap_or_else(|| base.args.clone()),
+                    env: e.env.unwrap_or_else(|| base.env.clone()),
+                    hidden: e.disabled,
                 }
             }
             None => AgentDef {
@@ -185,6 +246,9 @@ fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<St
                 docs_url: e.docs_url,
                 install: e.install.unwrap_or_default(),
                 acp: e.acp.flatten(),
+                args: e.args.unwrap_or_default(),
+                env: e.env.unwrap_or_default(),
+                hidden: e.disabled,
             },
         };
         if let Err(err) = def.validate() {
@@ -236,11 +300,15 @@ mod tests {
         let c = load_catalog(BUILTIN_AGENTS_JSON, None);
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         let ids: Vec<_> = c.agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, ["claude", "codex", "gemini", "agy", "kilo"]);
-        let kilo = &c.agents[4];
-        assert_eq!(kilo.commands, ["kilo", "kilocode"]);
-        assert_eq!(kilo.version_args, ["--version"]);
-        // ACP mode: adapters for Claude and Codex, Gemini CLI itself; not confirmed for Agy and Kilo.
+        assert_eq!(ids, ["claude", "codex", "gemini", "agy", "opencode"]);
+        let opencode = &c.agents[4];
+        assert_eq!(opencode.commands, ["opencode"]);
+        assert_eq!(opencode.version_args, ["--version"]);
+        assert!(c
+            .agents
+            .iter()
+            .all(|a| a.args.is_empty() && a.env.is_empty() && !a.hidden));
+        // ACP mode: adapters for Claude and Codex, Gemini CLI and OpenCode themselves; not confirmed for Agy.
         let acp: Vec<_> = c
             .agents
             .iter()
@@ -253,7 +321,7 @@ mod tests {
                 Some("codex-acp".to_string()),
                 Some("gemini --acp".to_string()),
                 None,
-                None
+                Some("opencode acp".to_string())
             ]
         );
         assert!(c.agents[0].acp.as_ref().unwrap().install[0]
@@ -264,7 +332,7 @@ mod tests {
     #[test]
     fn acp_mode_can_be_added_replaced_or_removed_by_the_user() {
         let user = r#"{ "agents": [
-            { "id": "kilo", "acp": { "command": "kilo", "args": ["acp"] } },
+            { "id": "agy", "acp": { "command": "agy", "args": ["acp"] } },
             { "id": "codex", "name": "Codex (beta)" },
             { "id": "claude", "acp": null },
             { "id": "gemini", "acp": { "command": "gemini", "args": ["--experimental-acp"] } }
@@ -273,8 +341,8 @@ mod tests {
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         let by_id = |id: &str| c.agents.iter().find(|a| a.id == id).unwrap();
         assert_eq!(
-            by_id("kilo").acp.as_ref().unwrap().command_line(),
-            ["kilo", "acp"]
+            by_id("agy").acp.as_ref().unwrap().command_line(),
+            ["agy", "acp"]
         );
         assert_eq!(
             by_id("codex").acp.as_ref().unwrap().command,
@@ -286,6 +354,38 @@ mod tests {
             by_id("gemini").acp.as_ref().unwrap().args,
             ["--experimental-acp"]
         );
+    }
+
+    #[test]
+    fn a_changed_conversation_command_keeps_the_install_hints() {
+        let user = r#"{ "agents": [{ "id": "claude", "acp": { "command": "claude-agent-acp", "args": ["--debug"] } }] }"#;
+        let c = load_catalog(BUILTIN_AGENTS_JSON, Some(user));
+        let acp = c.agents[0].acp.as_ref().unwrap();
+        assert_eq!(acp.args, ["--debug"]);
+        assert!(acp.install[0].command.contains("claude-agent-acp"));
+    }
+
+    #[test]
+    fn arguments_and_variables_of_the_user() {
+        let user = r#"{ "agents": [
+            { "id": "opencode", "args": ["--model", "anthropic/claude sonnet"], "env": { "OPENCODE_CONFIG": "/home/me/oc.json" } },
+            { "id": "codex", "args": ["$(id)"] },
+            { "id": "gemini", "env": { "BAD-NAME": "x" } },
+            { "id": "agy", "env": { "KEY": "a%PATH%" } }
+        ] }"#;
+        let c = load_catalog(BUILTIN_AGENTS_JSON, Some(user));
+        assert_eq!(c.errors.len(), 3, "{:?}", c.errors);
+        let oc = c.agents.iter().find(|a| a.id == "opencode").unwrap();
+        assert_eq!(oc.args, ["--model", "anthropic/claude sonnet"]);
+        assert_eq!(oc.env["OPENCODE_CONFIG"], "/home/me/oc.json");
+        // A refused entry leaves the built-in agent as it was.
+        assert!(c
+            .agents
+            .iter()
+            .find(|a| a.id == "codex")
+            .unwrap()
+            .args
+            .is_empty());
     }
 
     #[test]
@@ -310,7 +410,17 @@ mod tests {
         let c = load_catalog(BUILTIN_AGENTS_JSON, Some(user));
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         let ids: Vec<_> = c.agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, ["claude", "codex", "gemini", "kilo", "aider"]);
+        // A disabled agent stays, hidden (the view can show it again).
+        assert_eq!(
+            ids,
+            ["claude", "codex", "gemini", "agy", "opencode", "aider"]
+        );
+        assert!(c.agents.iter().find(|a| a.id == "agy").unwrap().hidden);
+        let unknown = load_catalog(
+            BUILTIN_AGENTS_JSON,
+            Some(r#"{ "agents": [{ "id": "nope", "disabled": true }] }"#),
+        );
+        assert!(unknown.errors.is_empty() && unknown.agents.len() == 5);
         let codex = c.agents.iter().find(|a| a.id == "codex").unwrap();
         assert_eq!(codex.commands, ["codex-beta"]);
         assert_eq!(

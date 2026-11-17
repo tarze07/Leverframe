@@ -59,6 +59,7 @@ pub fn run() {
             pty::commands::pty_list,
             agents::commands::agents_list,
             agents::commands::agents_detect,
+            agents::commands::agents_save_settings,
             sessions::commands::sessions_info,
             sessions::commands::sessions_list,
             sessions::commands::sessions_facets,

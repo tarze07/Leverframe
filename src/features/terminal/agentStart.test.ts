@@ -50,9 +50,9 @@ describe("createAgentStarter", () => {
 
   it("falls back to typing when the shell prints nothing", () => {
     const write = vi.fn();
-    createAgentStarter({ command: "kilo", write, fallbackMs: 4000 });
+    createAgentStarter({ command: "opencode", write, fallbackMs: 4000 });
     vi.advanceTimersByTime(4000);
-    expect(write).toHaveBeenCalledWith("kilo\r");
+    expect(write).toHaveBeenCalledWith("opencode\r");
   });
 
   it("can type without pressing Enter", () => {

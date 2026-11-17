@@ -1,6 +1,6 @@
 //! Adapters for the agents' own session logs (Claude Code, Codex), normalized to one timeline model,
 //! read locally, from WSL distributions or from SSH hosts.
-//! Agy and Kilo Code are not covered (no documented log format); their sessions are available
+//! Gemini CLI, OpenCode and Agy are not covered (no documented log format); their sessions are available
 //! as terminal recordings.
 
 mod claude;

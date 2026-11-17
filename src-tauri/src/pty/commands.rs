@@ -83,7 +83,7 @@ pub struct PtySpawnResponse {
     pub profile_id: Option<String>,
     pub profile_name: Option<String>,
     pub agent_id: Option<String>,
-    /// Command line the UI should type once the shell is ready (`claude`, `kilo`, …).
+    /// Command line the UI should type once the shell is ready (`claude`, `opencode -m …`, …).
     pub agent_command: Option<String>,
 }
 
@@ -223,8 +223,16 @@ pub fn resolve_request(
             opts.cwd = None;
         }
     }
-    let agent_command =
-        agent.map(|a| agents.command_for(&a, profile.as_ref().map(|p| p.id.as_str())));
+    // The program found in the profile, with the user's arguments and variables.
+    let agent_command = agent.map(|a| {
+        let command = agents.command_for(&a, profile.as_ref().map(|p| p.id.as_str()));
+        crate::agents::typed_command(
+            &command,
+            &a.args,
+            &a.env,
+            crate::agents::shell_of(profile.as_ref()),
+        )
+    });
     Ok(Resolved {
         opts,
         profile,
@@ -430,7 +438,7 @@ mod tests {
         let r = resolve_request(
             PtySpawnRequest {
                 profile_id: Some("local:zsh".into()),
-                agent_id: Some("kilo".into()),
+                agent_id: Some("opencode".into()),
                 cwd: Some("/work/project".into()),
                 ..request()
             },
@@ -438,8 +446,8 @@ mod tests {
             &agents(),
         )
         .unwrap();
-        assert_eq!(r.agent_command.as_deref(), Some("kilo"));
-        assert_eq!(r.opts.meta.agent_id.as_deref(), Some("kilo"));
+        assert_eq!(r.agent_command.as_deref(), Some("opencode"));
+        assert_eq!(r.opts.meta.agent_id.as_deref(), Some("opencode"));
         assert_eq!(r.opts.meta.profile_id.as_deref(), Some("local:zsh"));
         assert_eq!(r.opts.meta.cwd.as_deref(), Some("/work/project"));
         assert_eq!(
@@ -447,6 +455,33 @@ mod tests {
             Some(PathBuf::from("/work/project")),
             "explicit cwd wins over the profile's"
         );
+    }
+
+    #[test]
+    fn the_agents_arguments_and_variables_are_typed_with_its_command() {
+        let dir =
+            std::env::temp_dir().join(format!("lf-pty-req-agent-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("agents.json"),
+            r#"{ "agents": [{ "id": "opencode", "args": ["-m", "openai/gpt-5"], "env": { "OPENCODE_CONFIG": "/home/me/my oc.json" } }] }"#,
+        )
+        .unwrap();
+        let r = resolve_request(
+            PtySpawnRequest {
+                profile_id: Some("local:zsh".into()),
+                agent_id: Some("opencode".into()),
+                ..request()
+            },
+            &service(),
+            &AgentService::new(&dir),
+        )
+        .unwrap();
+        assert_eq!(
+            r.agent_command.as_deref(),
+            Some("OPENCODE_CONFIG='/home/me/my oc.json' opencode -m openai/gpt-5")
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

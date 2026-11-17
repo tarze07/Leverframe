@@ -14,6 +14,25 @@ export interface Agent {
   install: InstallHint[];
   /** Conversation mode (Agent Client Protocol), if the agent has one. */
   acp?: AcpInfo | null;
+  /** Arguments added after the command in a terminal (settings). */
+  args?: string[];
+  /** Environment of the agent, terminal and conversation mode (settings). */
+  env?: Record<string, string>;
+  /** Hidden in the Agents view (settings). */
+  hidden?: boolean;
+  /** Defined by Leverframe (not only in the user's agents.json). */
+  builtin?: boolean;
+  /** The built-in conversation-mode command line. */
+  defaultAcp?: string[] | null;
+}
+
+/** What the agent's settings form saves (an override in the user's agents.json). */
+export interface AgentSettings {
+  args: string[];
+  env: Record<string, string>;
+  /** Conversation-mode program and arguments; null = the built-in ones. */
+  acp: string[] | null;
+  hidden: boolean;
 }
 
 export interface AcpInfo {
@@ -41,6 +60,7 @@ export interface AgentStatus {
 export const agentsClient = {
   list: () => invoke<AgentsState>("agents_list"),
   detect: (profileId: string, force = false) => invoke<AgentStatus[]>("agents_detect", { profileId, force }),
+  saveSettings: (id: string, settings: AgentSettings) => invoke<AgentsState>("agents_save_settings", { id, settings }),
   projectDir: () => invoke<string | null>("settings_project_dir"),
   setProjectDir: (path: string | null) => invoke<string | null>("settings_set_project_dir", { path }),
   recentDirs: () => invoke<string[]>("settings_recent_project_dirs"),

@@ -46,12 +46,16 @@
       "install": []
     },
     {
-      "id": "kilo",
-      "name": "Kilo Code",
-      "description": "Kilo Code CLI",
-      "commands": ["kilo", "kilocode"],
-      "docsUrl": "https://github.com/Kilo-Org/kilocode",
-      "install": [{ "platform": "any", "command": "npm install -g @kilocode/cli" }]
+      "id": "opencode",
+      "name": "OpenCode",
+      "description": "Agent programistyczny open source (wielu dostawców modeli)",
+      "commands": ["opencode"],
+      "docsUrl": "https://opencode.ai/docs",
+      "install": [
+        { "platform": "unix", "command": "curl -fsSL https://opencode.ai/install | bash" },
+        { "platform": "any", "command": "npm install -g opencode-ai" }
+      ],
+      "acp": { "command": "opencode", "args": ["acp"] }
     }
   ]
 }

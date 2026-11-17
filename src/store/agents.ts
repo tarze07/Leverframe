@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { isTauri } from "../lib/tauri";
-import { agentsClient, type Agent, type AgentStatus } from "../features/agents/agentsClient";
+import { agentsClient, type Agent, type AgentSettings, type AgentStatus } from "../features/agents/agentsClient";
 
 type DetectState =
   | { status: "loading" }
@@ -30,6 +30,11 @@ interface AgentsStore {
   setProjectDir: (path: string | null) => Promise<void>;
   setRemoteDir: (profileId: string, path: string | null) => Promise<void>;
   agentById: (id: string | null | undefined) => Agent | undefined;
+  /**
+   * Saves an agent's settings in agents.json; detection runs again (the conversation-mode
+   * program may have changed). Fails with the backend's message (nothing saved).
+   */
+  saveSettings: (id: string, settings: AgentSettings) => Promise<void>;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -87,4 +92,9 @@ export const useAgentsStore = create<AgentsStore>()((set, get) => ({
     });
   },
   agentById: (id) => (id ? get().agents.find((a) => a.id === id) : undefined),
+  saveSettings: async (id, settings) => {
+    const state = await agentsClient.saveSettings(id, settings);
+    // Results of detection were for the old settings.
+    set({ agents: state.agents, errors: state.errors, configPath: state.configPath, detection: {} });
+  },
 }));

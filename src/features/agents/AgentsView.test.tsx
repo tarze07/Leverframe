@@ -17,6 +17,8 @@ vi.mock("../../workbench/commands", () => ({
 }));
 
 import { AgentsView } from "./AgentsView";
+import type { AgentSettings } from "./agentsClient";
+import { joinArgs, parseEnvLines, splitArgs } from "./AgentSettingsForm";
 import { useAgentsStore } from "../../store/agents";
 import { useProfilesStore } from "../../store/profiles";
 
@@ -30,13 +32,42 @@ const agents = [
     install: [{ platform: "unix", command: "curl -fsSL https://claude.ai/install.sh | bash" }],
     acp: { command: "claude-agent-acp", args: [], install: [{ platform: "any", command: "npm install -g @agentclientprotocol/claude-agent-acp" }] },
   },
-  { id: "kilo", name: "Kilo Code", commands: ["kilo", "kilocode"], install: [{ platform: "any", command: "npm install -g @kilocode/cli" }] },
+  { id: "agy", name: "Agy", commands: ["agy"], install: [] },
+  {
+    id: "opencode",
+    name: "OpenCode",
+    commands: ["opencode"],
+    install: [{ platform: "any", command: "npm install -g opencode-ai" }],
+    acp: { command: "opencode", args: ["acp"], install: [] },
+    defaultAcp: ["opencode", "acp"],
+    args: [],
+    env: {},
+    builtin: true,
+  },
 ];
 const profiles = [
   { id: "local:bash", name: "bash", kind: "local", command: "/bin/bash", args: [], source: "detected" },
   { id: "user-1", name: "prod", kind: "ssh", command: "ssh", args: [], source: "user", ssh: { host: "prod" } },
   { id: "container:sklep", name: "sklep", kind: "container", command: "docker", args: [], source: "detected", container: { name: "sklep", autoStart: true } },
 ];
+
+/** The backend's answer to saving settings: the agents with them applied. */
+const savedAgents = (id: string, settings: AgentSettings): unknown => ({
+  agents: agents.map((a) =>
+    a.id === id
+      ? {
+          ...a,
+          args: settings.args,
+          env: settings.env,
+          hidden: settings.hidden,
+          acp: settings.acp ? { command: settings.acp[0], args: settings.acp.slice(1), install: [] } : a.acp,
+        }
+      : a,
+  ),
+  errors: [],
+  configPath: "/cfg/agents.json",
+});
+let saveSettings = savedAgents;
 
 function mockBackend(detectResult: (profileId: string) => unknown) {
   invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
@@ -57,6 +88,8 @@ function mockBackend(detectResult: (profileId: string) => unknown) {
         return { profiles, defaultProfileId: "local:bash" };
       case "agents_detect":
         return detectResult(args?.profileId as string);
+      case "agents_save_settings":
+        return saveSettings(args?.id as string, args?.settings as AgentSettings);
       default:
         return undefined;
     }
@@ -66,6 +99,7 @@ function mockBackend(detectResult: (profileId: string) => unknown) {
 describe("AgentsView", () => {
   beforeEach(() => {
     invoke.mockReset();
+    saveSettings = savedAgents;
     openAgent.mockReset();
     openAgentChat.mockReset();
     useAgentsStore.setState({
@@ -84,12 +118,12 @@ describe("AgentsView", () => {
   it("detects agents in the default profile and shows versions", async () => {
     mockBackend(() => [
       { id: "claude", installed: true, command: "claude", version: "2.1.0 (Claude Code)" },
-      { id: "kilo", installed: false, command: null, version: null },
+      { id: "agy", installed: false, command: null, version: null },
     ]);
     render(<AgentsView />);
     expect(await screen.findByText("2.1.0 (Claude Code)")).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledWith("agents_detect", { profileId: "local:bash", force: false });
-    expect(within(screen.getByRole("listitem", { name: "Kilo Code" })).getByText("nie znaleziono")).toBeInTheDocument();
+    expect(within(screen.getByRole("listitem", { name: "Agy" })).getByText("nie znaleziono")).toBeInTheDocument();
     expect(screen.getByText("app")).toBeInTheDocument(); // project folder name
   });
 
@@ -166,13 +200,13 @@ describe("AgentsView", () => {
   it("offers a conversation (ACP) for agents that have it", async () => {
     mockBackend((p) => [
       { id: "claude", installed: true, command: "claude", version: "2.1.0", acp: p === "local:bash" },
-      { id: "kilo", installed: true, command: "kilo", version: "7.8", acp: null },
+      { id: "agy", installed: true, command: "agy", version: "7.8", acp: null },
     ]);
     render(<AgentsView />);
     const claude = await screen.findByRole("listitem", { name: "Claude Code" });
     expect(await within(claude).findByText("tryb rozmowy dostępny")).toBeInTheDocument();
-    const kilo = screen.getByRole("listitem", { name: "Kilo Code" });
-    expect(within(kilo).queryByText("Rozmowa")).not.toBeInTheDocument(); // terminal only
+    const agy = screen.getByRole("listitem", { name: "Agy" });
+    expect(within(agy).queryByText("Rozmowa")).not.toBeInTheDocument(); // terminal only
     fireEvent.click(within(claude).getByText("Rozmowa"));
     expect(openAgentChat).toHaveBeenCalledWith("claude", { profileId: "local:bash", cwd: "/home/me/projects/app" });
     expect(openAgent).not.toHaveBeenCalled();
@@ -196,13 +230,13 @@ describe("AgentsView", () => {
   });
 
   it("shows install commands for missing agents and copies them", async () => {
-    mockBackend(() => [{ id: "kilo", installed: false, command: null, version: null }]);
+    mockBackend(() => [{ id: "opencode", installed: false, command: null, version: null, acp: false }]);
     render(<AgentsView />);
-    const card = await screen.findByRole("listitem", { name: "Kilo Code" });
+    const card = await screen.findByRole("listitem", { name: "OpenCode" });
     fireEvent.click(await within(card).findByText("Jak zainstalować?"));
-    expect(within(card).getByText("npm install -g @kilocode/cli")).toBeInTheDocument();
+    expect(within(card).getByText("npm install -g opencode-ai")).toBeInTheDocument();
     fireEvent.click(within(card).getByLabelText("Kopiuj komendę instalacji"));
-    expect(writeText).toHaveBeenCalledWith("npm install -g @kilocode/cli");
+    expect(writeText).toHaveBeenCalledWith("npm install -g opencode-ai");
   });
 
   it("shows detection errors and lets you retry", async () => {
@@ -261,5 +295,66 @@ describe("AgentsView", () => {
     expect(await screen.findByText("other")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Wyczyść folder projektu"));
     expect(await screen.findByText("Folder domowy (wybierz…)")).toBeInTheDocument();
+  });
+
+  it("saves an agent's settings: terminal arguments, variables, conversation command", async () => {
+    mockBackend(() => [{ id: "opencode", installed: true, command: "opencode", version: "1.19.5", acp: true }]);
+    render(<AgentsView />);
+    const card = await screen.findByRole("listitem", { name: "OpenCode" });
+    fireEvent.click(within(card).getByLabelText("Ustawienia OpenCode"));
+    const form = within(card).getByRole("form", { name: "Ustawienia OpenCode" });
+    expect(within(form).getByLabelText("Tryb rozmowy – program i argumenty")).toHaveAttribute("placeholder", "opencode acp (domyślnie)");
+    fireEvent.change(within(form).getByLabelText("Argumenty w terminalu"), { target: { value: "--model 'anthropic/claude sonnet'" } });
+    expect(within(form).getByText("opencode --model 'anthropic/claude sonnet'")).toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText(/Zmienne środowiskowe/), { target: { value: "OPENCODE_CONFIG=/home/me/oc.json\n" } });
+    fireEvent.change(within(form).getByLabelText("Tryb rozmowy – program i argumenty"), { target: { value: "opencode acp --print-logs" } });
+    fireEvent.click(within(form).getByText("Zapisz"));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("agents_save_settings", {
+        id: "opencode",
+        settings: {
+          args: ["--model", "anthropic/claude sonnet"],
+          env: { OPENCODE_CONFIG: "/home/me/oc.json" },
+          acp: ["opencode", "acp", "--print-logs"],
+          hidden: false,
+        },
+      }),
+    );
+    // The form closes; the card shows the arguments; detection runs again for the new settings.
+    await waitFor(() => expect(within(card).queryByRole("form")).toBeNull());
+    expect(within(card).getByText("opencode --model 'anthropic/claude sonnet'")).toBeInTheDocument();
+    await waitFor(() => expect(invoke.mock.calls.filter(([c]) => c === "agents_detect").length).toBe(2));
+
+    // A refusal of the backend is shown and nothing changes.
+    saveSettings = () => {
+      throw "Agent opencode: nieprawidłowy argument \"$(x)\"";
+    };
+    fireEvent.click(within(card).getByLabelText("Ustawienia OpenCode"));
+    const again = within(card).getByRole("form", { name: "Ustawienia OpenCode" });
+    expect(within(again).getByLabelText("Argumenty w terminalu")).toHaveValue("--model 'anthropic/claude sonnet'");
+    fireEvent.click(within(again).getByText("Zapisz"));
+    expect(await within(again).findByRole("alert")).toHaveTextContent("nieprawidłowy argument");
+  });
+
+  it("hides an agent and shows it again", async () => {
+    mockBackend(() => []);
+    render(<AgentsView />);
+    const card = await screen.findByRole("listitem", { name: "Agy" });
+    fireEvent.click(within(card).getByLabelText("Ustawienia Agy"));
+    fireEvent.click(within(card).getByLabelText("Ukryj w panelu „Agenci”"));
+    fireEvent.click(within(card).getByText("Zapisz"));
+    await waitFor(() => expect(within(screen.getByRole("list", { name: "Agenci" })).queryByRole("listitem", { name: "Agy" })).toBeNull());
+    fireEvent.click(screen.getByText("Ukryci agenci (1)"));
+    const hidden = screen.getByRole("list", { name: "Ukryci agenci" });
+    fireEvent.click(within(hidden).getByText("Pokaż"));
+    await waitFor(() => expect(invoke).toHaveBeenLastCalledWith("agents_save_settings", { id: "agy", settings: { args: [], env: {}, acp: null, hidden: false } }));
+    expect(await within(screen.getByRole("list", { name: "Agenci" })).findByRole("listitem", { name: "Agy" })).toBeInTheDocument();
+  });
+
+  it("splits and joins command lines and reads variables", () => {
+    expect(splitArgs(` --model "a b" -x '' c'd'e `)).toEqual(["--model", "a b", "-x", "", "cde"]);
+    expect(joinArgs(["--model", "a b", "it's", ""])).toBe(`--model 'a b' "it's" ''`);
+    expect(splitArgs(joinArgs(["--model", "a b", "it's"]))).toEqual(["--model", "a b", "it's"]);
+    expect(parseEnvLines("A=1\n\n B = x=y \nEMPTY")).toEqual({ A: "1", B: " x=y", EMPTY: "" });
   });
 });
