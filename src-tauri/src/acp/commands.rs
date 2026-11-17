@@ -141,6 +141,29 @@ pub(crate) fn container_fs(
     (workdir, fs)
 }
 
+/// The command with the agent's variables: `env NAME=value … program` (POSIX scripts on this
+/// machine, in WSL, on SSH hosts and in containers), or variables of the process (`windows_local`:
+/// cmd.exe starts the agent).
+fn with_agent_env(
+    command: Vec<String>,
+    env: &std::collections::BTreeMap<String, String>,
+    windows_local: bool,
+) -> (Vec<String>, Vec<(String, String)>) {
+    if env.is_empty() {
+        return (command, Vec::new());
+    }
+    if windows_local {
+        return (
+            command,
+            env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        );
+    }
+    let mut line = vec!["env".to_string()];
+    line.extend(env.iter().map(|(k, v)| format!("{k}={v}")));
+    line.extend(command);
+    (line, Vec::new())
+}
+
 /// The ACP command line: the explicit command, or the agent's `acp` definition.
 fn resolve_command(
     request: &AcpStartRequest,
@@ -209,13 +232,28 @@ pub async fn acp_start(
             .filter(|p| p.kind == ProfileKind::Ssh)
             .and_then(|p| crate::settings::remote_dir(&settings, &p.id)),
     };
-    let launch = launch_for(
+    // The agent's variables from its settings: `env` before the program wherever a POSIX script
+    // starts it, the process environment for cmd.exe on Windows.
+    let agent_env = request
+        .agent_id
+        .as_deref()
+        .and_then(|id| agents.find(id))
+        .map(|a| a.env)
+        .unwrap_or_default();
+    let windows_local = cfg!(windows)
+        && !matches!(
+            profile.as_ref().map(|p| p.kind),
+            Some(ProfileKind::Wsl | ProfileKind::Ssh | ProfileKind::Container)
+        );
+    let (command, process_env) = with_agent_env(command, &agent_env, windows_local);
+    let mut launch = launch_for(
         profile.as_ref(),
         &command,
         local_cwd.as_deref(),
         remote_dir.as_deref(),
         cfg!(windows),
     );
+    launch.env.extend(process_env);
     let fs = match container {
         Some((_, fs)) => fs,
         None => fs_kind(profile.as_ref()),
@@ -469,7 +507,7 @@ mod tests {
             ["fake", "-x"],
             "an explicit command wins (tests, custom setups)"
         );
-        assert!(resolve_command(&request(Some("kilo"), None), &agents)
+        assert!(resolve_command(&request(Some("agy"), None), &agents)
             .unwrap_err()
             .contains("nie ma trybu rozmowy"));
         assert!(resolve_command(&request(Some("nope"), None), &agents).is_err());
@@ -525,5 +563,40 @@ mod tests {
         };
         let (dir, fs) = container_fs(&in_volume, "docker".into(), &mounts, None);
         assert_eq!((dir.as_str(), fs), ("/root/projekt", None));
+    }
+
+    #[test]
+    fn the_agents_variables_reach_the_conversation_mode() {
+        let env: std::collections::BTreeMap<String, String> = [(
+            "OPENCODE_CONFIG".to_string(),
+            "/home/me/a b.json".to_string(),
+        )]
+        .into();
+        let cmd = vec!["opencode".to_string(), "acp".to_string()];
+        assert_eq!(
+            with_agent_env(cmd.clone(), &env, false),
+            (
+                [
+                    "env",
+                    "OPENCODE_CONFIG=/home/me/a b.json",
+                    "opencode",
+                    "acp"
+                ]
+                .map(String::from)
+                .to_vec(),
+                vec![]
+            )
+        );
+        assert_eq!(
+            with_agent_env(cmd.clone(), &env, true),
+            (
+                cmd.clone(),
+                vec![("OPENCODE_CONFIG".into(), "/home/me/a b.json".into())]
+            )
+        );
+        assert_eq!(
+            with_agent_env(cmd.clone(), &Default::default(), false),
+            (cmd, vec![])
+        );
     }
 }

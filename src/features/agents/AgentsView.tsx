@@ -9,6 +9,7 @@ import { useProfilesStore } from "../../store/profiles";
 import { openAgent, openAgentChat } from "../../workbench/commands";
 import { groupProfiles, KIND_LABELS } from "../profiles/profilesClient";
 import { folderName, type Agent, type AgentStatus } from "./agentsClient";
+import { AgentSettingsForm, currentSettings, joinArgs } from "./AgentSettingsForm";
 
 /** Sidebar view: AI coding agents, their availability in the chosen profile, and launching them. */
 export function AgentsView() {
@@ -20,6 +21,7 @@ export function AgentsView() {
   const selectId = useId();
   const [dirError, setDirError] = useState<string | null>(null);
   const [showRecent, setShowRecent] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
 
   const effectiveProfileId = profileId ?? defaultProfileId;
   const profile = profiles.find((p) => p.id === effectiveProfileId);
@@ -30,9 +32,10 @@ export function AgentsView() {
     void loadProfiles();
   }, [load, loadProfiles]);
 
+  // Again after the settings change (the store drops the results then).
   useEffect(() => {
     if (effectiveProfileId && agents.length > 0) void detect(effectiveProfileId);
-  }, [effectiveProfileId, agents.length, detect]);
+  }, [effectiveProfileId, agents, detect]);
 
   if (!isTauri()) {
     return (
@@ -62,6 +65,8 @@ export function AgentsView() {
     }
   };
   const otherRecent = recentDirs.filter((d) => d !== projectDir);
+  const visible = agents.filter((a) => !a.hidden);
+  const hidden = agents.filter((a) => a.hidden);
 
   const statusFor = (id: string): AgentStatus | undefined =>
     state?.status === "ready" ? state.results.find((r) => r.id === id) : undefined;
@@ -187,7 +192,7 @@ export function AgentsView() {
       )}
 
       <ul className="flex flex-col gap-2" aria-label="Agenci">
-        {agents.map((a) => (
+        {visible.map((a) => (
           <AgentCard
             key={a.id}
             agent={a}
@@ -207,6 +212,27 @@ export function AgentsView() {
         ))}
       </ul>
 
+      {hidden.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            aria-expanded={showHidden}
+            onClick={() => setShowHidden((v) => !v)}
+            className="flex items-center gap-1 self-start text-[11px] text-lf-muted hover:text-lf-fg"
+          >
+            <span className={`codicon codicon-chevron-${showHidden ? "down" : "right"}`} aria-hidden />
+            Ukryci agenci ({hidden.length})
+          </button>
+          {showHidden && (
+            <ul aria-label="Ukryci agenci" className="flex flex-col gap-1">
+              {hidden.map((a) => (
+                <HiddenAgent key={a.id} agent={a} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {errors.length > 0 && (
         <div className="text-[11px] text-lf-danger">
           {errors.map((e) => (
@@ -216,10 +242,30 @@ export function AgentsView() {
       )}
       {configPath && (
         <p className="text-[11px] leading-relaxed text-lf-subtle">
-          Własnych agentów dodasz w pliku <code className="break-all font-mono">{configPath}</code>.
+          Ustawienia agenta zmienisz przyciskiem <span className="codicon codicon-gear align-middle" aria-hidden />; własnych agentów dodasz w pliku{" "}
+          <code className="break-all font-mono">{configPath}</code>.
         </p>
       )}
     </div>
+  );
+}
+
+/** A hidden agent: shown again with one click (its other settings stay). */
+function HiddenAgent({ agent }: { agent: Agent }) {
+  const saveSettings = useAgentsStore((s) => s.saveSettings);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <li aria-label={agent.name} className="flex flex-wrap items-center gap-2 rounded border border-lf-border bg-lf-editor px-2 py-1 text-xs">
+      <span className="min-w-0 flex-1 truncate text-lf-muted">{agent.name}</span>
+      <button
+        type="button"
+        onClick={() => void saveSettings(agent.id, { ...currentSettings(agent), hidden: false }).catch((e: unknown) => setError(String(e)))}
+        className="text-[11px] text-lf-accent hover:underline"
+      >
+        Pokaż
+      </button>
+      {error && <span className="basis-full text-[11px] text-lf-danger">{error}</span>}
+    </li>
   );
 }
 
@@ -281,6 +327,7 @@ function AgentCard(props: {
 }) {
   const { agent, status } = props;
   const [showInstall, setShowInstall] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const installed = status?.installed ?? false;
   const acp = agent.acp;
   const acpMissing = !!acp && status?.acp === false;
@@ -312,7 +359,9 @@ function AgentCard(props: {
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="text-[13px] font-medium text-lf-fg">{agent.name}</span>
-            <code className="truncate font-mono text-[11px] text-lf-subtle">{status?.command ?? agent.commands[0]}</code>
+            <code className="truncate font-mono text-[11px] text-lf-subtle" title={joinArgs([status?.command ?? agent.commands[0], ...(agent.args ?? [])])}>
+              {joinArgs([status?.command ?? agent.commands[0], ...(agent.args ?? [])])}
+            </code>
           </div>
           {agent.description && <p className="truncate text-[11px] text-lf-muted">{agent.description}</p>}
           <div className="mt-0.5 text-[11px]">{badge}</div>
@@ -371,7 +420,20 @@ function AgentCard(props: {
             Jak zainstalować?
           </button>
         )}
+        <button
+          type="button"
+          title="Ustawienia agenta: argumenty, zmienne, tryb rozmowy"
+          aria-label={`Ustawienia ${agent.name}`}
+          aria-expanded={showSettings}
+          onClick={() => setShowSettings((v) => !v)}
+          className={`rounded p-1 hover:bg-lf-hover hover:text-lf-fg ${showSettings ? "text-lf-fg" : "text-lf-muted"} ${
+            status && (hints.length > 0 || (!installed && agent.docsUrl)) ? "" : "ml-auto"
+          }`}
+        >
+          <span className="codicon codicon-gear" aria-hidden />
+        </button>
       </div>
+      {showSettings && <AgentSettingsForm agent={agent} onDone={() => setShowSettings(false)} />}
       {showInstall && (
         <div className="mt-2 flex flex-col gap-1">
           {hints.map((hint) => (

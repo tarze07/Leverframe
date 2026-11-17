@@ -4,7 +4,7 @@ Dokument uzupełnia [PLAN.md](PLAN.md). Zadania: epik [#35](https://github.com/t
 
 ## 1. Cel
 
-Dziś Leverframe uruchamia agentów (Claude Code, Codex, Agy, Kilo Code) w terminalu: agent rysuje własny
+Dziś Leverframe uruchamia agentów (Claude Code, Codex, Gemini CLI, OpenCode, Agy) w terminalu: agent rysuje własny
 interfejs tekstowy, a aplikacja tylko go wyświetla i nagrywa. **ACP** pozwala, żeby to Leverframe prowadził
 rozmowę z agentem przez własny interfejs:
 
@@ -53,7 +53,7 @@ obsługuje (`loadSession`, obrazy/kontekst w promptach, MCP, metody logowania).
 | Claude Code | adapter `claude-agent-acp` (npm `@agentclientprotocol/claude-agent-acp`) | wymaga Node.js; dawny `@zed-industries/claude-code-acp` jest przestarzały |
 | Codex | adapter `codex-acp` (npm `@agentclientprotocol/codex-acp`) | dawny `@zed-industries/codex-acp` jest przestarzały |
 | Gemini CLI | `gemini --acp` (starsze wersje: `--experimental-acp`) | nowy agent w katalogu |
-| Kilo Code | **do sprawdzenia** | CLI oparte na opencode (`opencode acp`); flagi nie da się potwierdzić bez instalacji |
+| OpenCode | `opencode acp` (wbudowany) | sprawdzone na 1.19.5: ACP v1, `loadSession`, lista, wznawianie i rozwidlanie sesji; logowanie `opencode auth login` (#78) |
 | Agy | **brak informacji** | zostaje w trybie terminalowym |
 
 Komendy trzymamy w `agents.json` (nie w kodzie) – zmieniają się szybciej niż aplikacja.
@@ -185,8 +185,9 @@ Spostrzeżenia:
 - **v1 czy v2** – v1 (stabilne). v2 śledzimy; biblioteka Rust ma v2 tylko jako funkcję `unstable_protocol_v2`.
 - **Adaptery wymagają Node.js** (Claude, Codex) – pokazujemy to we wskazówkach instalacji; w SSH/WSL adapter musi
   być po stronie zdalnej.
-- **Kilo i Agy** – bez potwierdzonego trybu ACP zostają w terminalu; `agents.json` pozwala dodać komendę bez
-  nowej wersji aplikacji.
+- **Agy** – bez potwierdzonego trybu ACP zostaje w terminalu; `agents.json` (albo ustawienia agenta w panelu
+  „Agenci”) pozwala dodać komendę bez nowej wersji aplikacji. Kilo Code usunięty z katalogu (#78) – zastąpił go
+  OpenCode, na którym był oparty.
 - **Logowanie** – zależne od agenta/adaptera; jeśli agent zgłosi metody `authenticate`, UI je pokazuje; jeśli
   wymaga logowania w terminalu, podpowiadamy uruchomienie agenta w trybie terminalowym raz.
 - **Różnice między adapterami** – testujemy na atrapie zgodnej ze schematem; prawdziwych agentów sprawdzamy

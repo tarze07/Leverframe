@@ -1,7 +1,7 @@
 # Leverframe
 
 Prosty terminal z edytorem (styl Zed / VS Code) obsługujący Linux shell, WSL, SSH i PowerShell,
-z szybkim uruchamianiem agentów CLI (Claude Code, Codex, Agy, Kilo Code) i przeglądarką ich sesji.
+z szybkim uruchamianiem agentów CLI (Claude Code, Codex, Gemini CLI, OpenCode, Agy) i przeglądarką ich sesji.
 
 Plan projektu i propozycja technologii: [docs/PLAN.md](docs/PLAN.md). Historia zmian: [CHANGELOG.md](CHANGELOG.md).
 
@@ -46,6 +46,16 @@ Pliki Markdown (`.md`) mają trzy widoki, przełączane na pasku: sam tekst, tek
 
 Panel „Agenci” uruchamia agenta CLI w nowym terminalu wybranego profilu. Folder, w którym startuje, wybierasz nad listą agentów (ikona zegara pokazuje ostatnio używane foldery); ten sam folder jest korzeniem panelu „Pliki”. W profilach WSL można wskazać też folder z dysku dystrybucji (w oknie wyboru: Linux → dystrybucja). Dla profili SSH wpisuje się katalog na serwerze – osobno dla każdego hosta.
 
+**Ustawienia agenta** (przycisk ⚙ na karcie agenta):
+- **Argumenty w terminalu** – dopisywane do komendy agenta, np. `--model anthropic/claude-sonnet-4-5` dla OpenCode; słowa ze spacjami w cudzysłowie. Formularz pokazuje, co się uruchomi.
+- **Zmienne środowiskowe** (`NAZWA=wartość`, jedna w linii) – dla terminala i trybu rozmowy, w każdym rodzaju profilu (lokalnie, WSL, SSH, kontener), np. `OPENCODE_CONFIG=/home/ja/opencode.json`. Są zapisane jawnie w pliku – klucze API lepiej podać przy logowaniu agenta.
+- **Tryb rozmowy – program i argumenty** – inny program albo dodatkowe argumenty trybu rozmowy (puste pole = domyślne).
+- **Ukryj w panelu „Agenci”** – ukrytych agentów pokazuje lista „Ukryci agenci” pod kartami (przycisk *Pokaż*).
+
+Ustawienia trafiają do `agents.json` w folderze konfiguracji jako nadpisania (`args`, `env`, `acp`, `disabled`) – plik można też edytować ręcznie, a *Przywróć domyślne* usuwa ustawienia agenta. Argumenty i wartości nie mogą zawierać znaków `$`, `` ` ``, `"` ani `%` (byłyby rozwijane przez powłoki).
+
+**OpenCode** ([opencode.ai](https://opencode.ai)) – agent open source z wieloma dostawcami modeli: instalacja `npm install -g opencode-ai` (albo `curl -fsSL https://opencode.ai/install | bash`), logowanie raz w terminalu (`opencode auth login`), model wybiera się argumentem `--model dostawca/model` albo w jego pliku `opencode.json`. Tryb rozmowy ma wbudowany (`opencode acp`).
+
 ### Tryb rozmowy (ACP)
 
 Agenci obsługujący [Agent Client Protocol](https://agentclientprotocol.com) mają obok przycisku **Terminal** przycisk **Rozmowa**: agent działa wtedy w tle, a rozmowa toczy się w panelu Leverframe (zgody na działania agenta w oknach aplikacji). Wymaga programu ACP w tym samym profilu:
@@ -55,6 +65,7 @@ Agenci obsługujący [Agent Client Protocol](https://agentclientprotocol.com) ma
 | Claude Code | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` (Node.js 22+) |
 | Codex | `codex-acp` | `npm install -g @agentclientprotocol/codex-acp` |
 | Gemini CLI | `gemini --acp` | `npm install -g @google/gemini-cli` (Node.js 20+) |
+| OpenCode | `opencode acp` | `npm install -g opencode-ai` |
 
 Panel „Agenci” pokazuje, czy program jest zainstalowany. Agent, który wymaga zalogowania, pokaże w panelu rozmowy swoje metody logowania (Codex: klucz API lub konto ChatGPT; Gemini: konto Google, klucz API, Vertex AI); zawsze można też zalogować się raz w trybie terminalowym – adapter Claude korzysta z logowania Claude Code (`claude`, polecenie `/login`). Leverframe nie przechowuje kluczy ani haseł.
 
@@ -64,7 +75,7 @@ Wskazówki:
 - **WSL i SSH**: program trybu rozmowy (i Node.js) musi być zainstalowany po tamtej stronie – w dystrybucji WSL albo na hoście SSH – i tam też trzeba się zalogować. Na hostach SSH agent pracuje na swoich plikach i we własnym terminalu: Leverframe nie udostępnia mu plików z tego komputera ani terminali, a kliknięcie ścieżki nie otwiera pliku w edytorze. Połączenie SSH działa bez pytań (`BatchMode`), więc host musi przyjmować klucz z agenta SSH. W `agents.json` pole `acp` (`command`, `args`, `install`) dodaje lub zmienia tryb rozmowy, a `"acp": null` go wyłącza, np.:
 
 ```json
-{ "agents": [{ "id": "kilo", "acp": { "command": "kilo", "args": ["acp"] } }] }
+{ "agents": [{ "id": "agy", "acp": { "command": "agy", "args": ["acp"] } }] }
 ```
 
 Panel rozmowy pokazuje odpowiedzi agenta jako Markdown (z rozwijanym rozumowaniem), jego plan, karty wywołań narzędzi (kliknięcie pliku otwiera go w edytorze na właściwej linii), prośby o zgodę oraz zużycie kontekstu. Pole wiadomości rośnie razem z tekstem; przycisk obok pola powiększa je na większość panelu, a uchwyt nad polem pozwala ustawić wysokość ręcznie (zapamiętywaną; dwuklik przywraca automatyczną). Wpisanie `/` pokazuje komendy agenta; tryb i opcje agenta (np. model) zmienia się nad polem wiadomości; **Stop** przerywa turę. Rozmowę można otworzyć w obszarze edytora (przycisk **Rozmowa**) albo w panelu terminala (paleta: „Rozmowa z … w panelu terminala”). Agent czyta i zapisuje pliki **przez Leverframe** (profile lokalne i WSL): widzi też niezapisane zmiany z otwartych edytorów, a jego zapis trafia do otwartego edytora jako jedna zmiana do cofnięcia (Ctrl+Z) i jest zapisywany z wykrywaniem konfliktów. Proponowane zmiany widać jako diff w prośbie o zgodę („Otwórz zmianę” pokazuje je obok siebie w obszarze edytora); opcje zgody wybiera się też klawiszami 1–9, a zakładka rozmowy czekającej na decyzję ma znacznik ⚑. Bez pytania agent ma dostęp tylko do folderu projektu (także po rozwinięciu `..` i dowiązań symbolicznych) – o plik spoza niego Leverframe pyta. Polecenia agenta (np. `npm test`) uruchamia Leverframe w terminalu tego samego profilu – po pytaniu: **Uruchom**, **Zawsze dla tego polecenia** (do końca rozmowy) albo **Odmów**. Pytanie można wyłączyć w ustawieniach („Pytaj przed poleceniami agentów”, `acpConfirmCommands` w `settings.json`). Wyjście polecenia widać na żywo w karcie narzędzia, a „Otwórz jako terminal” pokazuje je w pełnym rozmiarze w panelu terminala; agent dostaje czysty tekst (bez kodów kolorów), przycięty do zamówionego limitu. Zamknięcie rozmowy kończy polecenia agenta. Na hostach SSH agent korzysta z własnego dostępu do plików i własnego terminala ([docs/ACP.md](docs/ACP.md)).

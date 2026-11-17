@@ -4,6 +4,7 @@ use tauri::State;
 
 use super::detect::{detect, AgentStatus};
 use super::service::{AgentService, AgentsState};
+use super::settings::AgentSettings;
 use crate::profiles::ProfileService;
 
 const DETECT_TIMEOUT: Duration = Duration::from_secs(25);
@@ -29,7 +30,13 @@ pub async fn agents_detect(
     let profile = profiles
         .resolve(&profile_id)
         .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
-    let defs = agents.catalog().agents;
+    // Hidden agents are not checked (the view does not show them).
+    let defs: Vec<_> = agents
+        .catalog()
+        .agents
+        .into_iter()
+        .filter(|a| !a.hidden)
+        .collect();
     let docker = crate::docker::commands::docker(profiles.settings());
     // Detection runs processes (and may wait on the network for SSH): keep it off the async workers.
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -51,4 +58,16 @@ pub async fn agents_detect(
     .map_err(|e| e.to_string())??;
     agents.store(&profile_id, result.clone());
     Ok(result)
+}
+
+/// Saves an agent's settings (arguments, environment, conversation-mode command, hidden) in the
+/// user's `agents.json`; returns the agents as they are now.
+#[tauri::command]
+pub async fn agents_save_settings(
+    agents: State<'_, AgentService>,
+    id: String,
+    settings: AgentSettings,
+) -> Result<AgentsState, String> {
+    agents.save_settings(&id, &settings)?;
+    Ok(agents.state())
 }

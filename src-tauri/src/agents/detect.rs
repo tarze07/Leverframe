@@ -17,7 +17,7 @@ const MARK: &str = "@@LF@@";
 pub struct AgentStatus {
     pub id: String,
     pub installed: bool,
-    /// The executable that was found (e.g. `kilo` or `kilocode`).
+    /// The executable that was found (the first of the agent's names that exists).
     pub command: Option<String>,
     /// First line of `<command> --version`.
     pub version: Option<String>,
@@ -354,8 +354,10 @@ mod tests {
     use crate::profiles::{ProfileSource, SshTarget};
     use std::collections::BTreeMap;
 
+    /// The built-in agents and one with two program names (a new one, then an older one).
     fn agents() -> Vec<AgentDef> {
-        load_catalog(BUILTIN_AGENTS_JSON, None).agents
+        let extra = r#"{ "agents": [{ "id": "aider", "name": "Aider", "commands": ["aider", "aider-chat"] }] }"#;
+        load_catalog(BUILTIN_AGENTS_JSON, Some(extra)).agents
     }
 
     fn profile(kind: ProfileKind, command: &str, args: &[&str]) -> Profile {
@@ -378,7 +380,7 @@ mod tests {
     #[test]
     fn parses_marked_lines_and_ignores_noise() {
         let out = "Welcome to Ubuntu!\n@@LF@@\tclaude\t1\tclaude\t2.1.0 (Claude Code)\r\n\
-                   noise @@LF@@ without tab\n@@LF@@\tkilo\t1\tkilocode\t\n@@LF@@\tcodex\t0\t\t\n";
+                   noise @@LF@@ without tab\n@@LF@@\taider\t1\taider-chat\t\n@@LF@@\tcodex\t0\t\t\n";
         let s = parse_output(out, &agents());
         assert_eq!(
             s[0],
@@ -392,9 +394,9 @@ mod tests {
         );
         assert!(!s[1].installed);
         assert!(!s[2].installed, "missing line = not installed");
-        assert_eq!(s[4].command.as_deref(), Some("kilocode"));
-        assert_eq!(s[4].version, None);
-        assert_eq!(s[4].acp, None, "no ACP mode defined");
+        assert_eq!(s[5].command.as_deref(), Some("aider-chat"));
+        assert_eq!(s[5].version, None);
+        assert_eq!(s[5].acp, None, "no ACP mode defined");
     }
 
     #[test]
@@ -409,22 +411,24 @@ mod tests {
                 ("codex", Some(true)), // the adapter can be there without the CLI
                 ("gemini", Some(true)),
                 ("agy", None),
-                ("kilo", None)
+                ("opencode", Some(false)),
+                ("aider", None)
             ]
         );
-        assert_eq!(s.len(), 5, "':acp' lines are not agents of their own");
+        assert_eq!(s.len(), 6, "':acp' lines are not agents of their own");
     }
 
     #[test]
     fn builds_scripts_for_every_agent() {
         let posix = posix_script(&agents());
-        assert!(posix.contains("lf_check kilo '--version' kilo kilocode\n"));
+        assert!(posix.contains("lf_check aider '--version' aider aider-chat\n"));
         // ACP programs: presence only, never started.
         assert!(posix.contains("lf_has claude:acp claude-agent-acp\n"));
         assert!(posix.contains("lf_has gemini:acp gemini\n"));
-        assert!(!posix.contains("lf_has kilo"));
+        assert!(posix.contains("lf_has opencode:acp opencode\n"));
+        assert!(!posix.contains("lf_has aider"));
         let ps = powershell_script(&agents());
-        assert!(ps.contains("@('kilo','kilocode')"));
+        assert!(ps.contains("@('aider','aider-chat')"));
         assert!(ps.contains("@@LF@@`tclaude`t1"));
         assert!(ps.contains("Get-Command -Name 'codex-acp'"));
         assert!(ps.contains("`tcodex:acp`t1`tcodex-acp`t"));
@@ -484,7 +488,7 @@ mod tests {
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         };
         fake("claude", "echo '2.0.1 (Claude Code)'; echo second-line");
-        fake("kilocode", "printf 'kilo\\t1.2\\n'");
+        fake("aider-chat", "printf 'aider\\t1.2\\n'");
 
         // A shell whose login PATH contains the fake binaries: emulates nvm-style PATH setup in .bashrc.
         let shell = dir.join("fake-shell");
@@ -504,13 +508,13 @@ mod tests {
         assert_eq!(by("claude").version.as_deref(), Some("2.0.1 (Claude Code)"));
         assert!(!by("codex").installed);
         assert_eq!(
-            by("kilo").command.as_deref(),
-            Some("kilocode"),
+            by("aider").command.as_deref(),
+            Some("aider-chat"),
             "falls back to the second name"
         );
         assert_eq!(
-            by("kilo").version.as_deref(),
-            Some("kilo 1.2"),
+            by("aider").version.as_deref(),
+            Some("aider 1.2"),
             "tabs are replaced"
         );
         std::fs::remove_dir_all(dir).unwrap();
