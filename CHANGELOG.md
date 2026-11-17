@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.8.1] – 2026-11-17
+
 ### Poprawione
 - Windows: terminal kontenera nie startował z Docker Desktop zainstalowanym dla użytkownika („%1 nie jest prawidłową aplikacją systemu Win32”) – w folderze Dockera obok `docker.exe` leży skrypt `docker` dla WSL, a terminal wybierał skrypt. Programy terminali są teraz szukane w `PATH` najpierw jako `.exe` / `.com`.
 
@@ -18,7 +20,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
   - **Rozmowa z agentem w kontenerze** ([#67](https://github.com/tarze07/Leverframe/issues/67)): tryb rozmowy (ACP) przez `docker exec`, w folderze projektu w kontenerze. Pliki z zamontowanego folderu agent czyta i zapisuje przez Leverframe (diffy, zgody, niezapisane zmiany edytora), pliki tylko w kontenerze są odrzucane, a polecenia agenta wykonują się w kontenerze. Zatrzymany kontener uruchamia się przed rozmową.
   - **Obraz z agentami** ([#68](https://github.com/tarze07/Leverframe/issues/68)): przycisk „Zbuduj obraz Leverframe” buduje `leverframe-agents:0.8.0` z wbudowanego pliku `Dockerfile` (`packaging/docker/agents`) – Node.js 22, Claude Code, Codex, Gemini CLI i adaptery trybu rozmowy w przypiętych wersjach, użytkownik `agent`, `/workspace`. Kontener z niego od razu ma wykrywanych agentów i tryb rozmowy. Obraz nie jest publikowany w rejestrze.
   - **Uprawnienia plików w Linuksie** ([#69](https://github.com/tarze07/Leverframe/issues/69)): „Nowy kontener” ostrzega, gdy folder projektu należy do innego UID niż agenci w obrazie Leverframe (1000), i podaje wartość pola *Użytkownik*; katalog domowy w obrazie jest zapisywalny dla każdego UID.
-  - Testy E2E z prawdziwym Dockerem w CI ([#69](https://github.com/tarze07/Leverframe/issues/69)): budowanie obrazu w widoku, kontener z folderem projektu, stop / start, terminal, agent w terminalu, rozmowa zmieniająca plik przez edytor, wznowienie z historii, usunięcie. README: wymagania, pliki w Linuksie, Docker Desktop w Windows, bezpieczeństwo ([docs/DOCKER.md](docs/DOCKER.md)).
+  - Testy E2E z prawdziwym Dockerem w CI ([#69](https://github.com/tarze07/Leverframe/issues/69)): budowanie obrazu w widoku, kontener z folderem projektu, stop / start, terminal, agent w terminalu, rozmowa zmieniająca plik przez edytor, wznowienie z historii, usunięcie. README: wymagania, pliki w Linuksie, Docker Desktop w Windows, bezpieczeństwo ([docs/DOCKER.md](https://github.com/tarze07/Leverframe/blob/main/docs/DOCKER.md)).
 - **OpenCode** w panelu „Agenci” ([#78](https://github.com/tarze07/Leverframe/issues/78)): wykrywanie (`opencode --version`), uruchamianie w terminalu i tryb rozmowy (`opencode acp`, z wczytywaniem i wznawianiem sesji).
 - **Ustawienia agenta** (przycisk ⚙ na karcie w „Agentach”, [#78](https://github.com/tarze07/Leverframe/issues/78)): argumenty w terminalu, zmienne środowiskowe (terminal i tryb rozmowy, każdy rodzaj profilu), program i argumenty trybu rozmowy, ukrywanie agenta (lista „Ukryci agenci”). Zapis jako nadpisania w `agents.json`; *Przywróć domyślne*.
 
@@ -174,6 +176,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.8.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.8.1
 [0.8.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.8.0
 [0.7.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.1
 [0.7.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.7.0
