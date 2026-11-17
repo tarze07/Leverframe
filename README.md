@@ -108,7 +108,7 @@ Potem *Nowy kontener* przy obrazie: folder projektu trafia do `/workspace`, a wo
 
 ```dockerfile
 # Wersja obrazu jak w widoku „Kontenery” (wersja Leverframe, która go zbudowała).
-FROM leverframe-agents:0.7.1
+FROM leverframe-agents:0.8.0
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv && rm -rf /var/lib/apt/lists/*
 USER agent
@@ -201,7 +201,7 @@ Sam interfejs (bez backendu Rust) w przeglądarce: `npm run dev`, potem <http://
 3. Po scaleniu do `main` utwórz i wypchnij tag `v<wersja>`:
 
    ```bash
-   git tag v0.7.1 && git push origin v0.7.1
+   git tag v0.8.0 && git push origin v0.8.0
    ```
 
 Workflow `.github/workflows/release.yml` zbuduje instalatory na Windows i Linux, z pakietu `.deb` zrobi paczkę dla Arch Linux (`packaging/arch`; w kontenerze Arch jest instalowana na próbę z zależnościami) i opublikuje wydanie. Wersje z sufiksem (`-alpha.1`, `-beta.2`) są oznaczane jako pre-release.

@@ -1,6 +1,6 @@
 [package]
 name = "leverframe"
-version = "0.7.1"
+version = "0.8.0"
 description = "Terminal z edytorem dla agentów CLI"
 license = "MIT"
 edition = "2021"
