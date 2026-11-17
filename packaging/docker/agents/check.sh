@@ -18,13 +18,13 @@ for tool in git rg ssh tini node npm; do
   command -v "$tool" >/dev/null || fail "brak $tool"
 done
 
-for agent in claude codex gemini; do
+for agent in claude opencode; do
   version=$("$agent" --version 2>&1) || fail "$agent --version: $version"
   echo "$agent: $version"
 done
 
 initialize='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false}}}'
-for adapter in claude-agent-acp codex-acp "gemini --acp"; do
+for adapter in claude-agent-acp "opencode acp"; do
   # stdin stays open a moment (the adapter answers before it ends).
   answer=$({ echo "$initialize"; sleep 20; } | timeout 30 $adapter 2>/dev/null | head -n 1) || true
   case "$answer" in

@@ -163,8 +163,8 @@ W repozytorium `packaging/docker/agents/Dockerfile`:
 
 - baza `node:22-bookworm-slim` (adapter Claude wymaga Node.js 22+), `git`, `ripgrep`, `openssh-client`,
   `tini`, `sudo`;
-- agenci: `@anthropic-ai/claude-code`, `@openai/codex`, `@google/gemini-cli`, adaptery ACP
-  `@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp` – w wersjach przypiętych
+- agenci (#85: tylko Claude Code i OpenCode): `@anthropic-ai/claude-code` z adapterem ACP
+  `@agentclientprotocol/claude-agent-acp` oraz `opencode-ai` (ACP wbudowany: `opencode acp`) – w wersjach przypiętych
   (zasada: co najmniej 2 tygodnie od wydania), aktualizowanych świadomie;
 - użytkownik bez uprawnień roota (`agent`, UID 1000 – pliki w zamontowanym folderze mają właściciela jak na
   komputerze w Linuksie; na Windows/macOS robi to Docker Desktop);

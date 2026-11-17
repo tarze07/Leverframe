@@ -47,13 +47,15 @@ mod tests {
             );
         }
         for pkg in [
-            "claude-code",
-            "codex",
-            "gemini-cli",
-            "claude-agent-acp",
-            "codex-acp",
+            "@anthropic-ai/claude-code@",
+            "@agentclientprotocol/claude-agent-acp@",
+            "\"opencode-ai@",
         ] {
-            assert!(f.contains(&format!("/{pkg}@${{")), "{pkg}");
+            assert!(f.contains(&format!("{pkg}${{")), "{pkg}");
+        }
+        // Only Claude Code and OpenCode (#85).
+        for gone in ["@openai/codex", "@google/gemini-cli", "codex-acp"] {
+            assert!(!f.contains(gone), "{gone}");
         }
         assert!(
             f.lines()

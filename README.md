@@ -96,13 +96,13 @@ Widok **Kontenery** (ikona paczki na pasku aktywności) pokazuje Dockera (Docker
 
 ### Obraz z agentami
 
-Przycisk **Zbuduj obraz Leverframe** w widoku „Kontenery” buduje u Ciebie obraz `leverframe-agents:<wersja Leverframe>` z pliku [`packaging/docker/agents/Dockerfile`](packaging/docker/agents/Dockerfile) (jest wbudowany w aplikację; obraz nie jest publikowany w żadnym rejestrze). Zawiera Node.js 22, `git`, `ripgrep`, `openssh-client`, agentów Claude Code, Codex i Gemini CLI oraz adaptery trybu rozmowy (`claude-agent-acp`, `codex-acp`) – w wersjach przypiętych w pliku. Działa jako użytkownik `agent` (UID 1000, z `sudo` bez hasła do doinstalowania narzędzi w kontenerze) w `/workspace`, a etykieta `io.leverframe.agents=1` sprawia, że kontener z niego od razu jest profilem w Leverframe. Bez Leverframe:
+Przycisk **Zbuduj obraz Leverframe** w widoku „Kontenery” buduje u Ciebie obraz `leverframe-agents:<wersja Leverframe>` z pliku [`packaging/docker/agents/Dockerfile`](packaging/docker/agents/Dockerfile) (jest wbudowany w aplikację; obraz nie jest publikowany w żadnym rejestrze). Zawiera Node.js 22, `git`, `ripgrep`, `openssh-client`, agentów Claude Code (z programem trybu rozmowy `claude-agent-acp`) i OpenCode (tryb rozmowy wbudowany) – w wersjach przypiętych w pliku. Innych agentów doinstalujesz we własnym obrazie (`FROM leverframe-agents`, niżej). Działa jako użytkownik `agent` (UID 1000, z `sudo` bez hasła do doinstalowania narzędzi w kontenerze) w `/workspace`, a etykieta `io.leverframe.agents=1` sprawia, że kontener z niego od razu jest profilem w Leverframe. Bez Leverframe:
 
 ```bash
 docker build -t leverframe-agents packaging/docker/agents
 ```
 
-Potem *Nowy kontener* przy obrazie: folder projektu trafia do `/workspace`, a wolumen na `/home/agent` przechowuje logowania agentów. **Logowanie** odbywa się raz, w kontenerze: otwórz jego terminal i uruchom `claude` (albo `codex`, `gemini`) – albo zacznij rozmowę, a Leverframe poprowadzi przez logowanie; dane logowania zostają w wolumenie także po usunięciu kontenera. Klucz API (zamiast logowania) najlepiej wpisać w terminalu kontenera przy pierwszym uruchomieniu agenta – zmienne środowiskowe z formularza „Nowy kontener” też działają, ale zostają w konfiguracji kontenera i są widoczne w `docker inspect`.
+Potem *Nowy kontener* przy obrazie: folder projektu trafia do `/workspace`, a wolumen na `/home/agent` przechowuje logowania agentów. **Logowanie** odbywa się raz, w kontenerze: otwórz jego terminal i uruchom `claude` (albo `opencode auth login`) – albo zacznij rozmowę, a Leverframe poprowadzi przez logowanie; dane logowania zostają w wolumenie także po usunięciu kontenera. Klucz API (zamiast logowania) najlepiej wpisać w terminalu kontenera przy pierwszym uruchomieniu agenta – zmienne środowiskowe z formularza „Nowy kontener” też działają, ale zostają w konfiguracji kontenera i są widoczne w `docker inspect`.
 
 **Własny obraz projektu**: obraz Leverframe to punkt startowy – dodaj narzędzia projektu we własnym `Dockerfile` i zbuduj go przyciskiem *Zbuduj…*:
 

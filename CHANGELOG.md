@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Zmienione
+- **Obraz z agentami** ([#85](https://github.com/tarze07/Leverframe/issues/85)) zawiera tylko Claude Code (z `claude-agent-acp`) i OpenCode 1.19.5 (tryb rozmowy wbudowany) – bez Codex i Gemini CLI; obraz jest mniejszy. Innych agentów można doinstalować we własnym obrazie `FROM leverframe-agents`.
+
 ### Dodane
 - **Docker na serwerze przez SSH** ([#79](https://github.com/tarze07/Leverframe/issues/79), etap D8 obsługi Dockera): pole „Docker na” w widoku „Kontenery” wybiera Docker tego komputera albo serwera z profilu SSH (`DOCKER_HOST=ssh://…`). Obrazy, kontenery, budowanie, terminale, wykrywanie agentów, logi i tryb rozmowy działają na serwerze; folder projektu nowego kontenera to ścieżka na serwerze; kontenery Leverframe na serwerze są profilami „nazwa (serwer)”. W rozmowie agent korzysta z plików serwera sam. Test E2E z Dockerem przez SSH w CI.
 
