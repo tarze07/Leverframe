@@ -129,6 +129,13 @@ function Containers() {
       {info && !info.running && info.message && (
         <p role="alert" className="rounded border border-lf-border p-2 leading-relaxed text-lf-fg">
           {info.message}
+          {source === null && !info.installed && (
+            <span className="mt-1 block text-lf-muted">
+              {sources.length > 1
+                ? "Docker na serwerze nie wymaga programu docker na tym komputerze: wybierz serwer w polu „Docker na” powyżej (połączenie przez ssh)."
+                : "Docker na serwerze nie wymaga programu docker na tym komputerze: dodaj profil SSH (widok „Terminale” albo ~/.ssh/config), a potem wybierz go w polu „Docker na”."}
+            </span>
+          )}
         </p>
       )}
       {error && (

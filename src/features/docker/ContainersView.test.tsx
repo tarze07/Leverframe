@@ -322,4 +322,18 @@ describe("ContainersView", () => {
     await waitFor(() => expect(client.setSshMode).toHaveBeenCalledWith("client"));
     expect(await screen.findByText(/nie ma klienta docker – wybierz połączenie „ssh”/)).toBeInTheDocument();
   });
+
+  it("points to Docker on a server when this machine has none", async () => {
+    const missing = { ...running, installed: false, running: false, serverVersion: null, message: "Nie znaleziono programu „docker”." };
+    client.info.mockResolvedValue(missing);
+    client.sources.mockResolvedValue(sources([here], null, { localClient: false, transport: "ssh" }));
+    const { unmount } = render(<ContainersView />);
+    expect(await screen.findByText(/dodaj profil SSH/)).toBeInTheDocument();
+    unmount();
+    client.sources.mockResolvedValue(sources([here, gpu], null, { localClient: false, transport: "ssh" }));
+    render(<ContainersView />);
+    expect(await screen.findByText(/wybierz serwer w polu „Docker na”/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Docker na")).toBeInTheDocument();
+    client.info.mockResolvedValue(running);
+  });
 });
