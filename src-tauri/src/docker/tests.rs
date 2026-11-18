@@ -234,15 +234,16 @@ fn spec(dir: &std::path::Path) -> ContainerSpec {
     }
 }
 
-fn project() -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("lf-docker-project-{}", std::process::id()));
+/// A project folder of its own for each test (tests run in parallel and remove their folder).
+fn project(test: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("lf-docker-project-{test}-{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     d
 }
 
 #[test]
 fn a_new_container_is_planned_and_checked() {
-    let dir = project();
+    let dir = project("a_new_container_is_plann");
     let p = plan(&spec(&dir)).unwrap();
     let mount = format!("{}:/workspace", dir.display());
     assert_eq!(
@@ -378,7 +379,7 @@ fn logged(d: &Docker, log: &std::path::Path, f: impl FnOnce(&Docker)) -> Vec<Str
 
 #[test]
 fn containers_images_and_volumes_are_changed_with_exact_arguments() {
-    let dir = project();
+    let dir = project("containers_images_and_vo");
     let log = std::env::temp_dir().join(format!("lf-fake-docker-d2-{}.log", std::process::id()));
     let d = fake("ok");
     let calls = logged(&d, &log, |d| {
@@ -501,7 +502,7 @@ fn pulls_builds_and_follows_logs_as_jobs() {
     }
 
     // Build output comes on stderr (BuildKit), as lines like the rest.
-    let dir = project();
+    let dir = project("pulls_builds_and_follows");
     std::fs::write(dir.join("Dockerfile"), "FROM node:22\n").unwrap();
     let build = Arc::new(Collector::default());
     let args = build_args(&dir.to_string_lossy(), "moj-obraz:1.0", None).unwrap();
@@ -596,7 +597,7 @@ fn real_docker_container_cycle_when_available() {
         eprintln!("busybox could not be pulled, skipped");
         return;
     }
-    let dir = project();
+    let dir = project("real_docker_container_cy");
     std::fs::write(dir.join("README.md"), "projekt\n").unwrap();
     let name = format!("lf-test-{}", std::process::id());
     let spec = ContainerSpec {
@@ -850,7 +851,7 @@ fn real_docker_terminal_when_available() {
         eprintln!("busybox could not be pulled, skipped");
         return;
     }
-    let dir = project().join(format!("term-{}", std::process::id()));
+    let dir = project("real_docker_terminal_whe").join(format!("term-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     let name = format!("lf-term-{}", std::process::id());
     let _ = d.remove(&name, true);
