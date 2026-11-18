@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ContainerSpec, CreatePlan, DockerContainer, DockerImage, DockerInfo, DockerSource, DockerSources, JobEvent } from "./dockerClient";
+import type { ContainerSpec, CreatePlan, DockerContainer, DockerImage, DockerInfo, DockerSource, DockerSources, DockerSshMode, JobEvent } from "./dockerClient";
 
 const here: DockerSource = { id: null, name: "Ten komputer", url: null, warning: null };
 const gpu: DockerSource = { id: "ssh:gpu", name: "gpu", url: "ssh://me@gpu", warning: null };
@@ -39,6 +39,14 @@ const container = (name: string, state: string): DockerContainer => ({
   leverframe: name === "sklep-agenci",
 });
 let emit: (e: JobEvent) => void = () => undefined;
+const sources = (list: DockerSource[], current: string | null, more: Partial<DockerSources> = {}): DockerSources => ({
+  sources: list,
+  current,
+  mode: "auto",
+  localClient: true,
+  transport: "client",
+  ...more,
+});
 const client = {
   info: vi.fn(async () => running),
   images: vi.fn(async () => [image("leverframe-agents", "0.8.0", true), image("node", "22")]),
@@ -55,8 +63,9 @@ const client = {
   pull: vi.fn(async (_image: string, onEvent: (e: JobEvent) => void) => ((emit = onEvent), 7)),
   build: vi.fn(async (_d: string, _t: string, onEvent: (e: JobEvent) => void) => ((emit = onEvent), 8)),
   agentsImage: vi.fn(async () => "leverframe-agents:0.8.0"),
-  sources: vi.fn(async (): Promise<DockerSources> => ({ sources: [here], current: null })),
-  setSource: vi.fn(async (id: string | null): Promise<DockerSources> => ({ sources: [here, gpu], current: id })),
+  sources: vi.fn(async (): Promise<DockerSources> => sources([here], null)),
+  setSource: vi.fn(async (id: string | null): Promise<DockerSources> => sources([here, gpu], id)),
+  setSshMode: vi.fn(async (mode: DockerSshMode): Promise<DockerSources> => sources([here, gpu], "ssh:gpu", { mode, transport: mode === "client" ? "client" : "ssh" })),
   buildAgentsImage: vi.fn(async (onEvent: (e: JobEvent) => void) => ((emit = onEvent), 9)),
   cancel: vi.fn(async () => undefined),
   createPlan: vi.fn(async (spec: ContainerSpec): Promise<CreatePlan> => ({
@@ -84,7 +93,7 @@ const row = (name: RegExp | string) => screen.findByRole("listitem", { name });
 describe("ContainersView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useDockerStore.setState({ info: null, images: [], containers: [], volumes: [], agentsImage: null, sources: [], source: null, status: "idle", error: null, busy: {}, jobs: [] });
+    useDockerStore.setState({ info: null, images: [], containers: [], volumes: [], agentsImage: null, sources: [], source: null, sshMode: "auto", localClient: true, transport: "client", status: "idle", error: null, busy: {}, jobs: [] });
     useAgentsStore.setState({ projectDir: "/home/me/sklep" });
   });
 
@@ -269,12 +278,12 @@ describe("ContainersView", () => {
   });
 
   it("shows the Docker of an SSH host: its containers, folders on the server", async () => {
-    client.sources.mockResolvedValue({ sources: [here, gpu], current: null });
+    client.sources.mockResolvedValue(sources([here, gpu], null));
     useAgentsStore.setState({ remoteDirs: { "ssh:gpu": "/srv/sklep" } });
     render(<ContainersView />);
     const select = await screen.findByLabelText("Docker na");
     expect(within(select).getByText("gpu (SSH)")).toBeInTheDocument();
-    client.sources.mockResolvedValue({ sources: [here, { ...gpu, warning: "Docker łączy się przez ssh bez pliku klucza" }], current: "ssh:gpu" });
+    client.sources.mockResolvedValue(sources([here, { ...gpu, warning: "Docker łączy się przez ssh bez pliku klucza" }], "ssh:gpu"));
     fireEvent.change(select, { target: { value: "ssh:gpu" } });
     await waitFor(() => expect(client.setSource).toHaveBeenCalledWith("ssh:gpu"));
     expect(await screen.findByText("ssh://me@gpu")).toBeInTheDocument();
@@ -292,5 +301,25 @@ describe("ContainersView", () => {
     expect(within(form).queryByText("Wybierz…")).toBeNull();
     fireEvent.change(dir, { target: { value: "/srv/inny" } });
     await waitFor(() => expect(client.createPlan).toHaveBeenLastCalledWith(expect.objectContaining({ projectDir: "/srv/inny" })));
+  });
+
+  it("uses Docker on the server through ssh when this machine has no docker client", async () => {
+    client.sources.mockResolvedValue(sources([here, gpu], "ssh:gpu", { localClient: false, transport: "ssh" }));
+    render(<ContainersView />);
+    const mode = await screen.findByLabelText("Połączenie");
+    expect(mode).toHaveValue("auto");
+    expect(within(mode).getByText("Automatycznie (ssh – brak klienta docker)")).toBeInTheDocument();
+    expect(await screen.findByText(/uruchamiane na serwerze przez ssh/)).toBeInTheDocument();
+    expect(screen.queryByText("ssh://me@gpu")).toBeNull();
+    // The server's Docker does not see this machine's folders; the image with agents still builds.
+    expect(await screen.findByText("Zbuduj…")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Zbuduj obraz Leverframe"));
+    await waitFor(() => expect(client.buildAgentsImage).toHaveBeenCalled());
+
+    // Forcing the local client without one: a hint.
+    client.sources.mockResolvedValue(sources([here, gpu], "ssh:gpu", { mode: "client", localClient: false, transport: "client" }));
+    fireEvent.change(mode, { target: { value: "client" } });
+    await waitFor(() => expect(client.setSshMode).toHaveBeenCalledWith("client"));
+    expect(await screen.findByText(/nie ma klienta docker – wybierz połączenie „ssh”/)).toBeInTheDocument();
   });
 });

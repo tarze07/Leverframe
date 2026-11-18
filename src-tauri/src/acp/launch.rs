@@ -159,15 +159,28 @@ pub fn launch_for(
             let workdir = remote_dir
                 .or(target.workdir.as_deref())
                 .unwrap_or(crate::docker::actions::WORKSPACE);
-            AcpLaunch {
-                program: spec.program,
-                args: crate::docker::terminal::exec_sh_args(
+            let p = profile.expect("a container launch has a profile");
+            let docker = if p.command.is_empty() {
+                "docker"
+            } else {
+                &p.command
+            };
+            // Through `ssh -T host docker exec …` on an SSH host without a local CLI.
+            let (program, args) = crate::docker::remote::invocation(
+                docker,
+                &p.env,
+                false,
+                crate::docker::terminal::exec_sh_args(
                     &target.name,
                     target.user.as_deref(),
                     Some(workdir),
                     false,
                     posix_script(command, None),
                 ),
+            );
+            AcpLaunch {
+                program,
+                args,
                 raw_args: None,
                 // `DOCKER_HOST` of a container on an SSH host.
                 env: spec.env,

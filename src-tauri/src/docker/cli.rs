@@ -25,6 +25,8 @@ pub enum DockerError {
     PermissionDenied,
     /// No such image or container.
     NoSuchObject(String),
+    /// Docker through `ssh`: the connection failed.
+    Ssh(String),
     Timeout(u64),
     Other(String),
 }
@@ -40,9 +42,13 @@ impl std::fmt::Display for DockerError {
                 "Docker nie działa – uruchom Docker Desktop (Windows) albo usługę docker (Linux: sudo systemctl start docker).",
             ),
             Self::PermissionDenied => f.write_str(
-                "Brak uprawnień do Dockera. Na Linuksie dodaj użytkownika do grupy docker (sudo usermod -aG docker $USER) i zaloguj się ponownie.",
+                "Brak uprawnień do Dockera. Na Linuksie (także na serwerze, gdy Docker jest przez SSH) dodaj użytkownika do grupy docker (sudo usermod -aG docker $USER) i zaloguj się ponownie.",
             ),
             Self::NoSuchObject(what) => write!(f, "Nie ma takiego obrazu ani kontenera: {what}"),
+            Self::Ssh(m) => write!(
+                f,
+                "Połączenie SSH z serwerem Dockera nie działa: {m}. Logowanie musi działać bez pytania (klucz z profilu, agent SSH albo ~/.ssh/config), a host być w known_hosts."
+            ),
             Self::Timeout(s) => write!(f, "Docker nie odpowiedział w ciągu {s} s"),
             Self::Other(m) => write!(f, "Docker: {m}"),
         }
@@ -99,6 +105,8 @@ pub struct Docker {
     env: Vec<(String, String)>,
     /// Replaces the time limits (tests).
     timeout: Option<Duration>,
+    /// `ssh` command: `docker` runs on that host (no local CLI), see `remote::over_ssh`.
+    ssh: Option<Vec<String>>,
 }
 
 struct Output {
@@ -119,7 +127,18 @@ impl Docker {
             },
             env: Vec::new(),
             timeout: None,
+            ssh: None,
         }
+    }
+
+    /// `docker` on an SSH host through this `ssh` command (from `remote::ssh_command`).
+    pub fn via_ssh(mut self, ssh: Vec<String>) -> Self {
+        self.ssh = Some(ssh);
+        self
+    }
+
+    pub fn ssh(&self) -> Option<&[String]> {
+        self.ssh.as_deref()
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -138,9 +157,21 @@ impl Docker {
 
     /// The CLI with these arguments, output piped, no console window on Windows.
     pub(super) fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new(&self.program);
+        let mut command = match &self.ssh {
+            Some(ssh) => {
+                let words: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                let (program, ssh_args) = super::remote::over_ssh(ssh, false, &words);
+                let mut c = Command::new(program);
+                c.args(ssh_args);
+                c
+            }
+            None => {
+                let mut c = Command::new(&self.program);
+                c.args(args);
+                c
+            }
+        };
         command
-            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -156,6 +187,11 @@ impl Docker {
     }
 
     pub(super) fn spawn_error(&self, e: std::io::Error) -> DockerError {
+        if self.ssh.is_some() {
+            return DockerError::Ssh(format!(
+                "nie można uruchomić programu ssh ({e}) – zainstaluj klienta OpenSSH"
+            ));
+        }
         match e.kind() {
             std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied => {
                 DockerError::NotInstalled(self.program.clone())
@@ -206,8 +242,30 @@ impl Docker {
         if out.success {
             Ok(out.stdout)
         } else {
-            Err(classify(&out.stderr, out.code))
+            Err(self.classify(&out.stderr, out.code))
         }
+    }
+
+    /// [`classify`], and through `ssh` also its own failures (exit code 255) and a host
+    /// without `docker` (127).
+    pub(super) fn classify(&self, stderr: &str, code: Option<i32>) -> DockerError {
+        if self.ssh.is_some() {
+            let first = stderr
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("brak odpowiedzi");
+            if code == Some(255) {
+                return DockerError::Ssh(shorten(first));
+            }
+            if code == Some(127) || stderr.contains("docker: command not found") {
+                return DockerError::Other(
+                    "na serwerze nie ma programu docker (albo nie ma go w PATH dla połączeń ssh)"
+                        .into(),
+                );
+            }
+        }
+        classify(stderr, code)
     }
 
     /// Whether Docker can be used. Never fails: what is wrong is in `message`.
@@ -223,7 +281,7 @@ impl Docker {
                     server_version: server,
                     server_os: os,
                     message: (!running).then(|| {
-                        match classify(&out.stderr, out.code) {
+                        match self.classify(&out.stderr, out.code) {
                             // `version` succeeded without a server part: say it is not running.
                             DockerError::Other(_) if out.success => DockerError::NotRunning,
                             e => e,

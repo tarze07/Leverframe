@@ -218,8 +218,20 @@ pub fn resolve_request(
         }
         if let (ProfileKind::Container, Some(target)) = (profile.kind, &profile.container) {
             // `docker exec` in the container; the local folder matters only for the history.
-            opts.args =
-                crate::docker::terminal::terminal_args(target, request.container_dir.as_deref());
+            // Through `ssh -tt host docker exec …` on an SSH host without a local CLI.
+            let docker = if profile.command.is_empty() {
+                "docker"
+            } else {
+                &profile.command
+            };
+            let (program, args) = crate::docker::remote::invocation(
+                docker,
+                &profile.env,
+                true,
+                crate::docker::terminal::terminal_args(target, request.container_dir.as_deref()),
+            );
+            opts.program = Some(program);
+            opts.args = args;
             opts.cwd = None;
         }
     }

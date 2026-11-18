@@ -265,10 +265,14 @@ describe("Leverframe with Docker", { skip: !available && "Docker is not availabl
 const sshTarget = /^([^@\s]+)@([^:\s]+)(?::(\d+))?$/.exec(process.env.E2E_DOCKER_SSH ?? "");
 if (!sshTarget && process.env.E2E_DOCKER_SSH_REQUIRED === "1") throw new Error("E2E_DOCKER_SSH=user@host[:port] is required");
 
-describe("Leverframe with Docker on an SSH host", { skip: (!available || !sshTarget) && "Docker over SSH is not configured (E2E_DOCKER_SSH)" }, () => {
+// Twice: with the docker CLI of this machine (DOCKER_HOST=ssh://…) and without it (D9, #89: a
+// docker program that does not exist, so `auto` runs `ssh host docker …`).
+for (const noClient of [false, true])
+describe(`Leverframe with Docker on an SSH host${noClient ? " without a local docker client" : ""}`, { skip: (!available || !sshTarget) && "Docker over SSH is not configured (E2E_DOCKER_SSH)" }, () => {
   const env = available && sshTarget ? makeHome() : null;
   const SSH_IMAGE = "lf-e2e-agents:ssh";
-  const NAME = "shop-ssh";
+  const NAME = noClient ? "shop-sshonly" : "shop-ssh";
+  const BUILD = "docker build --progress=plain -t leverframe-agents";
   const SSH_VOLUME = `leverframe-${NAME}-home`;
   const HOST_ID = "user-dockerhost";
   let driver;
@@ -316,6 +320,10 @@ describe("Leverframe with Docker on an SSH host", { skip: (!available || !sshTar
         profiles: [{ id: HOST_ID, name: "lf-docker", kind: "ssh", command: "ssh", args: [], ssh: { host, user, ...(port ? { port: Number(port) } : {}) } }],
       }),
     );
+    if (noClient) {
+      const file = join(env.config, "settings.json");
+      writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), dockerPath: join(env.home, "brak", "docker") }, null, 2));
+    }
     driver = await startDriver({ HOME: env.home, SHELL: "/bin/bash", XDG_CONFIG_HOME: "", XDG_DATA_HOME: "" });
     app = await App.launch(APP);
   });
@@ -327,6 +335,14 @@ describe("Leverframe with Docker on an SSH host", { skip: (!available || !sshTar
     quiet("rm", "-f", NAME);
     quiet("volume", "rm", SSH_VOLUME);
     quiet("rmi", SSH_IMAGE);
+    if (noClient) {
+      // A build of the agents image the test stopped must not go on.
+      try {
+        execFileSync("pkill", ["-f", BUILD]);
+      } catch {
+        // None.
+      }
+    }
     try {
       rmSync(env.home, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch (e) {
@@ -342,7 +358,12 @@ describe("Leverframe with Docker on an SSH host", { skip: (!available || !sshTar
     await app.exec(
       `const s = [...document.querySelectorAll('select')].find(s => s.querySelector('option[value="${HOST_ID}"]')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '${HOST_ID}'); s.dispatchEvent(new Event('change', { bubbles: true }));`,
     );
-    await app.waitFor("return [...document.querySelectorAll('code')].some(c => c.textContent.startsWith('ssh://'))", 20_000);
+    if (noClient) {
+      await app.waitFor("return document.body.textContent.includes('Automatycznie (ssh – brak klienta docker)')", 20_000);
+      await app.waitFor("return document.body.textContent.includes('Polecenia docker są uruchamiane na serwerze przez ssh')", 20_000);
+    } else {
+      await app.waitFor("return [...document.querySelectorAll('code')].some(c => c.textContent.startsWith('ssh://'))", 20_000);
+    }
     await app.waitFor(`return !!document.querySelector('li[aria-label="Obraz ${SSH_IMAGE}"]')`, 60_000);
 
     await app.click(`li[aria-label="Obraz ${SSH_IMAGE}"] button`, "Nowy kontener");
@@ -356,6 +377,28 @@ describe("Leverframe with Docker on an SSH host", { skip: (!available || !sshTar
     await app.waitFor(`return document.querySelector('${form} [aria-label=Polecenie]')?.innerText.includes(${JSON.stringify(`${env.project}:/workspace`)}) && document.querySelector('${form} [aria-label=Polecenie]').innerText.includes('--name ${NAME}')`, 20_000);
     await app.click(`${form} button[type=submit]`);
     await app.waitFor(`return document.querySelector('${row}')?.innerText.includes('działa')`, 60_000);
+  });
+
+  it("builds the image with agents there from the Dockerfile sent through stdin (stopped)", { skip: !noClient && "only without a local client" }, async () => {
+    // A folder of this machine cannot be the build context there.
+    assert.equal(await app.exec("return [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Zbuduj…').disabled"), true);
+    await app.click('button[aria-label="Zbuduj obraz Leverframe"]');
+    const job = "ul[aria-label='Zadania Dockera'] li";
+    await app.waitFor(`return document.querySelector("${job}")?.textContent.includes('load build definition from')`, 60_000);
+    await press(job, "Przerwij");
+    await app.waitFor(`return document.querySelector("${job} [role=status]")?.textContent === 'Przerwano'`, 20_000);
+    await app.click(`${job} button[aria-label=Zamknij]`);
+    // Stopping ssh ends the build on the server.
+    let left = true;
+    for (let i = 0; i < 60 && left; i++) {
+      try {
+        execFileSync("pgrep", ["-f", BUILD]);
+        await sleep(500);
+      } catch {
+        left = false;
+      }
+    }
+    assert.equal(left, false, "the build on the server ended");
   });
 
   it("opens a terminal in the container on the SSH host", async () => {

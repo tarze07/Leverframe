@@ -105,6 +105,7 @@ pub fn run() {
             docker::commands::docker_build,
             docker::commands::docker_sources,
             docker::commands::docker_set_source,
+            docker::commands::docker_set_ssh_mode,
             docker::commands::docker_agents_image,
             docker::commands::docker_build_agents_image,
             docker::commands::docker_logs,

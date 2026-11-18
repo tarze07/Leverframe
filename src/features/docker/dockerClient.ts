@@ -107,14 +107,23 @@ export interface DockerSource {
   warning: string | null;
 }
 
+/** How the Docker of SSH hosts is reached: `auto` (client when installed), `client`, `ssh`. */
+export type DockerSshMode = "auto" | "client" | "ssh";
+
 export interface DockerSources {
   sources: DockerSource[];
   current: string | null;
+  mode: DockerSshMode;
+  /** Whether this machine has the docker CLI. */
+  localClient: boolean;
+  /** How SSH hosts are reached now: the local CLI with DOCKER_HOST, or `ssh host docker …`. */
+  transport: "client" | "ssh";
 }
 
 export const dockerClient = {
   sources: () => invoke<DockerSources>("docker_sources"),
   setSource: (id: string | null) => invoke<DockerSources>("docker_set_source", { id }),
+  setSshMode: (mode: DockerSshMode) => invoke<DockerSources>("docker_set_ssh_mode", { mode }),
   info: () => invoke<DockerInfo>("docker_info"),
   images: () => invoke<DockerImage[]>("docker_images"),
   containers: () => invoke<DockerContainer[]>("docker_containers"),

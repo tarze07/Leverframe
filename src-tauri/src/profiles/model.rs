@@ -170,20 +170,24 @@ pub struct LaunchSpec {
 impl Profile {
     pub fn launch_spec(&self) -> LaunchSpec {
         if let (Some(target), ProfileKind::Container) = (&self.container, self.kind) {
-            // The docker CLI: `ProfileService` puts the program from the settings in `command`.
+            // The docker CLI: `ProfileService` puts the program from the settings in `command`;
+            // on an SSH host without a local CLI, `ssh -tt host docker exec -it …`.
+            let docker = if self.command.is_empty() {
+                "docker"
+            } else {
+                &self.command
+            };
+            let (program, args) = crate::docker::remote::invocation(
+                docker,
+                &self.env,
+                true,
+                crate::docker::terminal::terminal_args(target, None),
+            );
             return LaunchSpec {
-                program: if self.command.is_empty() {
-                    "docker".into()
-                } else {
-                    self.command.clone()
-                },
-                args: crate::docker::terminal::terminal_args(target, None),
+                program,
+                args,
                 // `DOCKER_HOST` of a container on an SSH host (set by `ProfileService::all`).
-                env: self
-                    .env
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
+                env: crate::docker::remote::command_env(&self.env),
                 cwd: None,
             };
         }

@@ -1109,3 +1109,157 @@ mod agents_in_containers {
         }
     }
 }
+
+/// A fake `ssh` (runs the remote command with `sh -c`) and a folder with `docker` for it.
+#[cfg(unix)]
+fn fake_ssh(name: &str, docker: &str) -> (std::path::PathBuf, Vec<String>) {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("lf-fake-ssh-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let ssh = dir.join("ssh");
+    std::fs::write(
+        &ssh,
+        "#!/bin/sh\n[ -n \"$FAKE_SSH_FAIL\" ] && { echo 'ssh: connect to host srv port 22: Connection refused' >&2; exit 255; }\nfor a; do last=$a; done\nexec /bin/sh -c \"$last\"\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("docker"), docker).unwrap();
+    for f in ["ssh", "docker"] {
+        std::fs::set_permissions(dir.join(f), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let cmd = vec![
+        ssh.to_string_lossy().into_owned(),
+        "-o".into(),
+        "BatchMode=yes".into(),
+        "me@srv".into(),
+    ];
+    (dir, cmd)
+}
+
+#[cfg(unix)]
+#[test]
+fn docker_through_ssh_runs_on_the_host_with_quoted_arguments() {
+    let (dir, ssh) = fake_ssh("quote", "#!/bin/sh\nprintf '[%s]\\n' \"$@\"\n");
+    let path = format!(
+        "{}:{}",
+        dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    // No local docker: the program from the settings is not used.
+    let d = Docker::new("/nonexistent/docker")
+        .with_env("PATH", &path)
+        .via_ssh(ssh);
+    let out = d
+        .ok(
+            &[
+                "exec",
+                "-i",
+                "--",
+                "c1",
+                "sh",
+                "-c",
+                "echo 'a b' \"$HOME\"; ls *",
+            ],
+            Duration::from_secs(10),
+        )
+        .unwrap();
+    assert_eq!(
+        out,
+        "[exec]\n[-i]\n[--]\n[c1]\n[sh]\n[-c]\n[echo 'a b' \"$HOME\"; ls *]\n"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn docker_through_ssh_reports_ssh_and_missing_docker() {
+    let (dir, ssh) = fake_ssh("errors", "#!/bin/sh\necho 'permission denied while trying to connect to the Docker daemon socket' >&2\nexit 1\n");
+    let path = format!(
+        "{}:{}",
+        dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let d = Docker::new("docker")
+        .with_env("PATH", &path)
+        .via_ssh(ssh.clone());
+    assert!(matches!(
+        d.ok(&["ps"], Duration::from_secs(10)),
+        Err(DockerError::PermissionDenied)
+    ));
+    let info = d.info();
+    assert!(!info.running);
+
+    let failing = d.clone().with_env("FAKE_SSH_FAIL", "1");
+    let err = failing.ok(&["ps"], Duration::from_secs(10)).unwrap_err();
+    assert!(matches!(err, DockerError::Ssh(_)), "{err:?}");
+    assert!(err.to_string().contains("Connection refused"), "{err}");
+
+    // A host without docker: the shell answers 127.
+    let no_docker = Docker::new("docker")
+        .with_env("PATH", "/leverframe-nonexistent")
+        .via_ssh(ssh);
+    let err = no_docker.ok(&["ps"], Duration::from_secs(10)).unwrap_err();
+    assert!(err.to_string().contains("nie ma programu docker"), "{err}");
+
+    let missing = Docker::new("docker").via_ssh(vec!["/nonexistent/ssh".into(), "srv".into()]);
+    let err = missing.ok(&["ps"], Duration::from_secs(10)).unwrap_err();
+    assert!(err.to_string().contains("OpenSSH"), "{err}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_job_through_ssh_gets_its_input() {
+    use std::sync::{Arc, Mutex};
+    struct Collect(Mutex<Vec<super::JobEvent>>, std::sync::mpsc::Sender<()>);
+    impl super::JobEvents for Collect {
+        fn emit(&self, event: super::JobEvent) {
+            let done = matches!(event, super::JobEvent::Done { .. });
+            self.0.lock().unwrap().push(event);
+            if done {
+                let _ = self.1.send(());
+            }
+        }
+    }
+    // `docker build … -` reads the Dockerfile from stdin.
+    let (dir, ssh) = fake_ssh("input", "#!/bin/sh\necho \"args: $*\"\nwc -l | tr -d ' '\n");
+    let path = format!(
+        "{}:{}",
+        dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let d = Docker::new("docker").with_env("PATH", &path).via_ssh(ssh);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let events = Arc::new(Collect(Mutex::new(Vec::new()), tx));
+    let jobs = super::DockerJobs::default();
+    jobs.start_with_input(
+        &d,
+        &super::image::agents_build_args(),
+        Some(super::image::AGENTS_DOCKERFILE.as_bytes().to_vec()),
+        events.clone(),
+    )
+    .unwrap();
+    rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    let lines: Vec<String> = events
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            super::JobEvent::Line { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        lines[0],
+        format!(
+            "args: build --progress=plain -t {} -",
+            super::image::agents_image_tag()
+        )
+    );
+    assert_eq!(
+        lines[1],
+        super::image::AGENTS_DOCKERFILE.lines().count().to_string()
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}

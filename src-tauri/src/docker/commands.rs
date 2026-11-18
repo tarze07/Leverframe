@@ -36,22 +36,45 @@ pub fn source_id(settings: &SettingsStore) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// The `dockerSshMode` setting (`auto` when not set).
+pub fn ssh_mode(settings: &SettingsStore) -> String {
+    settings
+        .get_value(super::remote::DOCKER_SSH_MODE_KEY)
+        .and_then(|v| v.as_str().map(String::from))
+        .filter(|m| ["client", "ssh"].contains(&m.as_str()))
+        .unwrap_or_else(|| "auto".into())
+}
+
+/// How the Docker of SSH hosts is reached now (the mode, and in `auto` whether this machine
+/// has the docker CLI).
+pub fn transport(settings: &SettingsStore) -> super::remote::Transport {
+    let d = docker(settings);
+    super::remote::transport(
+        Some(&ssh_mode(settings)),
+        super::remote::local_client_available(d.program()),
+    )
+}
+
 /// The CLI for the Docker chosen in the "Kontenery" view: this machine or an SSH host.
 pub fn current(profiles: &ProfileService) -> Result<Docker, String> {
     let d = docker(profiles.settings());
     match source_id(profiles.settings()) {
         None => Ok(d),
         Some(id) => {
-            let (_, url) = super::remote::source(&profiles.all(), &id)?;
-            Ok(d.with_env(super::remote::DOCKER_HOST, &url))
+            let (_, route) =
+                super::remote::route(&profiles.all(), &id, transport(profiles.settings()))?;
+            Ok(route.docker(d))
         }
     }
 }
 
-/// The CLI for a container profile: its Docker (`DOCKER_HOST` of a container on an SSH host is
-/// in the profile's environment, see `ProfileService::all`).
+/// The CLI for a container profile: its Docker (`DOCKER_HOST` or the `ssh` command of a
+/// container on an SSH host is in the profile's environment, see `ProfileService::all`).
 pub fn for_profile(settings: &SettingsStore, profile: &crate::profiles::Profile) -> Docker {
     let d = docker(settings);
+    if let Some(ssh) = super::remote::ssh_of(&profile.env) {
+        return d.via_ssh(ssh);
+    }
     match profile.env.get(super::remote::DOCKER_HOST) {
         Some(url) => d.with_env(super::remote::DOCKER_HOST, url),
         None => d,
@@ -225,6 +248,9 @@ pub fn docker_build(
     dockerfile: Option<String>,
     on_event: Channel<JobEvent>,
 ) -> Result<u64, String> {
+    if current(&profiles)?.ssh().is_some() {
+        return Err(LOCAL_FOLDER_OVER_SSH.into());
+    }
     start_job(
         &profiles,
         &jobs,
@@ -239,21 +265,24 @@ pub fn docker_agents_image() -> String {
     super::image::agents_image_tag()
 }
 
-/// Builds the image with agents from the `Dockerfile` shipped with the app.
+/// A folder of this machine cannot be the build context of `docker` run through `ssh`.
+pub const LOCAL_FOLDER_OVER_SSH: &str = "Docker na serwerze jest używany przez ssh (bez lokalnego klienta docker), więc nie widzi folderów tego komputera. Zbuduj obraz na serwerze (docker build w terminalu SSH) albo zainstaluj klienta docker na tym komputerze.";
+
+/// Builds the image with agents from the `Dockerfile` shipped with the app. The Dockerfile goes
+/// on standard input (`docker build -`, it needs no other files), so it also works through ssh.
 #[tauri::command]
 pub fn docker_build_agents_image(
     profiles: State<'_, ProfileService>,
     jobs: State<'_, DockerJobs>,
     on_event: Channel<JobEvent>,
 ) -> Result<u64, String> {
-    let dir = super::image::agents_build_dir(&std::env::temp_dir())
-        .map_err(|e| format!("Nie można zapisać pliku Dockerfile: {e}"))?;
-    let args = build_args(
-        &dir.to_string_lossy(),
-        &super::image::agents_image_tag(),
-        None,
-    );
-    start_job(&profiles, &jobs, args, on_event)
+    jobs.start_with_input(
+        &current(&profiles)?,
+        &super::image::agents_build_args(),
+        Some(super::image::AGENTS_DOCKERFILE.as_bytes().to_vec()),
+        Arc::new(ChannelEvents(on_event)),
+    )
+    .map_err(String::from)
 }
 
 /// Follows a container's logs until `docker_cancel`.
@@ -358,14 +387,47 @@ pub struct DockerSources {
     pub sources: Vec<DockerSource>,
     /// The chosen one (`None`: this machine).
     pub current: Option<String>,
+    /// `dockerSshMode`: `auto`, `client` or `ssh`.
+    pub mode: String,
+    /// Whether this machine has the docker CLI.
+    pub local_client: bool,
+    /// How SSH hosts are reached now.
+    pub transport: super::remote::Transport,
 }
 
 #[tauri::command]
 pub fn docker_sources(profiles: State<'_, ProfileService>) -> DockerSources {
-    DockerSources {
-        sources: sources(&profiles.all()),
-        current: source_id(profiles.settings()),
+    let settings = profiles.settings();
+    let mut list = sources(&profiles.all());
+    let transport = transport(settings);
+    if transport == super::remote::Transport::Ssh {
+        // Through ssh the URL and the key warning of the CLI do not matter.
+        for s in list.iter_mut().filter(|s| s.id.is_some()) {
+            s.warning = None;
+        }
     }
+    DockerSources {
+        sources: list,
+        current: source_id(settings),
+        mode: ssh_mode(settings),
+        local_client: super::remote::local_client_available(docker(settings).program()),
+        transport,
+    }
+}
+
+/// Sets how the Docker of SSH hosts is reached: `auto`, `client` or `ssh`.
+#[tauri::command]
+pub fn docker_set_ssh_mode(
+    profiles: State<'_, ProfileService>,
+    mode: String,
+) -> Result<DockerSources, String> {
+    profiles.settings().set(
+        super::remote::DOCKER_SSH_MODE_KEY,
+        serde_json::Value::String(mode),
+    )?;
+    // Profiles of containers on the host change their command.
+    profiles.refresh();
+    Ok(docker_sources(profiles))
 }
 
 /// Chooses the Docker of the "Kontenery" view: an SSH profile's id, or `None` for this machine.
@@ -376,7 +438,7 @@ pub fn docker_set_source(
     id: Option<String>,
 ) -> Result<DockerSources, String> {
     if let Some(id) = &id {
-        super::remote::source(&profiles.all(), id)?;
+        super::remote::route(&profiles.all(), id, transport(profiles.settings()))?;
     }
     let value = id
         .clone()

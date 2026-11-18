@@ -7,6 +7,8 @@ import {
   type DockerImage,
   type DockerInfo,
   type DockerSource,
+  type DockerSources,
+  type DockerSshMode,
   type DockerVolume,
   type JobEvent,
 } from "../features/docker/dockerClient";
@@ -27,6 +29,14 @@ export interface DockerJob {
 }
 
 /** Output kept per job (the view shows the end). */
+const fromSources = (s: DockerSources) => ({
+  sources: s.sources,
+  source: s.current,
+  sshMode: s.mode,
+  localClient: s.localClient,
+  transport: s.transport,
+});
+
 export const MAX_JOB_LINES = 500;
 
 interface DockerStore {
@@ -41,6 +51,11 @@ interface DockerStore {
   source: string | null;
   /** Shows the Docker of an SSH host (or this machine); its containers become profiles. */
   setSource: (id: string | null) => Promise<void>;
+  /** How SSH hosts are reached (setting, whether the docker CLI is here, the result). */
+  sshMode: DockerSshMode;
+  localClient: boolean;
+  transport: DockerSources["transport"];
+  setSshMode: (mode: DockerSshMode) => Promise<void>;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
   /** What is being changed (container / image / volume name → true). */
@@ -91,6 +106,9 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
     agentsImage: null,
     sources: [],
     source: null,
+    sshMode: "auto",
+    localClient: true,
+    transport: "client",
     status: "idle",
     error: null,
     busy: {},
@@ -99,8 +117,7 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
       if (!isTauri()) return;
       set({ status: "loading" });
       try {
-        const { sources, current } = await dockerClient.sources();
-        set({ sources, source: current });
+        set(fromSources(await dockerClient.sources()));
         const info = await dockerClient.info();
         if (!info.running) {
           set({ info, images: [], containers: [], volumes: [], status: "ready" });
@@ -139,15 +156,28 @@ export const useDockerStore = create<DockerStore>()((set, get) => {
     setSource: async (id) => {
       if (id === get().source) return;
       try {
-        const { sources, current } = await dockerClient.setSource(id);
+        const sources = await dockerClient.setSource(id);
         // Another Docker: other images, containers, jobs.
-        set({ sources, source: current, info: null, images: [], containers: [], volumes: [], error: null });
+        set({ ...fromSources(sources), info: null, images: [], containers: [], volumes: [], error: null });
       } catch (e) {
         set({ error: message(e) });
         return;
       }
       await get().refresh();
       // Its containers made for Leverframe become profiles.
+      void useProfilesStore.getState().refresh();
+    },
+    setSshMode: async (mode) => {
+      if (mode === get().sshMode) return;
+      try {
+        const sources = await dockerClient.setSshMode(mode);
+        set({ ...fromSources(sources), info: null, error: null });
+      } catch (e) {
+        set({ error: message(e) });
+        return;
+      }
+      await get().refresh();
+      // Profiles of containers on the host run their docker another way.
       void useProfilesStore.getState().refresh();
     },
     buildAgentsImage: () =>
