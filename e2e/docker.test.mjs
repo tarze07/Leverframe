@@ -274,7 +274,11 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
   const NAME = noClient ? "shop-sshonly" : "shop-ssh";
   const BUILD = "docker build --progress=plain -t leverframe-agents";
   const SSH_VOLUME = `leverframe-${NAME}-home`;
-  const HOST_ID = "user-dockerhost";
+  // Without a local client the host is a `~/.ssh/config` entry (connected by its alias), with
+  // it a user profile: both kinds of SSH profiles are Docker sources.
+  const sshHost = sshTarget?.[2];
+  const HOST_ID = noClient ? `ssh-config:${sshHost}` : "user-dockerhost";
+  const HOST_NAME = noClient ? sshHost : "lf-docker";
   let driver;
   let app;
   const chat = "[data-testid=agent-chat]";
@@ -314,12 +318,18 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
     docker("build", "-q", "-t", SSH_IMAGE, imageFolder(env.home));
     // The SSH host as a user profile.
     const [, user, host, port] = sshTarget;
-    writeFileSync(
-      join(env.config, "profiles.json"),
-      JSON.stringify({
-        profiles: [{ id: HOST_ID, name: "lf-docker", kind: "ssh", command: "ssh", args: [], ssh: { host, user, ...(port ? { port: Number(port) } : {}) } }],
-      }),
-    );
+    if (noClient) {
+      // Read by Leverframe from $HOME; ssh itself connects to the alias as this user.
+      mkdirSync(join(env.home, ".ssh"), { recursive: true });
+      writeFileSync(join(env.home, ".ssh", "config"), `Host ${host}\n  User ${user}\n${port ? `  Port ${port}\n` : ""}`);
+    } else {
+      writeFileSync(
+        join(env.config, "profiles.json"),
+        JSON.stringify({
+          profiles: [{ id: HOST_ID, name: HOST_NAME, kind: "ssh", command: "ssh", args: [], ssh: { host, user, ...(port ? { port: Number(port) } : {}) } }],
+        }),
+      );
+    }
     if (noClient) {
       const file = join(env.config, "settings.json");
       writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), dockerPath: join(env.home, "brak", "docker") }, null, 2));
@@ -371,7 +381,7 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
     await app.waitFor(`return !!document.querySelector('${form}')`);
     assert.equal(await app.exec(`return [...document.querySelectorAll('${form} button')].some(b => b.textContent.trim() === 'Wybierz…')`), false, "no dialog of this machine");
     const label = await app.exec(`return [...document.querySelectorAll('${form} label')].find(l => l.textContent.startsWith('Folder projektu')).textContent`);
-    assert.match(label, /Folder projektu na lf-docker/);
+    assert.ok(label.startsWith(`Folder projektu na ${HOST_NAME}`), label);
     await fill(`${form} input[placeholder^="np. /home"]`, env.project);
     await fill(`${form} input`, NAME);
     await app.waitFor(`return document.querySelector('${form} [aria-label=Polecenie]')?.innerText.includes(${JSON.stringify(`${env.project}:/workspace`)}) && document.querySelector('${form} [aria-label=Polecenie]').innerText.includes('--name ${NAME}')`, 20_000);
@@ -427,7 +437,7 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
 
     await app.click('li[aria-label="Claude Code"] button', "Rozmowa");
     await ready();
-    assert.match(await app.exec(`return document.querySelector('${chat} header').textContent`), new RegExp(`${NAME} \\(lf-docker\\) · /workspace`));
+    assert.match(await app.exec(`return document.querySelector('${chat} header').textContent`), new RegExp(`${NAME} \\(${HOST_NAME}\\) · /workspace`));
     await say("pwd");
     await app.waitFor(has("cwd=/workspace"), 20_000);
     // Files of the SSH host are not this machine's: Leverframe does not offer file access.

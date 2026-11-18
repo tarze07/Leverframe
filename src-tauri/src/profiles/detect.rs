@@ -380,6 +380,14 @@ pub fn ssh_config_profiles(hosts: &[SshConfigHost]) -> Vec<Profile> {
             let host = h.host_name.as_deref().unwrap_or(&h.alias);
             let port = h.port.map(|p| format!(":{p}")).unwrap_or_default();
             p.description = Some(format!("{user}{host}{port} · ~/.ssh/config"));
+            // Connected by its alias: ssh takes the user, port and key from the config. Docker on
+            // that host (the "Kontenery" view) needs the target too (`ssh://alias`, `ssh alias`).
+            p.ssh = Some(crate::profiles::SshTarget {
+                host: h.alias.clone(),
+                port: None,
+                user: None,
+                identity_file: None,
+            });
             p
         })
         .collect()
@@ -540,6 +548,23 @@ Include conf.d/*
             ("ssh-config:prod", "ssh")
         );
         assert_eq!(p.args, ["prod"]);
+        // A Docker source too (D8/D9): the alias is the host, the config does the rest.
+        let target = p.ssh.as_ref().unwrap();
+        assert_eq!(target.args(), ["prod"]);
+        assert_eq!(p.launch_spec().args, ["prod"]);
+        assert_eq!(
+            crate::docker::remote::docker_host_url(target).unwrap(),
+            "ssh://prod"
+        );
+        let sources = crate::docker::commands::sources(std::slice::from_ref(p));
+        assert_eq!(sources[1].id.as_deref(), Some("ssh-config:prod"));
+        assert_eq!(
+            crate::docker::remote::ssh_command(p)
+                .unwrap()
+                .last()
+                .map(String::as_str),
+            Some("prod")
+        );
         assert_eq!(
             p.description.as_deref(),
             Some("deploy@10.0.0.5:2222 · ~/.ssh/config")

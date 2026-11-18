@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Naprawione
+- **Docker na serwerze z profili `~/.ssh/config`**: hosty wykryte z `~/.ssh/config` nie pojawiały się w polu „Docker na” widoku „Kontenery” (0.9.0–0.10.0) – na komputerze bez Dockera nie dało się więc wybrać serwera. Teraz są źródłem Dockera (połączenie po aliasie: użytkownik, port i klucz z konfiguracji). Bez lokalnego Dockera widok podpowiada wybór serwera albo dodanie profilu SSH.
+
 ## [0.10.0] – 2026-11-18
 
 ### Dodane
