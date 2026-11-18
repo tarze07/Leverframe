@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.10.0] – 2026-11-18
+
 ### Dodane
 - **Rozmowy OpenCode i Agy w historii** ([#88](https://github.com/tarze07/Leverframe/issues/88)): panel „Sesje” → „Rozmowy” pokazuje sesje OpenCode (z jego bazy SQLite; na hostach SSH i w kontenerach przez `opencode db`) i Agy (transkrypty `transcript_full.jsonl`, folder z `history.jsonl`) – z osią czasu i wznawianiem (`opencode --session`, `agy --conversation`).
 - **Docker przez SSH bez lokalnego klienta** ([#89](https://github.com/tarze07/Leverframe/issues/89)): na komputerze bez programu `docker` Leverframe uruchamia `docker` na serwerze przez `ssh` (pole „Połączenie” w widoku „Kontenery”: automatycznie / klient / ssh) – obrazy, kontenery, terminale, agenci, logi, tryb rozmowy i budowanie obrazu z agentami (Dockerfile przez stdin); działa klucz z profilu SSH, czytelne błędy połączenia i braku `docker` na serwerze.
@@ -191,6 +193,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.10.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.0
 [0.9.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.9.0
 [0.8.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.8.1
 [0.8.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.8.0
