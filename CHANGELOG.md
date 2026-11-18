@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Rozmowy OpenCode i Agy w historii** ([#88](https://github.com/tarze07/Leverframe/issues/88)): panel „Sesje” → „Rozmowy” pokazuje sesje OpenCode (z jego bazy SQLite; na hostach SSH i w kontenerach przez `opencode db`) i Agy (transkrypty `transcript_full.jsonl`, folder z `history.jsonl`) – z osią czasu i wznawianiem (`opencode --session`, `agy --conversation`).
+
 ## [0.9.0] – 2026-11-17
 
 ### Dodane

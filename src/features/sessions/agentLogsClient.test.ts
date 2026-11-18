@@ -28,6 +28,8 @@ describe("agent log helpers", () => {
   it("builds resume commands only for safe ids", () => {
     expect(resumeCommand({ agent: "claude", nativeId: "5f1c2a9e-1111" })).toBe("claude --resume 5f1c2a9e-1111");
     expect(resumeCommand({ agent: "codex", nativeId: "0199a1b2" })).toBe("codex resume 0199a1b2");
+    expect(resumeCommand({ agent: "opencode", nativeId: "ses_e121fd48effehMLmxjT6GIY6XY" })).toBe("opencode --session ses_e121fd48effehMLmxjT6GIY6XY");
+    expect(resumeCommand({ agent: "agy", nativeId: "c0ffee-1" })).toBe("agy --conversation c0ffee-1");
     expect(resumeCommand({ agent: "claude", nativeId: "x; rm -rf ~" })).toBeNull();
   });
 

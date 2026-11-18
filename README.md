@@ -84,6 +84,15 @@ Otwarte rozmowy są w widoku **Rozmowy** na pasku aktywności (ikona dymków): z
 
 Rozmowy trafiają do historii w panelu „Sesje” (zakładka **Historia**, obok nagrań terminala; filtr „Rodzaj”) i można je przeszukiwać po treści wiadomości, także bez polskich znaków („zolto” znajdzie „żółto”). Kliknięcie otwiera rozmowę tylko do odczytu; jeśli agent pozwala wczytywać zapisane sesje (`session/load` lub `session/resume`), przycisk **Wznów rozmowę** kontynuuje ją w tym samym panelu, a dalszy ciąg dopisuje się do tej samej pozycji historii. Agenci udostępniający listę swoich sesji (`session/list`) mają w nagłówku rozmowy przycisk **Rozmowy agenta** – można tam otworzyć np. sesję rozpoczętą w terminalu, a na wyraźne żądanie usunąć ją u agenta. Historia zapisuje wiadomości, narzędzia, skrócone diffy i wyjście poleceń (bez treści plików); nagrywanie wyłącza to samo ustawienie co nagrania terminala.
 
+**Rozmowy z logów agentów** (panel „Sesje” → zakładka **Rozmowy**): Leverframe czyta własne zapisy agentów – lokalnie, w dystrybucjach WSL, na hostach SSH i w kontenerach – i pokazuje je jako oś czasu (wiadomości, rozumowanie, narzędzia i ich wyniki, zmienione pliki); **Wznów** kontynuuje rozmowę w terminalu tego źródła.
+
+| Agent | Zapis | Wznowienie |
+|---|---|---|
+| Claude Code | `~/.claude/projects/*/*.jsonl` | `claude --resume <id>` |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | `codex resume <id>` |
+| OpenCode | baza `~/.local/share/opencode/opencode.db` (na SSH i w kontenerze czytana przez `opencode db` po tamtej stronie) | `opencode --session <id>` |
+| Agy | `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl` (folder z `history.jsonl`) | `agy --conversation <id>` |
+
 ## Kontenery Docker
 
 **Wymagania**: Docker Engine (Linux) albo Docker Desktop (Windows, macOS) z kontenerami Linuksa, program `docker` w `PATH` (inną ścieżkę ustawia się w ustawieniach: **Program Docker**, `dockerPath`) i uprawnienia do niego (w Linuksie zwykle grupa `docker`). Leverframe korzysta z wiersza poleceń `docker` – nie potrzebuje niczego więcej; bez Dockera widok „Kontenery” mówi, czego brakuje.

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type LogAgent = "claude" | "codex";
+export type LogAgent = "claude" | "codex" | "opencode" | "agy";
 
 export interface LogSummary {
   agent: LogAgent;
@@ -33,7 +33,7 @@ export const agentLogsClient = {
   read: (source: string, path: string) => invoke<LogDetail>("agent_log_read", { source, path }),
 };
 
-export const LOG_AGENT_NAMES: Record<LogAgent, string> = { claude: "Claude Code", codex: "Codex" };
+export const LOG_AGENT_NAMES: Record<LogAgent, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", agy: "Agy" };
 
 export type ToolCall = Extract<LogEntry, { kind: "toolCall" }>;
 export type ToolResult = Extract<LogEntry, { kind: "toolResult" }>;
@@ -63,12 +63,19 @@ export function changedFiles(entries: LogEntry[]): string[] {
   return [...seen];
 }
 
-const SAFE_ID = /^[A-Za-z0-9-]+$/;
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
+
+const RESUME: Record<LogAgent, (id: string) => string> = {
+  claude: (id) => `claude --resume ${id}`,
+  codex: (id) => `codex resume ${id}`,
+  opencode: (id) => `opencode --session ${id}`,
+  agy: (id) => `agy --conversation ${id}`,
+};
 
 /** Command that resumes the conversation in the agent's CLI, or null if the id looks unsafe. */
 export function resumeCommand(s: Pick<LogSummary, "agent" | "nativeId">): string | null {
   if (!SAFE_ID.test(s.nativeId)) return null;
-  return s.agent === "claude" ? `claude --resume ${s.nativeId}` : `codex resume ${s.nativeId}`;
+  return RESUME[s.agent]?.(s.nativeId) ?? null;
 }
 
 /** Short label for a tool call when it is not a shell command. */

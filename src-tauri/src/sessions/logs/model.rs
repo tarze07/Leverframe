@@ -6,6 +6,9 @@ use serde_json::Value;
 pub enum AgentKind {
     Claude,
     Codex,
+    #[serde(rename = "opencode")]
+    OpenCode,
+    Agy,
 }
 
 impl AgentKind {
@@ -13,6 +16,8 @@ impl AgentKind {
         match self {
             AgentKind::Claude => "claude",
             AgentKind::Codex => "codex",
+            AgentKind::OpenCode => "opencode",
+            AgentKind::Agy => "agy",
         }
     }
 }

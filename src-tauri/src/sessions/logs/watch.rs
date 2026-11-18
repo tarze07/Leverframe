@@ -20,11 +20,13 @@ pub fn watch(
     let (tx, rx) = mpsc::channel::<()>();
     let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(event) = res {
-            if event
-                .paths
-                .iter()
-                .any(|p| p.extension().is_some_and(|e| e == "jsonl"))
-            {
+            if event.paths.iter().any(|p| {
+                p.extension().is_some_and(|e| e == "jsonl")
+                        // OpenCode's database (and its write-ahead log).
+                        || p.file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with("opencode.db"))
+            }) {
                 let _ = tx.send(());
             }
         }

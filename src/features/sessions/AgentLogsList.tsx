@@ -7,7 +7,7 @@ import { LOG_AGENT_NAMES, type LogAgent, type LogSummary } from "./agentLogsClie
 import { rangeStart, type DateRange } from "./sessionsClient";
 import { RANGES, selectClass } from "./filters";
 
-/** Conversations read from the agents' own logs (Claude Code, Codex). */
+/** Conversations read from the agents' own logs (Claude Code, Codex, OpenCode, Agy). */
 export function AgentLogsList() {
   const { source, logs, status, error, setSource, refresh, watch } = useAgentLogsStore();
   const profiles = useProfilesStore((s) => s.profiles);
@@ -112,7 +112,7 @@ export function AgentLogsList() {
       </ul>
       {status === "ready" && logs.length === 0 && !error && (
         <p className="py-4 text-center text-xs leading-relaxed text-lf-subtle">
-          Brak rozmów Claude Code ani Codex w tym źródle. Sesje innych agentów (Gemini CLI, OpenCode, Agy) znajdziesz w zakładce
+          Brak rozmów Claude Code, Codex, OpenCode ani Agy w tym źródle. Sesje innych agentów (np. Gemini CLI) znajdziesz w zakładce
           „Historia”.
         </p>
       )}
