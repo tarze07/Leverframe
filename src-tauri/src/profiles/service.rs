@@ -29,8 +29,8 @@ pub struct ProfileService {
     profiles_path: PathBuf,
     settings: SettingsStore,
     detected: Mutex<Option<Vec<Profile>>>,
-    /// Detected containers on the SSH host of the "Kontenery" view: (`DOCKER_HOST`, profiles).
-    remote: Mutex<Option<(String, Vec<Profile>)>>,
+    /// Detected containers on the SSH host of the "Kontenery" view: (route, profiles).
+    remote: Mutex<Option<(crate::docker::remote::Route, Vec<Profile>)>>,
     detector: Box<dyn Fn() -> Vec<Profile> + Send + Sync>,
 }
 
@@ -92,24 +92,26 @@ impl ProfileService {
         all.extend(self.user_profiles());
         all.extend(self.remote_containers(&all));
         // Container profiles run the docker program from the settings (terminal, detection, logs);
-        // a container on an SSH host gets that host's `DOCKER_HOST`.
+        // a container on an SSH host gets that host's `DOCKER_HOST`, or the `ssh` command that
+        // runs `docker` there (mode `ssh`).
         let docker = crate::docker::commands::docker(&self.settings);
-        let urls: Vec<(String, Result<String, String>)> = all
+        let transport = crate::docker::commands::transport(&self.settings);
+        let routes: Vec<(String, Result<crate::docker::remote::Route, String>)> = all
             .iter()
             .filter_map(|p| p.container.as_ref()?.host.clone())
             .map(|host| {
-                let url = crate::docker::remote::source(&all, &host).map(|(_, url)| url);
-                (host, url)
+                let route = crate::docker::remote::route(&all, &host, transport).map(|(_, r)| r);
+                (host, route)
             })
             .collect();
         for p in all.iter_mut().filter(|p| p.kind == ProfileKind::Container) {
             p.command = docker.program().to_string();
             let host = p.container.as_ref().and_then(|c| c.host.clone());
-            if let Some((_, url)) = host.and_then(|h| urls.iter().find(|(id, _)| *id == h)) {
-                match url {
-                    Ok(url) => {
-                        p.env
-                            .insert(crate::docker::remote::DOCKER_HOST.into(), url.clone());
+            if let Some((_, route)) = host.and_then(|h| routes.iter().find(|(id, _)| *id == h)) {
+                match route {
+                    Ok(route) => {
+                        let (key, value) = route.env();
+                        p.env.insert(key, value);
                     }
                     // Started anyway, the CLI then reports the missing host.
                     Err(e) => p.description = Some(e.clone()),
@@ -125,19 +127,19 @@ impl ProfileService {
         let Some(id) = crate::docker::commands::source_id(&self.settings) else {
             return Vec::new();
         };
-        let Ok((ssh, url)) = crate::docker::remote::source(profiles, &id) else {
+        let transport = crate::docker::commands::transport(&self.settings);
+        let Ok((ssh, route)) = crate::docker::remote::route(profiles, &id, transport) else {
             return Vec::new();
         };
         let mut cache = self.remote.lock().unwrap();
-        if let Some((cached_url, list)) = cache.as_ref() {
-            if *cached_url == url {
+        if let Some((cached, list)) = cache.as_ref() {
+            if *cached == route {
                 return list.clone();
             }
         }
-        let docker = crate::docker::commands::docker(&self.settings)
-            .with_env(crate::docker::remote::DOCKER_HOST, &url);
+        let docker = route.docker(crate::docker::commands::docker(&self.settings));
         let list = docker.detect_profiles_on(Some((&ssh.id, &ssh.name)));
-        *cache = Some((url, list.clone()));
+        *cache = Some((route, list.clone()));
         list
     }
 

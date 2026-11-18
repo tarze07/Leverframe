@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
-use super::cli::{classify, valid_reference, Docker, DockerError};
+use super::cli::{valid_reference, Docker, DockerError};
 
 const ERROR_TAIL: usize = 20;
 
@@ -83,11 +83,32 @@ impl DockerJobs {
         args: &[String],
         events: Arc<dyn JobEvents>,
     ) -> Result<u64, DockerError> {
+        self.start_with_input(docker, args, None, events)
+    }
+
+    /// [`start`](Self::start) with `input` written to the command's standard input (e.g. a
+    /// build context for `docker build -`).
+    pub fn start_with_input(
+        &self,
+        docker: &Docker,
+        args: &[String],
+        input: Option<Vec<u8>>,
+        events: Arc<dyn JobEvents>,
+    ) -> Result<u64, DockerError> {
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let mut child = docker
-            .command(&refs)
-            .spawn()
-            .map_err(|e| docker.spawn_error(e))?;
+        let mut command = docker.command(&refs);
+        if input.is_some() {
+            command.stdin(std::process::Stdio::piped());
+        }
+        let mut child = command.spawn().map_err(|e| docker.spawn_error(e))?;
+        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+            std::thread::spawn(move || {
+                use std::io::Write;
+                // Closing stdin (drop) ends the input; a killed process just fails the write.
+                let _ = stdin.write_all(&input);
+            });
+        }
+        let docker = docker.clone();
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
         let tail = Arc::new(Mutex::new(VecDeque::new()));
@@ -126,7 +147,7 @@ impl DockerJobs {
                         let tail: Vec<String> = tail.lock().unwrap().iter().cloned().collect();
                         JobEvent::Done {
                             ok: false,
-                            message: Some(classify(&tail.join("\n"), s.code()).to_string()),
+                            message: Some(docker.classify(&tail.join("\n"), s.code()).to_string()),
                         }
                     }
                     Err(e) => JobEvent::Done {

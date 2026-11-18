@@ -8,8 +8,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use super::model::{AgentKind, LogDetail, LogSummary};
-use super::{claude, codex};
-use crate::agents::{detect_command, run_script};
+use super::{agy, claude, codex, opencode};
+use crate::agents::{detect_command, run_script, LOGIN_PATH_PRELUDE};
 use crate::profiles::{Profile, ProfileKind};
 
 const LIST_TIMEOUT: Duration = Duration::from_secs(40);
@@ -21,6 +21,35 @@ const MAX_READ_BYTES: usize = 100 * 1024 * 1024;
 /// The last line of a listing: without it the host or container did not run the script.
 const DONE: &str = "@@LF-DONE@@";
 
+/// OpenCode's database on the host, and its CLI that reads it (`opencode db … --format json`);
+/// nothing runs when there is no database (the CLI would create one).
+fn opencode_script(sql: &str, begin: &str, end: &str) -> String {
+    format!(
+        r#"lf_ocdb="${{XDG_DATA_HOME:-$HOME/.local/share}}/opencode/opencode.db"
+if [ -f "$lf_ocdb" ]; then
+{LOGIN_PATH_PRELUDE}  if command -v opencode >/dev/null 2>&1; then
+    printf '{begin}\n'
+    opencode db "{sql}" --format json </dev/null 2>/dev/null
+    printf '\n{end}\n'
+  fi
+fi
+"#
+    )
+}
+
+const OC_BEGIN: &str = "@@LF-OPENCODE@@";
+const OC_END: &str = "@@LF-OPENCODE-END@@";
+/// A session on a host or in a container (its id; the database is OpenCode's own).
+const OC_PATH: &str = "opencode:";
+
+/// The JSON rows between two markers of a script's output.
+fn json_between(out: &str, begin: &str, end: &str) -> Vec<serde_json::Value> {
+    out.split_once(&format!("{begin}\n"))
+        .and_then(|(_, rest)| rest.split_once(end))
+        .and_then(|(json, _)| serde_json::from_str(json.trim()).ok())
+        .unwrap_or_default()
+}
+
 /// POSIX sh script run on the host. GNU and BSD `stat` are both supported.
 pub fn list_script() -> String {
     format!(
@@ -29,6 +58,10 @@ lf_files() {{
   for f in "$HOME"/.claude/projects/*/*.jsonl; do [ -f "$f" ] && printf 'claude %s\n' "$f"; done
   xroot="${{CODEX_HOME:-$HOME/.codex}}/sessions"
   [ -d "$xroot" ] && find "$xroot" -type f -name 'rollout-*.jsonl' 2>/dev/null | sed 's/^/codex /'
+  for d in "$HOME"/.gemini/antigravity-cli/brain/*/.system_generated/logs; do
+    if [ -f "$d/transcript_full.jsonl" ]; then printf 'agy %s\n' "$d/transcript_full.jsonl"
+    elif [ -f "$d/transcript.jsonl" ]; then printf 'agy %s\n' "$d/transcript.jsonl"; fi
+  done
 }}
 tab=$(printf '\t')
 lf_files | while read -r agent f; do
@@ -39,8 +72,9 @@ done | sort -rn | head -n {MAX_FILES} | while IFS="$tab" read -r m s a f; do
   head -c {HEAD_BYTES} "$f"
   printf '\n@@LF-END@@\n'
 done
-printf '{DONE}\n'
-"#
+{opencode}printf '{DONE}\n'
+"#,
+        opencode = opencode_script(opencode::LIST_SQL, OC_BEGIN, OC_END)
     )
 }
 
@@ -63,6 +97,7 @@ pub fn parse_listing(out: &str, source: &str) -> Vec<LogSummary> {
         let agent = match agent {
             "claude" => AgentKind::Claude,
             "codex" => AgentKind::Codex,
+            "agy" => AgentKind::Agy,
             _ => continue,
         };
         // The head was cut at a byte limit: drop the partial last line.
@@ -96,6 +131,13 @@ pub fn parse_listing(out: &str, source: &str) -> Vec<LogSummary> {
                     h.started_at,
                 )
             }
+            AgentKind::Agy => {
+                let h = agy::read_head(head.lines());
+                // brain/<id>/.system_generated/logs/transcript_full.jsonl
+                let id = path.rsplit('/').nth(3).map(String::from).unwrap_or(stem);
+                (id, h.title, None, None, h.started_at)
+            }
+            AgentKind::OpenCode => continue,
         };
         if title.is_none() && cwd.is_none() {
             continue;
@@ -113,6 +155,11 @@ pub fn parse_listing(out: &str, source: &str) -> Vec<LogSummary> {
             size: size.trim().parse().unwrap_or(0),
         });
     }
+    result.extend(opencode::summaries(
+        &json_between(out, OC_BEGIN, OC_END),
+        source,
+        |id| format!("{OC_PATH}{id}"),
+    ));
     result
 }
 
@@ -155,6 +202,9 @@ impl SshLogs {
             .get(source)
             .and_then(|m| m.get(path).copied())
             .ok_or("Tego logu nie ma na liście – odśwież listę rozmów")?;
+        if agent == AgentKind::OpenCode {
+            return read_opencode(profile, source, path);
+        }
         if !safe_remote_path(path) {
             return Err("Nieprawidłowa ścieżka logu".into());
         }
@@ -163,6 +213,8 @@ impl SshLogs {
         let (entries, skipped_lines) = match agent {
             AgentKind::Claude => claude::parse(text.lines()),
             AgentKind::Codex => codex::parse(text.lines()),
+            AgentKind::Agy => agy::parse(text.lines()),
+            AgentKind::OpenCode => unreachable!("read above"),
         };
         let mut summary = parse_listing(
             &format!(
@@ -181,6 +233,35 @@ impl SshLogs {
             skipped_lines,
         })
     }
+}
+
+/// An OpenCode session on a host or in a container: its summary and parts, read with the
+/// host's `opencode db`.
+fn read_opencode(profile: &Profile, source: &str, path: &str) -> Result<LogDetail, String> {
+    let id = path.strip_prefix(OC_PATH).unwrap_or_default();
+    let sql = opencode::read_sql(id).ok_or("Nieprawidłowy identyfikator sesji OpenCode")?;
+    let session_sql = format!(
+        "SELECT id, title, directory, time_created, time_updated FROM session WHERE id = '{id}'"
+    );
+    let script = format!(
+        "{}{}",
+        opencode_script(&session_sql, "@@LF-OC-SESSION@@", "@@LF-OC-SESSION-END@@"),
+        opencode_script(&sql, OC_BEGIN, OC_END)
+    );
+    let out = run_script(&detect_command(profile), &script, READ_TIMEOUT)?;
+    let summary = opencode::summaries(
+        &json_between(&out, "@@LF-OC-SESSION@@", "@@LF-OC-SESSION-END@@"),
+        source,
+        |id| format!("{OC_PATH}{id}"),
+    )
+    .pop()
+    .ok_or("Nie udało się odczytać sesji OpenCode (czy `opencode` jest w PATH?)")?;
+    let (entries, skipped_lines) = opencode::parse(&json_between(&out, OC_BEGIN, OC_END));
+    Ok(LogDetail {
+        summary,
+        entries,
+        skipped_lines,
+    })
 }
 
 #[cfg(test)]
@@ -276,19 +357,55 @@ mod tests {
             include_str!("fixtures/codex.jsonl"),
         )
         .unwrap();
+        let agy = home.join(".gemini/antigravity-cli/brain/c0ffee-1/.system_generated/logs");
+        std::fs::create_dir_all(&agy).unwrap();
+        std::fs::write(
+            agy.join("transcript_full.jsonl"),
+            include_str!("fixtures/agy.jsonl"),
+        )
+        .unwrap();
+        // OpenCode: its database, and a stand-in for its CLI answering `opencode db … --format json`
+        // with the database's rows (the real CLI is not installed in tests).
+        let oc = home.join(".local/share/opencode");
+        std::fs::create_dir_all(&oc).unwrap();
+        super::opencode::tests::sample_db(&oc.join("opencode.db"));
+        let bin = home.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let rows = r#"[{"id":"ses_e121fd48effehMLmxjT6GIY6XY","title":"Tytuł testowy","directory":"/home/me/sklep","time_created":1794992253809,"time_updated":1794992256901}]"#;
+        std::fs::write(
+            bin.join("opencode"),
+            format!(
+                "#!/bin/sh\n[ \"$1\" = db ] && [ \"$3\" = --format ] && printf '%s' '{rows}'\n"
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(bin.join("opencode"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
         let out = std::process::Command::new("/bin/sh")
             .args(["-c", &list_script()])
             .env("HOME", &home)
+            .env("SHELL", "/bin/sh")
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
             .env_remove("CODEX_HOME")
+            .env_remove("XDG_DATA_HOME")
             .output()
             .unwrap();
         let list = parse_listing(&String::from_utf8_lossy(&out.stdout), "ssh:t");
         assert_eq!(
             list.len(),
-            2,
+            4,
             "stdout: {}",
             String::from_utf8_lossy(&out.stdout)
         );
+        let agy_log = list.iter().find(|s| s.agent == AgentKind::Agy).unwrap();
+        assert_eq!(agy_log.native_id, "c0ffee-1");
+        let oc_log = list
+            .iter()
+            .find(|s| s.agent == AgentKind::OpenCode)
+            .unwrap();
+        assert_eq!(oc_log.path, "opencode:ses_e121fd48effehMLmxjT6GIY6XY");
+        assert_eq!(oc_log.cwd.as_deref(), Some("/home/me/sklep"));
         assert!(list
             .iter()
             .any(|s| s.agent == AgentKind::Claude && s.size > 0));

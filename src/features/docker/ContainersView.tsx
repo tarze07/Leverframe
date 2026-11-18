@@ -28,9 +28,29 @@ export function ContainersView() {
 }
 
 function Containers() {
-  const { info, images, containers, volumes, agentsImage, status, error, refresh, clearError, jobs, buildAgentsImage, sources, source, setSource } =
-    useDockerStore();
+  const {
+    info,
+    images,
+    containers,
+    volumes,
+    agentsImage,
+    status,
+    error,
+    refresh,
+    clearError,
+    jobs,
+    buildAgentsImage,
+    sources,
+    source,
+    setSource,
+    sshMode,
+    localClient,
+    transport,
+    setSshMode,
+  } = useDockerStore();
   const sourceId = useId();
+  const modeId = useId();
+  const viaSsh = source !== null && transport === "ssh";
   const chosen = sources.find((s) => s.id === source);
   const [newFrom, setNewFrom] = useState<DockerImage | null>(null);
 
@@ -59,10 +79,36 @@ function Containers() {
               </option>
             ))}
           </select>
-          {chosen?.url && (
+          {source !== null && (
+            <>
+              <label htmlFor={modeId} className="text-[11px] text-lf-muted">
+                Połączenie
+              </label>
+              <select
+                id={modeId}
+                value={sshMode}
+                onChange={(e) => void setSshMode(e.target.value as typeof sshMode)}
+                className="rounded border border-lf-border bg-lf-editor px-1.5 py-1 text-xs text-lf-fg outline-none focus:border-lf-accent"
+              >
+                <option value="auto">Automatycznie ({localClient ? "klient docker na tym komputerze" : "ssh – brak klienta docker"})</option>
+                <option value="client">Klient docker na tym komputerze (DOCKER_HOST)</option>
+                <option value="ssh">ssh – docker uruchamiany na serwerze</option>
+              </select>
+            </>
+          )}
+          {source !== null && transport === "client" && chosen?.url && (
             <span className="text-[11px] text-lf-subtle">
               Przez SSH: <code className="font-mono">{chosen.url}</code>. Foldery projektów są na tym serwerze; agent w kontenerze korzysta z własnych plików.
             </span>
+          )}
+          {viaSsh && (
+            <span className="text-[11px] text-lf-subtle">
+              Polecenia docker są uruchamiane na serwerze przez ssh (klucz z profilu, bez pytania o hasło) – klient docker na tym komputerze nie jest potrzebny.
+              Foldery projektów są na serwerze; agent w kontenerze korzysta z własnych plików.
+            </span>
+          )}
+          {source !== null && transport === "client" && !localClient && (
+            <span className="text-[11px] text-lf-danger">Na tym komputerze nie ma klienta docker – wybierz połączenie „ssh”.</span>
           )}
           {chosen?.warning && <span className="text-[11px] text-lf-danger">{chosen.warning}</span>}
         </div>
@@ -104,7 +150,7 @@ function Containers() {
             </ul>
           )}
 
-          <Section title={`Obrazy (${images.length})`} actions={<ImageActions />}>
+          <Section title={`Obrazy (${images.length})`} actions={<ImageActions viaSsh={viaSsh} />}>
             {agentsImage && !images.some((i) => imageName(i) === agentsImage) && !jobs.some((j) => !j.done && j.title.endsWith(agentsImage)) && (
               <div aria-label="Obraz Leverframe" className="mb-1 flex flex-col gap-1 rounded border border-lf-border p-2">
                 <p className="text-lf-fg">
@@ -178,7 +224,8 @@ function Confirm({ question, onYes, onNo }: { question: string; onYes: () => voi
   );
 }
 
-function ImageActions() {
+/** `viaSsh`: Docker runs on the server through ssh, so it cannot build from a folder here. */
+function ImageActions({ viaSsh }: { viaSsh: boolean }) {
   const { pull, build, buildAgentsImage, act } = useDockerStore();
   const [mode, setMode] = useState<"pull" | "build" | "prune" | null>(null);
   const [image, setImage] = useState("");
@@ -201,7 +248,14 @@ function ImageActions() {
       <button type="button" className={smallButton} onClick={() => setMode(mode === "pull" ? null : "pull")} aria-expanded={mode === "pull"}>
         Pobierz…
       </button>
-      <button type="button" className={smallButton} onClick={() => setMode(mode === "build" ? null : "build")} aria-expanded={mode === "build"}>
+      <button
+        type="button"
+        className={smallButton}
+        disabled={viaSsh}
+        title={viaSsh ? "Docker na serwerze (przez ssh) nie widzi folderów tego komputera – zbuduj obraz w terminalu SSH" : undefined}
+        onClick={() => setMode(mode === "build" ? null : "build")}
+        aria-expanded={mode === "build"}
+      >
         Zbuduj…
       </button>
       <button type="button" title="Usuń nieużywane obrazy" aria-label="Usuń nieużywane obrazy" className={iconButton} onClick={() => setMode("prune")}>

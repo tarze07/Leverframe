@@ -309,6 +309,11 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
             Ok(())
         }
         ("dockerPath", _) => Err("dockerPath: ścieżka programu docker (do 500 znaków)".into()),
+        // How the Docker of SSH hosts is reached (D9, #89).
+        ("dockerSshMode", Value::String(s)) if ["auto", "client", "ssh"].contains(&s.as_str()) => {
+            Ok(())
+        }
+        ("dockerSshMode", _) => Err("dockerSshMode: auto, client albo ssh".into()),
         ("fontFamily", Value::String(s)) if !s.trim().is_empty() && s.len() <= 200 => Ok(()),
         ("fontFamily", _) => Err("fontFamily: niepusty tekst do 200 znaków".into()),
         ("fontSize", Value::Number(n)) if n.as_u64().is_some_and(|v| (8..=32).contains(&v)) => {

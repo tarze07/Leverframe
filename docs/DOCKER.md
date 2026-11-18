@@ -4,7 +4,7 @@ Dokument odpowiada na zadanie [#60](https://github.com/tarze07/Leverframe/issues
 z obrazu, w którym są zainstalowani agenci, jak takie kontenery uruchamiać i jak zarządzać obrazami Dockera
 z Leverframe. Uzupełnia [PLAN.md](PLAN.md) i [ACP.md](ACP.md). Etapy D1–D7 to zadania #63–#69 (§ 8).
 
-**Stan:** D1–D8 (#63–#69, #79) zrobione; D1–D7 wydane w 0.8.0, D8 w 0.9.0 (ręczne sprawdzenie na Docker Desktop w Windows – w PR wydania) – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
+**Stan:** D1–D9 (#63–#69, #79, #89) zrobione; D1–D7 wydane w 0.8.0, D8 w 0.9.0 (ręczne sprawdzenie na Docker Desktop w Windows – w PR wydania) – moduł `src-tauri/src/docker` (`cli.rs` – odczyt, `actions.rs` – nowy kontener
 i zmiany, `jobs.rs` – pull / build / logs z postępem, `terminal.rs` – terminal profilu kontenera, ścieżki z montowań,
 profile wykryte), widok „Kontenery”, profil `kind: "container"` (program `docker` z `dockerPath`), agenci w kontenerze
 (wykrywanie przez `docker exec -i … sh -s`, terminal, logi Claude / Codex jako źródło `docker:<profil>`), ustawienie
@@ -202,6 +202,7 @@ projektu (Python, Rust, …). Publikacja w GHCR – do ewentualnej decyzji póź
 | **D6** ([#68](https://github.com/tarze07/Leverframe/issues/68)) | Obraz z agentami: `packaging/docker/agents/Dockerfile` (także w zasobach aplikacji), „Zbuduj obraz Leverframe” w widoku, budowanie obrazu w CI (bez publikacji) | obraz z agentami zbudowany jednym kliknięciem |
 | **D7** ([#69](https://github.com/tarze07/Leverframe/issues/69)) | Testy E2E na prawdziwym Dockerze (runner ubuntu ma Dockera) z atrapą agenta w obrazie testowym, ręczne sprawdzenie na Docker Desktop (Windows), dokumentacja, wydanie | wersja z obsługą kontenerów |
 | **D8** ([#79](https://github.com/tarze07/Leverframe/issues/79)) | Zdalny Docker przez SSH: źródło Dockera z profilu SSH (`DOCKER_HOST=ssh://…`), profile kontenerów zdalnych, folder projektu na serwerze, tryb rozmowy bez plików przez Leverframe, E2E ze zdalnym demonem (§ 10) | kontenery na serwerze z Leverframe na tym komputerze |
+| **D9** ([#89](https://github.com/tarze07/Leverframe/issues/89)) | Docker przez SSH bez lokalnego klienta: `ssh host docker …` (tryb połączenia auto / klient / ssh), terminal, wykrywanie, logi i tryb rozmowy przez `ssh`, budowanie obrazu agentów z Dockerfile na stdin, E2E bez klienta (§ 11) | Docker na serwerze bez instalowania Dockera na tym komputerze |
 
 Kolejność daje wartość po każdym etapie: po D3 można już pracować w kontenerze w terminalu, po D5 – w trybie
 rozmowy. D6 można zrobić równolegle z D2–D5.
@@ -295,3 +296,33 @@ opcji) – UI ostrzega, a dokumentacja odsyła do agenta SSH / `~/.ssh/config`.
   z Docker Desktop i bez niego (sam `docker.exe`).
 - **Bezpieczeństwo**: dostęp do Dockera na serwerze to w praktyce root na serwerze – opis w UI przy wyborze
   źródła; te same zasady co lokalnie (bez gniazda w kontenerach, bez `--privileged`, potwierdzenia).
+
+## 11. Docker przez SSH bez lokalnego klienta (D9)
+
+**Stan (D9, #89):** zrobione. D8 wymaga programu `docker` na tym komputerze (`DOCKER_HOST=ssh://…` obsługuje
+klient). Na komputerze bez Dockera Leverframe uruchamia `docker` **na serwerze** przez `ssh`:
+
+- **Tryb połączenia** – ustawienie `dockerSshMode`: `auto` (domyślnie: klient, gdy `docker` z ustawienia
+  `dockerPath` jest na tym komputerze, inaczej `ssh`), `client` (zawsze `DOCKER_HOST`), `ssh` (zawsze przez
+  `ssh`). W widoku „Kontenery” pole **Połączenie** pod „Docker na” (gdy wybrany jest profil SSH).
+- **Polecenia** – `remote::ssh_command` (program `ssh` profilu, `-o BatchMode=yes -o ConnectTimeout=15`, `-p`,
+  `-i` z profilu – w przeciwieństwie do `DOCKER_HOST` klucz z profilu działa), `over_ssh` dokleja `-T`
+  (polecenia, wykrywanie, logi, tryb rozmowy) albo `-tt` (terminal) i jedno polecenie powłoki serwera
+  `docker <argumenty>` z każdym argumentem w apostrofach (`remote_docker`). `Docker::via_ssh` – cała warstwa
+  CLI (lista, `inspect`, akcje, zadania) idzie tą drogą.
+- **Profile kontenerów na serwerze** – zamiast `DOCKER_HOST` w środowisku profilu jest `LEVERFRAME_DOCKER_SSH`
+  (polecenie `ssh` jako JSON; znacznik Leverframe, nie trafia do procesu); `remote::invocation` składa
+  `ssh -tt … docker exec -it …` (terminal, także z folderem projektu), `ssh -T … docker exec -i … sh -s`
+  (wykrywanie agentów, logi agentów) i `ssh -T … docker exec -i … sh -c '…'` (tryb rozmowy).
+- **Budowanie** – „Zbuduj obraz Leverframe” wysyła Dockerfile na stdin (`docker build --progress=plain -t
+  leverframe-agents:<wersja> -`; Dockerfile niczego nie kopiuje) – w obu trybach, bez folderu tymczasowego.
+  „Zbuduj…” z folderu tego komputera jest w trybie `ssh` wyłączone (Docker na serwerze nie widzi tych plików).
+  Przerwanie zadania zamyka `ssh`, a z nim budowanie na serwerze.
+- **Błędy** – kod 255 `ssh` → „Połączenie SSH z serwerem Dockera nie działa: … (logowanie bez pytania, known_hosts)”;
+  127 → „na serwerze nie ma programu docker”; brak programu `ssh` → prośba o klienta OpenSSH; brak uprawnień
+  (grupa `docker`) jak lokalnie.
+- **Testy** – Rust: wybór trybu, budowanie polecenia `ssh` (port, klucz ze spacją, `-T`/`-tt`), cytowanie
+  sprawdzone przez atrapę `ssh` (wykonuje polecenie przez `sh -c`) i atrapę `docker` wypisującą argumenty, błędy
+  255 / 127 / brak `ssh`, zadanie z danymi na stdin. E2E: scenariusz „Docker na hoście SSH” drugi raz z
+  `dockerPath` wskazującym nieistniejący program (auto → `ssh`), z budowaniem obrazu agentów przerwanym po
+  starcie.

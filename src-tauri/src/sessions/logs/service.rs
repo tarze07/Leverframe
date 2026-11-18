@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
 use super::model::{AgentKind, LogDetail, LogSummary};
-use super::{claude, codex};
+use super::{agy, claude, codex, opencode};
 use crate::pty::home_dir;
 
 /// Bytes read from the start of a log to fill in the list (title, folder, start time).
@@ -20,7 +20,8 @@ pub struct LogRoot {
     pub dir: PathBuf,
 }
 
-/// Log directories under a home directory, honouring `CLAUDE_CONFIG_DIR` / `CODEX_HOME` locally.
+/// Log directories under a home directory, honouring `CLAUDE_CONFIG_DIR` / `CODEX_HOME` /
+/// `XDG_DATA_HOME` locally. OpenCode's "directory" holds its database, Agy's its conversations.
 pub fn roots_in_home(home: &Path, local_env: bool) -> Vec<LogRoot> {
     let env_dir = |k: &str| {
         local_env
@@ -42,7 +43,48 @@ pub fn roots_in_home(home: &Path, local_env: bool) -> Vec<LogRoot> {
                 .unwrap_or_else(|| home.join(".codex"))
                 .join("sessions"),
         },
+        LogRoot {
+            agent: AgentKind::OpenCode,
+            dir: env_dir("XDG_DATA_HOME")
+                .unwrap_or_else(|| home.join(".local").join("share"))
+                .join("opencode"),
+        },
+        LogRoot {
+            agent: AgentKind::Agy,
+            dir: home.join(".gemini").join("antigravity-cli").join("brain"),
+        },
     ]
+}
+
+/// Agy keeps a conversation in `brain/<id>/.system_generated/logs/`: the id of a transcript.
+fn agy_conversation_id(path: &Path) -> Option<String> {
+    Some(
+        path.parent()?
+            .parent()?
+            .parent()?
+            .file_name()?
+            .to_str()?
+            .to_string(),
+    )
+}
+
+/// Agy's prompt history (`antigravity-cli/history.jsonl`): conversation id → workspace folder.
+fn agy_workspaces(brain: &Path) -> HashMap<String, String> {
+    let Some(text) = brain
+        .parent()
+        .and_then(|d| std::fs::read_to_string(d.join("history.jsonl")).ok())
+    else {
+        return HashMap::new();
+    };
+    text.lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter_map(|v| {
+            Some((
+                v.get("conversationId")?.as_str()?.to_string(),
+                v.get("workspace")?.as_str()?.to_string(),
+            ))
+        })
+        .collect()
 }
 
 fn mtime_ms(meta: &std::fs::Metadata) -> i64 {
@@ -90,6 +132,20 @@ pub fn list_files(root: &LogRoot) -> Vec<PathBuf> {
                 );
             }
         }
+        AgentKind::Agy => {
+            for conversation in read(&root.dir).filter(|p| p.is_dir()) {
+                let logs = conversation.join(".system_generated").join("logs");
+                // The full transcript, else the compact one.
+                out.extend(
+                    ["transcript_full.jsonl", "transcript.jsonl"]
+                        .iter()
+                        .map(|f| logs.join(f))
+                        .find(|f| f.is_file()),
+                );
+            }
+        }
+        // One database, read by `opencode::list_db`.
+        AgentKind::OpenCode => {}
         AgentKind::Codex => {
             let mut stack = vec![(root.dir.clone(), 0)];
             while let Some((dir, depth)) = stack.pop() {
@@ -142,6 +198,17 @@ fn summarize(
                 h.started_at,
             )
         }
+        AgentKind::Agy => {
+            let h = agy::read_head(head.lines());
+            (
+                agy_conversation_id(path).unwrap_or(file_stem),
+                h.title,
+                None,
+                None,
+                h.started_at,
+            )
+        }
+        AgentKind::OpenCode => return None,
     };
     // Files without any conversation (e.g. only bookkeeping lines) are not worth listing.
     if title.is_none() && cwd.is_none() {
@@ -243,6 +310,19 @@ impl AgentLogService {
         let mut out = Vec::new();
         let mut cache = self.cache.lock().unwrap();
         for root in self.roots(source)? {
+            if root.agent == AgentKind::OpenCode {
+                let db = root.dir.join(opencode::DB_FILE);
+                // A database that cannot be read (being migrated, another version) is left out.
+                if db.is_file() {
+                    out.extend(opencode::list_db(&db, source).unwrap_or_default());
+                }
+                continue;
+            }
+            let workspaces = if root.agent == AgentKind::Agy {
+                agy_workspaces(&root.dir)
+            } else {
+                HashMap::new()
+            };
             for path in list_files(&root) {
                 let Ok(meta) = std::fs::metadata(&path) else {
                     continue;
@@ -256,7 +336,12 @@ impl AgentLogService {
                         summary
                     }
                 };
-                out.extend(summary);
+                out.extend(summary.map(|mut s| {
+                    if s.cwd.is_none() {
+                        s.cwd = workspaces.get(&s.native_id).cloned();
+                    }
+                    s
+                }));
             }
         }
         out.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
@@ -266,6 +351,19 @@ impl AgentLogService {
     /// Full timeline of a log. The path must lie inside one of the source's log directories.
     pub fn read(&self, source: &str, path: &str) -> Result<LogDetail, String> {
         let roots = self.roots(source)?;
+        // `<database>#<session id>`: an OpenCode session.
+        if let Some((db, id)) = path.rsplit_once('#') {
+            let root = roots
+                .iter()
+                .find(|r| r.agent == AgentKind::OpenCode)
+                .ok_or("Brak danych OpenCode w tym źródle")?;
+            let expected = std::fs::canonicalize(root.dir.join(opencode::DB_FILE));
+            let given = std::fs::canonicalize(db);
+            if expected.is_err() || expected.ok() != given.ok() {
+                return Err("To nie jest baza sesji OpenCode".into());
+            }
+            return opencode::read_db(Path::new(db), id, source);
+        }
         let (root, file) = resolve_inside(&roots, Path::new(path))?;
         let meta = std::fs::metadata(&file).map_err(|e| e.to_string())?;
         if meta.len() > MAX_LOG_BYTES {
@@ -276,10 +374,18 @@ impl AgentLogService {
         }
         let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
         let text = String::from_utf8_lossy(&bytes);
-        let summary = summarize(&root, &file, source, &meta).ok_or("Log nie zawiera rozmowy")?;
+        let mut summary =
+            summarize(&root, &file, source, &meta).ok_or("Log nie zawiera rozmowy")?;
         let (entries, skipped_lines) = match root.agent {
             AgentKind::Claude => claude::parse(text.lines()),
             AgentKind::Codex => codex::parse(text.lines()),
+            AgentKind::Agy => {
+                summary.cwd = summary
+                    .cwd
+                    .or_else(|| agy_workspaces(&root.dir).remove(&summary.native_id));
+                agy::parse(text.lines())
+            }
+            AgentKind::OpenCode => return Err("To nie jest plik logu agenta".into()),
         };
         Ok(LogDetail {
             summary,
@@ -391,6 +497,62 @@ mod tests {
         assert!(detail.entries.len() >= 10);
         let detail = svc.read("local", &codex.path).unwrap();
         assert!(!detail.entries.is_empty());
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn lists_and_reads_opencode_and_agy_sessions() {
+        let home = temp("oc-agy");
+        let oc = home.join(".local/share/opencode");
+        std::fs::create_dir_all(&oc).unwrap();
+        super::opencode::tests::sample_db(&oc.join("opencode.db"));
+        let agy = home.join(".gemini/antigravity-cli");
+        let logs = agy.join("brain/c0ffee-1/.system_generated/logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(
+            logs.join("transcript_full.jsonl"),
+            include_str!("fixtures/agy.jsonl"),
+        )
+        .unwrap();
+        std::fs::write(logs.join("transcript.jsonl"), "{}").unwrap(); // the full one wins
+        std::fs::write(
+            agy.join("history.jsonl"),
+            "{\"conversationId\":\"c0ffee-1\",\"workspace\":\"/home/me/sklep\",\"display\":\"Dodaj test\"}\n",
+        )
+        .unwrap();
+
+        let svc = AgentLogService::with_home(&home);
+        let list = svc.list("local").unwrap();
+        assert_eq!(list.len(), 2, "{list:?}");
+        let agy_log = list.iter().find(|s| s.agent == AgentKind::Agy).unwrap();
+        assert_eq!(agy_log.native_id, "c0ffee-1");
+        assert_eq!(
+            agy_log.cwd.as_deref(),
+            Some("/home/me/sklep"),
+            "from history.jsonl"
+        );
+        assert!(agy_log.path.ends_with("transcript_full.jsonl"));
+        let oc_log = list
+            .iter()
+            .find(|s| s.agent == AgentKind::OpenCode)
+            .unwrap();
+        assert_eq!(oc_log.title.as_deref(), Some("Tytuł testowy"));
+
+        let d = svc.read("local", &agy_log.path).unwrap();
+        assert_eq!(d.summary.cwd.as_deref(), Some("/home/me/sklep"));
+        assert_eq!(d.entries.len(), 8);
+        let d = svc.read("local", &oc_log.path).unwrap();
+        assert_eq!(d.entries.len(), 6);
+        // Only OpenCode's own database can be named.
+        let other = home.join("other.db");
+        super::opencode::tests::sample_db(&other);
+        let err = svc
+            .read(
+                "local",
+                &format!("{}#ses_e121fd48effehMLmxjT6GIY6XY", other.display()),
+            )
+            .unwrap_err();
+        assert!(err.contains("baza sesji OpenCode"), "{err}");
         let _ = std::fs::remove_dir_all(home);
     }
 

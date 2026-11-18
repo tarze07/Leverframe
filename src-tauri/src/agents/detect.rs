@@ -224,11 +224,23 @@ pub fn detect_command(profile: &Profile) -> DetectCommand {
                 .as_ref()
                 .map(|c| c.name.clone())
                 .unwrap_or_default();
-            DetectCommand {
-                program: spec.program,
-                args: ["exec", "-i", "--", &name, "sh", "-s"]
+            let docker = if profile.command.is_empty() {
+                "docker"
+            } else {
+                &profile.command
+            };
+            // Through `ssh -T host docker exec …` on an SSH host without a local CLI.
+            let (program, args) = crate::docker::remote::invocation(
+                docker,
+                &profile.env,
+                false,
+                ["exec", "-i", "--", &name, "sh", "-s"]
                     .map(String::from)
                     .to_vec(),
+            );
+            DetectCommand {
+                program,
+                args,
                 // `DOCKER_HOST` of a container on an SSH host.
                 env: spec.env,
                 kind: ScriptKind::Posix,
