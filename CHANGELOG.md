@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Naprawione
+- **Drżenie terminala i edytora przy skalowaniu ekranu 125%** (Windows, okno niezmaksymalizowane): terminal, terminal agenta, edytor i podgląd zmian dopasowują się do rozmiaru tylko przy zmianie o pełny piksel – ułamkowe rozmiary okna nie wywołują już pętli dopasowywania.
+
 ## [0.10.1] – 2026-11-18
 
 ### Naprawione

@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useAgentTerminalsStore } from "../../store/agentTerminals";
 import { useUiStore } from "../../store/ui";
 import { terminalTheme } from "../terminal/theme";
+import { observeWholePixels } from "../../lib/wholePixels";
 
 /**
  * Read-only terminal showing an agent's command as it runs (in a tool card, or full size in the
@@ -44,8 +45,7 @@ export function AgentTerminalView({ storeKey, rows }: { storeKey: string; rows?:
       }
     };
     refit();
-    const observer = new ResizeObserver(() => requestAnimationFrame(refit));
-    observer.observe(el);
+    const stopObserving = observeWholePixels(el, refit);
 
     // Write what is there, then only what arrives (from the start again if old output was dropped).
     let written = 0;
@@ -67,7 +67,7 @@ export function AgentTerminalView({ storeKey, rows }: { storeKey: string; rows?:
     const unsubscribe = useAgentTerminalsStore.subscribe(sync);
     return () => {
       unsubscribe();
-      observer.disconnect();
+      stopObserving();
       term.dispose();
       termRef.current = null;
     };

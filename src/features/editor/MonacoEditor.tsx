@@ -7,6 +7,7 @@ import { baseName, errorMessage, fsClient, isConflict } from "./fsClient";
 import { applyEditorTheme, editorThemeName, ensureTheme, languageForPath, monaco } from "./monacoSetup";
 import type { EditorParams } from "./EditorPanel";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { observeWholePixels } from "../../lib/wholePixels";
 
 type Banner = { kind: "conflict" | "error"; message: string } | null;
 
@@ -51,7 +52,8 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
     const { fontMono, fontSize } = useUiStore.getState();
     const editor = monaco.editor.create(container, {
       theme: editorThemeName(useUiStore.getState().resolvedThemeId),
-      automaticLayout: true,
+      // Laid out in whole pixels (automaticLayout followed sub-pixel changes and made it shake).
+      automaticLayout: false,
       fontFamily: fontMono,
       fontSize,
       minimap: { enabled: true },
@@ -60,6 +62,7 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
       model: null,
     });
     editorRef.current = editor;
+    const stopObserving = observeWholePixels(container, (width, height) => editor.layout({ width, height }));
     let disposed = false;
     const title = baseName(path);
 
@@ -232,6 +235,7 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
       activeSub.dispose();
       useEditorStore.getState().unregister(api.id);
       editor.getModel()?.dispose();
+      stopObserving();
       editor.dispose();
       editorRef.current = null;
     };

@@ -23,6 +23,7 @@ import { createAgentStarter, type AgentStarter } from "./agentStart";
 import { useAgentsStore } from "../../store/agents";
 import { terminalTheme } from "./theme";
 import { TerminalSearch } from "./TerminalSearch";
+import { observeWholePixels } from "../../lib/wholePixels";
 
 export interface TerminalPanelParams {
   /** Terminal profile; the default profile is used when neither this nor `program` is set. */
@@ -170,12 +171,8 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     const onFocus = () => useTerminalStore.getState().setActive(api.id);
     term.textarea?.addEventListener("focus", onFocus);
 
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(safeFit);
-    });
-    observer.observe(container);
+    // Whole pixels only: sub-pixel changes (fractional scaling) made the terminal shake.
+    const stopObserving = observeWholePixels(container, safeFit);
 
     const activeSub = api.onDidActiveChange(({ isActive }) => {
       if (isActive) requestAnimationFrame(() => term.focus());
@@ -259,8 +256,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     return () => {
       disposed = true;
       starter?.dispose();
-      cancelAnimationFrame(frame);
-      observer.disconnect();
+      stopObserving();
       activeSub.dispose();
       subscriptions.forEach((s) => s.dispose());
       term.textarea?.removeEventListener("focus", onFocus);

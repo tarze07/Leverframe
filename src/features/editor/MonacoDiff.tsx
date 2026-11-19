@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useUiStore } from "../../store/ui";
 import { applyEditorTheme, editorThemeName, ensureTheme, languageForPath, monaco } from "./monacoSetup";
+import { observeWholePixels } from "../../lib/wholePixels";
 
 export default function MonacoDiff({ path, oldText, newText }: { path: string; oldText: string | null; newText: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -15,7 +16,8 @@ export default function MonacoDiff({ path, oldText, newText }: { path: string; o
     const { fontMono, fontSize, resolvedThemeId } = useUiStore.getState();
     const editor = monaco.editor.createDiffEditor(container, {
       theme: editorThemeName(resolvedThemeId),
-      automaticLayout: true,
+      // Laid out in whole pixels (see MonacoEditor).
+      automaticLayout: false,
       readOnly: true,
       originalEditable: false,
       renderSideBySide: true,
@@ -28,7 +30,9 @@ export default function MonacoDiff({ path, oldText, newText }: { path: string; o
     const original = monaco.editor.createModel(oldText ?? "", language);
     const modified = monaco.editor.createModel(newText, language);
     editor.setModel({ original, modified });
+    const stopObserving = observeWholePixels(container, (width, height) => editor.layout({ width, height }));
     return () => {
+      stopObserving();
       editor.dispose();
       original.dispose();
       modified.dispose();
