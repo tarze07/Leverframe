@@ -16,6 +16,8 @@ describe("ContainerLogsPanel", () => {
   it("follows the logs while open and stops when closed", async () => {
     const view = render(<ContainerLogsPanel {...({ params: { container: "sklep-agenci" } } as unknown as IDockviewPanelProps<ContainerLogsParams>)} />);
     await vi.waitFor(() => expect(logs).toHaveBeenCalledWith("sklep-agenci", expect.any(Function)));
+    // Started, nothing written yet: said so instead of "loading" forever (#94).
+    expect(await screen.findByText(/Brak wpisów w logu/)).toBeInTheDocument();
     act(() => {
       emit({ type: "line", text: "\x1b[32mserwer gotowy\x1b[0m" });
       emit({ type: "line", text: "GET / 200" });

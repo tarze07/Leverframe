@@ -26,7 +26,18 @@ pub fn run() {
             let config_dir = app.path().app_config_dir()?;
             app.manage(profiles::ProfileService::new(&config_dir));
             app.manage(agents::AgentService::new(&config_dir));
-            app.manage(settings::SettingsStore::new(&config_dir));
+            let settings_store = settings::SettingsStore::new(&config_dir);
+            // The system's window frame instead of Leverframe's title bar (setting windowFrame).
+            if settings_store
+                .get_string(settings::WINDOW_FRAME_KEY)
+                .as_deref()
+                == Some("system")
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_decorations(true);
+                }
+            }
+            app.manage(settings_store);
             let data_dir = app.path().app_data_dir()?;
             app.manage(sessions::SessionService::open(&data_dir, &config_dir)?);
             let logs = std::sync::Arc::new(sessions::logs::AgentLogService::new());

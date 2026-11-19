@@ -4,6 +4,14 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Naprawione
+- **Drżenie terminala i edytora przy skalowaniu ekranu 125%** (Windows, okno niezmaksymalizowane): terminal, terminal agenta, edytor i podgląd zmian dopasowują się do rozmiaru tylko przy zmianie o pełny piksel – ułamkowe rozmiary okna nie wywołują już pętli dopasowywania.
+- **Drżenie podglądu Markdown** (widok „Tekst i podgląd obok” przy skalowaniu 125%): podgląd ma stałe miejsce na pasek przewijania, więc jego pojawianie się nie zmienia szerokości tekstu i nie zawija go na przemian.
+- **Logi kontenera bez wpisów** ([#94](https://github.com/tarze07/Leverframe/issues/94)): panel „Logi” kontenera, który nic nie wypisał (np. kontenery Leverframe – tylko czekają), pokazywał w nieskończoność „Wczytywanie…”. Teraz mówi, że w logu nie ma jeszcze wpisów i gdzie jest wyjście agentów.
+
+### Dodane
+- **Ramka okna** w ustawieniach: „Pasek tytułu Leverframe” (domyślnie) albo „Systemowa”. Systemowa ramka to obejście drżenia okna przy skalowaniu ekranu innym niż 100% na Windows (okno niezmaksymalizowane).
+
 ## [0.10.1] – 2026-11-18
 
 ### Naprawione

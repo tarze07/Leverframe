@@ -272,6 +272,8 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
   const env = available && sshTarget ? makeHome() : null;
   const SSH_IMAGE = "lf-e2e-agents:ssh";
   const NAME = noClient ? "shop-sshonly" : "shop-ssh";
+  // A container that writes to its log (Leverframe's ones only sleep).
+  const TALKER = `${NAME}-logi`;
   const BUILD = "docker build --progress=plain -t leverframe-agents";
   const SSH_VOLUME = `leverframe-${NAME}-home`;
   // Without a local client the host is a `~/.ssh/config` entry (connected by its alias), with
@@ -309,6 +311,7 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
 
   before(async () => {
     quiet("rm", "-f", NAME);
+    quiet("rm", "-f", TALKER);
     quiet("volume", "rm", SSH_VOLUME);
     try {
       docker("image", "inspect", BASE);
@@ -343,6 +346,7 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
     await app?.close();
     driver?.kill();
     quiet("rm", "-f", NAME);
+    quiet("rm", "-f", TALKER);
     quiet("volume", "rm", SSH_VOLUME);
     quiet("rmi", SSH_IMAGE);
     if (noClient) {
@@ -409,6 +413,22 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
       }
     }
     assert.equal(left, false, "the build on the server ended");
+  });
+
+  it("follows a container's logs there; a container without output says so (#94)", async () => {
+    docker("run", "-d", "--name", TALKER, BASE, "sh", "-c", "echo pierwsza linia; echo druga linia; sleep 600");
+    await app.click('button[aria-label="Odśwież"]');
+    const talker = `li[aria-label="Kontener ${TALKER}"]`;
+    await app.waitFor(`return !!document.querySelector('${talker}')`, 30_000);
+    await app.click(`${talker} button[aria-label="Logi ${TALKER}"]`);
+    const panel = (name) => `[...document.querySelectorAll('[data-testid=container-logs]')].find(p => p.querySelector('header').textContent.includes('Logi: ${name}'))`;
+    await app.waitFor(`return ${panel(TALKER)}?.querySelector('pre').textContent.includes('druga linia')`, 30_000);
+    assert.match(await app.exec(`return ${panel(TALKER)}.querySelector('[role=status]').textContent`), /Na żywo/);
+
+    // Leverframe's container only sleeps: no "loading" forever, but a clear "nothing yet".
+    await app.click(`${row} button[aria-label="Logi ${NAME}"]`);
+    await app.waitFor(`return ${panel(NAME)}?.querySelector('pre').textContent.includes('Brak wpisów')`, 30_000);
+    quiet("rm", "-f", TALKER);
   });
 
   it("opens a terminal in the container on the SSH host", async () => {
