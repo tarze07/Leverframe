@@ -119,7 +119,12 @@ export function MarkdownPreview({ source, path }: { source: string; path: string
   };
 
   return (
-    <div className="h-full overflow-auto bg-lf-editor" data-testid="markdown-preview">
+    <div
+      // A place for the scrollbar always: appearing and disappearing it changed the text's width,
+      // the text wrapped differently and the preview shook (fractional scaling, side by side).
+      className="h-full overflow-auto bg-lf-editor [scrollbar-gutter:stable]"
+      data-testid="markdown-preview"
+    >
       <article
         ref={ref}
         className="lf-markdown mx-auto max-w-[860px] px-8 py-6"

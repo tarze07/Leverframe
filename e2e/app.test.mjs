@@ -116,8 +116,24 @@ describe("Leverframe", () => {
     await sleep(300);
     assert.equal(await app.exec("return location.href"), before);
 
+    // Side by side: the editor fills its half and nothing keeps resizing (#scaling: the editor is
+    // laid out in whole pixels, see lib/wholePixels.ts).
+    const fits = `const c = ${bar}.parentElement.querySelector('[data-testid=monaco-container]'); const e = c.querySelector('.monaco-editor');
+      const a = c.getBoundingClientRect(), b = e.getBoundingClientRect(); return a.width > 50 && Math.abs(a.width - b.width) < 1.5 && Math.abs(a.height - b.height) < 1.5`;
+    const sizes = `return [...${bar}.parentElement.querySelectorAll('[data-testid=monaco-container] .monaco-editor, [data-testid=markdown-preview], [data-testid=markdown-preview] > *')].map(e => { const r = e.getBoundingClientRect(); return r.width + 'x' + r.height; }).join(' ')`;
+    await app.exec(`${bar}.querySelector('button[aria-label^="Tekst i podgląd"]').click()`);
+    await app.waitFor(`return !!${preview}`);
+    await app.waitFor(fits);
+    const first = await app.exec(sizes);
+    for (let i = 0; i < 10; i++) {
+      await sleep(100);
+      assert.equal(await app.exec(sizes), first, "the editor and the preview keep their size");
+    }
+
     await app.exec(`${bar}.querySelector('button[aria-label^="Tylko tekst"]').click()`);
     await app.waitFor(`return !${bar}.parentElement.querySelector('[data-testid=markdown-preview]')`);
+    // Back from the preview (the editor was hidden): it fills the whole width again.
+    await app.waitFor(fits);
   });
 
   it("moves the terminal panel beside the editor and maximizes it; the shell keeps running", async () => {

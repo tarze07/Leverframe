@@ -6,6 +6,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ### Naprawione
 - **Drżenie terminala i edytora przy skalowaniu ekranu 125%** (Windows, okno niezmaksymalizowane): terminal, terminal agenta, edytor i podgląd zmian dopasowują się do rozmiaru tylko przy zmianie o pełny piksel – ułamkowe rozmiary okna nie wywołują już pętli dopasowywania.
+- **Drżenie podglądu Markdown** (widok „Tekst i podgląd obok” przy skalowaniu 125%): podgląd ma stałe miejsce na pasek przewijania, więc jego pojawianie się nie zmienia szerokości tekstu i nie zawija go na przemian.
 
 ## [0.10.1] – 2026-11-18
 
