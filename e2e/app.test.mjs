@@ -217,6 +217,30 @@ describe("Leverframe", () => {
     assert.equal(settings.theme, "dark");
   });
 
+  it("switches to the system's window frame and back (setting windowFrame)", async () => {
+    const readSettings = () => JSON.parse(readFileSync(join(env.config, "settings.json"), "utf8"));
+    const titleBar = "return !!document.querySelector('header[data-tauri-drag-region]')";
+    const choose = (value) =>
+      app.exec(
+        `const l = [...document.querySelectorAll('label')].find(l => l.textContent.trim() === 'Ramka okna');
+         const s = document.getElementById(l.htmlFor);
+         Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, arguments[0]);
+         s.dispatchEvent(new Event('change', { bubbles: true }));`,
+        [value],
+      );
+    await showView("Ustawienia");
+    await app.waitFor("return [...document.querySelectorAll('label')].some(l => l.textContent.trim() === 'Ramka okna')");
+    assert.equal(await app.exec(titleBar), true, "Leverframe's title bar by default");
+    await choose("system");
+    await app.waitFor("return !document.querySelector('header[data-tauri-drag-region]')");
+    for (let i = 0; i < 30 && readSettings().windowFrame !== "system"; i++) await sleep(100);
+    assert.equal(readSettings().windowFrame, "system");
+    await choose("custom");
+    await app.waitFor(titleBar);
+    for (let i = 0; i < 30 && readSettings().windowFrame !== "custom"; i++) await sleep(100);
+    assert.equal(readSettings().windowFrame, "custom");
+  });
+
   it("talks to an agent in conversation mode (ACP): prompt, answer, permission, project folder", async () => {
     const chat = "[data-testid=agent-chat]";
     const say = async (text) => {

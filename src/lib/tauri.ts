@@ -20,4 +20,6 @@ export const windowControls = {
   minimize: () => (isTauri() ? getCurrentWindow().minimize() : Promise.resolve()),
   toggleMaximize: () => (isTauri() ? getCurrentWindow().toggleMaximize() : Promise.resolve()),
   close: () => (isTauri() ? getCurrentWindow().close() : Promise.resolve()),
+  /** The system's window frame (true) or Leverframe's title bar (false). */
+  setSystemFrame: (system: boolean) => (isTauri() ? getCurrentWindow().setDecorations(system) : Promise.resolve()),
 };

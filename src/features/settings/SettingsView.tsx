@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore, type PanelPosition } from "../../store/ui";
 import { useSettingsStore, type SettingKey } from "../../store/settings";
 import { THEMES, themeById, type ThemeKind } from "../../theme/themes";
-import { isTauri } from "../../lib/tauri";
+import { isTauri, windowControls } from "../../lib/tauri";
 import { openFile } from "../../workbench/commands";
 
 const themesOf = (kind: ThemeKind) => THEMES.filter((t) => t.kind === kind);
@@ -50,6 +50,8 @@ export function SettingsView() {
   const positionId = useId();
   const autoSaveId = useId();
   const dockerId = useId();
+  const frameId = useId();
+  const windowFrame = useSettingsStore((s) => (s.values.windowFrame === "system" ? "system" : "custom"));
   const dockerPath = useSettingsStore((s) => (typeof s.values.dockerPath === "string" ? s.values.dockerPath : ""));
   const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
   const confirmCommands = useSettingsStore((s) => s.values.acpConfirmCommands !== false);
@@ -62,6 +64,7 @@ export function SettingsView() {
     if (key === "lightTheme") ui.setThemePreferences({ lightTheme: String(value) });
     if (key === "fontFamily") ui.setFontMono(String(value));
     if (key === "fontSize") ui.setFontSize(Number(value));
+    if (key === "windowFrame") void windowControls.setSystemFrame(value === "system").catch(() => undefined);
     setError(await update(key, value));
   };
 
@@ -122,6 +125,18 @@ export function SettingsView() {
           </div>
         </>
       )}
+      <div className="flex flex-col gap-1">
+        <label htmlFor={frameId} className="text-xs font-semibold text-lf-fg">
+          Ramka okna
+        </label>
+        <select id={frameId} value={windowFrame} onChange={(e) => void save("windowFrame", e.target.value)} className={inputClass}>
+          <option value="custom">Pasek tytułu Leverframe</option>
+          <option value="system">Systemowa</option>
+        </select>
+        <span className="text-[11px] text-lf-subtle">
+          Systemowa ramka pomaga, gdy okno drży przy skalowaniu ekranu innym niż 100% (Windows, okno niezmaksymalizowane).
+        </span>
+      </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={autoSaveId} className="text-xs font-semibold text-lf-fg">
           Automatyczny zapis plików

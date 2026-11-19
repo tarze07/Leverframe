@@ -4,6 +4,9 @@ mod store;
 
 use serde::Serialize;
 
+/// `custom` (Leverframe's title bar, default) or `system` (the system's window frame).
+pub const WINDOW_FRAME_KEY: &str = "windowFrame";
+
 pub use store::{write_atomic, SettingsStore};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -314,6 +317,9 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
             Ok(())
         }
         ("dockerSshMode", _) => Err("dockerSshMode: auto, client albo ssh".into()),
+        // The window's frame: Leverframe's title bar or the system's (e.g. a Windows workaround).
+        ("windowFrame", Value::String(s)) if ["custom", "system"].contains(&s.as_str()) => Ok(()),
+        ("windowFrame", _) => Err("windowFrame: custom albo system".into()),
         ("fontFamily", Value::String(s)) if !s.trim().is_empty() && s.len() <= 200 => Ok(()),
         ("fontFamily", _) => Err("fontFamily: niepusty tekst do 200 znaków".into()),
         ("fontSize", Value::Number(n)) if n.as_u64().is_some_and(|v| (8..=32).contains(&v)) => {
