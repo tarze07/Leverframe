@@ -8,6 +8,10 @@ export interface ContainerLogsParams {
   container: string;
 }
 
+/** Shown while the container has written nothing to its log. */
+export const NO_ENTRIES =
+  "Brak wpisów w logu – kontener nic jeszcze nie wypisał; nowe wpisy pojawią się tutaj. Kontenery Leverframe tylko czekają (sleep infinity): wyjście agentów jest w ich terminalach.";
+
 /** Lines kept in the panel. */
 export const MAX_LOG_LINES = 5000;
 
@@ -19,6 +23,8 @@ export function ContainerLogsPanel({ params }: IDockviewPanelProps<ContainerLogs
   const [lines, setLines] = useState<string[]>([]);
   const [end, setEnd] = useState<{ ok: boolean; message: string | null } | null>(null);
   const [follow, setFollow] = useState(true);
+  // `docker logs` runs: without lines yet the container has written nothing (not "loading").
+  const [started, setStarted] = useState(false);
   const log = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -35,6 +41,7 @@ export function ContainerLogsPanel({ params }: IDockviewPanelProps<ContainerLogs
         (id) => {
           job = id;
           if (disposed) void dockerClient.cancel(id);
+          else setStarted(true);
         },
         (e: unknown) => !disposed && setEnd({ ok: false, message: String(e) }),
       );
@@ -63,7 +70,7 @@ export function ContainerLogsPanel({ params }: IDockviewPanelProps<ContainerLogs
         </span>
       </header>
       <pre ref={log} aria-label="Logi" className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-[12px] text-lf-fg">
-        {lines.length ? lines.join("\n") : end ? "" : "Wczytywanie…"}
+        {lines.length ? lines.join("\n") : end ? "" : started ? <span className="text-lf-muted">{NO_ENTRIES}</span> : "Wczytywanie…"}
       </pre>
     </div>
   );
