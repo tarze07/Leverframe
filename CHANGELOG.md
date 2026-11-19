@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.10.2] – 2026-11-19
+
 ### Naprawione
 - **Drżenie terminala i edytora przy skalowaniu ekranu 125%** (Windows, okno niezmaksymalizowane): terminal, terminal agenta, edytor i podgląd zmian dopasowują się do rozmiaru tylko przy zmianie o pełny piksel – ułamkowe rozmiary okna nie wywołują już pętli dopasowywania.
 - **Drżenie podglądu Markdown** (widok „Tekst i podgląd obok” przy skalowaniu 125%): podgląd ma stałe miejsce na pasek przewijania, więc jego pojawianie się nie zmienia szerokości tekstu i nie zawija go na przemian.
@@ -206,6 +208,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.10.2]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.2
 [0.10.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.1
 [0.10.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.0
 [0.9.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.9.0
