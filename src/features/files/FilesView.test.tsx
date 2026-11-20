@@ -7,7 +7,11 @@ vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 const openDialog = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (...a: unknown[]) => openDialog(...a) }));
 const openFile = vi.fn();
-vi.mock("../../workbench/commands", () => ({ openFile: (...a: unknown[]) => openFile(...a) }));
+const closeEditorsUnder = vi.fn();
+vi.mock("../../workbench/commands", () => ({
+  openFile: (...a: unknown[]) => openFile(...a),
+  closeEditorsUnder: (...a: unknown[]) => closeEditorsUnder(...a),
+}));
 
 import { FilesView } from "./FilesView";
 import { useAgentsStore } from "../../store/agents";
@@ -25,6 +29,7 @@ describe("FilesView", () => {
   beforeEach(() => {
     invoke.mockReset();
     openFile.mockReset();
+    closeEditorsUnder.mockReset();
     invoke.mockImplementation(async (cmd: string, args?: { path?: string }) => {
       if (cmd === "fs_list_dir") {
         if (args!.path === "/broken") throw { kind: "other", message: "Folder /broken nie istnieje" };
@@ -67,5 +72,63 @@ describe("FilesView", () => {
     openDialog.mockResolvedValue("/p");
     fireEvent.click(screen.getByText("Otwórz folder…"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_project_dir", { path: "/p" }));
+  });
+
+  it("creates files and folders in the chosen folder and opens a new file (#97)", async () => {
+    render(<FilesView />);
+    const src = await screen.findByRole("treeitem", { name: "src" });
+    // New entries go to the project folder at first, to the last folder clicked then.
+    fireEvent.click(screen.getByLabelText("Nowy folder…"));
+    const folderForm = screen.getByRole("form", { name: "Nowy folder w p" });
+    fireEvent.change(within(folderForm).getByRole("textbox"), { target: { value: "docs" } });
+    invoke.mockImplementationOnce(async () => "/p/docs");
+    fireEvent.submit(folderForm);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("fs_create", { parent: "/p", name: "docs", dir: true }));
+    await waitFor(() => expect(screen.queryByRole("form")).toBeNull());
+    expect(openFile).not.toHaveBeenCalled();
+
+    fireEvent.click(within(src).getByText("src"));
+    fireEvent.click(screen.getByLabelText("Nowy plik…"));
+    const fileForm = screen.getByRole("form", { name: "Nowy plik w src" });
+    fireEvent.change(within(fileForm).getByRole("textbox"), { target: { value: "lib/nowy.rs" } });
+    invoke.mockImplementationOnce(async () => "/p/src/lib/nowy.rs");
+    fireEvent.submit(fileForm);
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith("/p/src/lib/nowy.rs"));
+    expect(invoke).toHaveBeenCalledWith("fs_create", { parent: "/p/src", name: "lib/nowy.rs", dir: false });
+    // The folders on the way are opened and read again.
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("fs_list_dir", { path: "/p/src/lib" }));
+
+    // An error stays in the form.
+    fireEvent.click(screen.getByLabelText("Nowy plik…"));
+    const again = screen.getByRole("form", { name: "Nowy plik w src" });
+    fireEvent.change(within(again).getByRole("textbox"), { target: { value: "main.rs" } });
+    invoke.mockImplementationOnce(async () => {
+      throw { kind: "other", message: "/p/src/main.rs już istnieje" };
+    });
+    fireEvent.submit(again);
+    expect(await screen.findByRole("alert")).toHaveTextContent("już istnieje");
+    expect(screen.getByRole("form", { name: "Nowy plik w src" })).toBeInTheDocument();
+  });
+
+  it("deletes after asking: to the trash or permanently, and closes its editors (#97)", async () => {
+    render(<FilesView />);
+    const readme = await screen.findByRole("treeitem", { name: "README.md" });
+    fireEvent.click(within(readme).getByLabelText("Usuń README.md"));
+    const ask = screen.getByRole("group", { name: "Usuwanie README.md" });
+    expect(ask).toHaveTextContent("Usunąć README.md?");
+    fireEvent.click(within(ask).getByText("Anuluj"));
+    expect(screen.queryByRole("group", { name: "Usuwanie README.md" })).toBeNull();
+    expect(invoke).not.toHaveBeenCalledWith("fs_delete", expect.anything());
+
+    fireEvent.click(within(readme).getByLabelText("Usuń README.md"));
+    fireEvent.click(screen.getByText("Do kosza"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("fs_delete", { path: "/p/README.md", permanently: false }));
+    await waitFor(() => expect(closeEditorsUnder).toHaveBeenCalledWith("/p/README.md"));
+
+    const src = screen.getByRole("treeitem", { name: "src" });
+    fireEvent.click(within(src).getByLabelText("Usuń src"));
+    expect(screen.getByRole("group", { name: "Usuwanie src" })).toHaveTextContent("Usunąć folder src z zawartością?");
+    fireEvent.click(screen.getByText("Usuń na stałe"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("fs_delete", { path: "/p/src", permanently: true }));
   });
 });

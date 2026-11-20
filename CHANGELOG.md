@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Tworzenie i usuwanie plików oraz folderów w panelu „Pliki”** ([#97](https://github.com/tarze07/Leverframe/issues/97)): „Nowy plik…” i „Nowy folder…” (w ostatnio klikniętym folderze, nazwa może zawierać `/`; nowy plik otwiera się w edytorze, nic nie jest nadpisywane), usuwanie z potwierdzeniem do kosza systemowego albo na stałe – tylko wewnątrz folderu projektu; edytory usuniętych plików się zamykają.
+
 ### Zmienione
 - **Systemowa ramka okna domyślnie na Windows**: okno bez ramki drżało przy skalowaniu ekranu innym niż 100% (np. 125%) w oknie niezmaksymalizowanym – na ramce systemowej problem znika (potwierdzone na Windows). Pasek tytułu Leverframe można przywrócić w Ustawieniach („Ramka okna”); na Linuksie i macOS domyślny pozostaje pasek Leverframe.
 

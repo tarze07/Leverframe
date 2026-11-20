@@ -67,6 +67,11 @@ mod tests {
 }
 
 const PROJECT_DIR_KEY: &str = "projectDir";
+
+/// The project folder chosen in the app (the "Pliki" view works inside it).
+pub fn project_dir(store: &SettingsStore) -> Option<String> {
+    store.get_string(PROJECT_DIR_KEY)
+}
 const RECENT_DIRS_KEY: &str = "recentProjectDirs";
 const REMOTE_DIRS_KEY: &str = "remoteDirs";
 const MAX_RECENT_DIRS: usize = 8;

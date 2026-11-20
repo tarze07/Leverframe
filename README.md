@@ -40,6 +40,8 @@ Instalatory nie są podpisane cyfrowo. Na Windows SmartScreen pokaże ostrzeżen
 
 Nad każdym plikiem jest pasek z jego ścieżką, informacją o niezapisanych zmianach i przyciskiem **Zapisz** (albo Ctrl+S). Paleta poleceń ma też „Zapisz wszystkie pliki”. Automatyczny zapis włączysz w ustawieniach („Automatyczny zapis plików”) lub w `settings.json`: `"autoSave": "afterDelay"` (po sekundzie bez pisania) albo `"onFocusChange"` (po wyjściu z edytora). Jeśli plik zmienił się na dysku, aplikacja zapyta, czy go nadpisać.
 
+W panelu „Pliki” przyciski **Nowy plik…** i **Nowy folder…** tworzą je w ostatnio klikniętym folderze (nazwa może zawierać `/`, np. `src/nowy.ts` – brakujące foldery powstaną po drodze); nowy plik od razu otwiera się w edytorze. Ikona kosza przy pliku lub folderze (po najechaniu) usuwa go po potwierdzeniu – **do kosza systemowego** albo **na stałe**; usuwać można tylko wewnątrz folderu projektu, a otwarte edytory usuniętych plików się zamykają.
+
 Pliki Markdown (`.md`) mają trzy widoki, przełączane na pasku: sam tekst, tekst z podglądem obok i sam podgląd. Podgląd pokazuje obrazki z dysku (ścieżki względem pliku) i z internetu; linki do stron otwierają się w przeglądarce, a linki do innych plików – w edytorze.
 
 ## Agenci

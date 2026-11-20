@@ -83,6 +83,8 @@ pub fn run() {
             fs::commands::fs_read_text,
             fs::commands::fs_read_image,
             fs::commands::fs_write_text,
+            fs::commands::fs_create,
+            fs::commands::fs_delete,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,

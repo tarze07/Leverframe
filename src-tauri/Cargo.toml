@@ -26,6 +26,8 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 vte = "0.15.0"
 notify = "8"
 ignore = "0.4.30"
+# Deleting files from the "Pliki" view moves them to the system trash (#97).
+trash = "=5.3.0"
 
 [profile.release]
 codegen-units = 1

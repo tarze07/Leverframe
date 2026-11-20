@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use super::{
-    list_dir, list_files, read_image, read_text, write_text, DirEntry, FileList, FsError, TextFile,
-    MAX_LIST_FILES,
+    create_entry, delete_entry, list_dir, list_files, read_image, read_text, write_text, DirEntry,
+    FileList, FsError, TextFile, MAX_LIST_FILES,
 };
 
 async fn blocking<T: Send + 'static>(
@@ -48,4 +48,26 @@ pub async fn fs_read_image(path: String) -> Result<tauri::ipc::Response, FsError
     blocking(move || read_image(&PathBuf::from(path)))
         .await
         .map(tauri::ipc::Response::new)
+}
+
+/// Creates an empty file or a folder `name` (may contain `/`) in `parent`; returns its path.
+#[tauri::command]
+pub async fn fs_create(parent: String, name: String, dir: bool) -> Result<String, FsError> {
+    blocking(move || {
+        create_entry(&PathBuf::from(parent), &name, dir).map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+}
+
+/// Deletes a file or folder of the project folder: to the system trash, or `permanently`.
+#[tauri::command]
+pub async fn fs_delete(
+    settings: tauri::State<'_, crate::settings::SettingsStore>,
+    path: String,
+    permanently: bool,
+) -> Result<(), FsError> {
+    let root = crate::settings::project_dir(&settings).ok_or_else(|| FsError::Other {
+        message: "Najpierw otwórz folder projektu".into(),
+    })?;
+    blocking(move || delete_entry(&PathBuf::from(root), &PathBuf::from(path), permanently)).await
 }

@@ -255,6 +255,17 @@ export function openAgentLog(summary: LogSummary) {
 }
 
 /** Opens a file in an editor tab (or focuses it if already open). */
+/** Closes the editors of `path` and of files under it (after it was deleted). */
+export function closeEditorsUnder(path: string) {
+  const api = dockRegistry.get("main");
+  if (!api) return;
+  const under = (p: string) => p === path || p.startsWith(`${path}/`) || p.startsWith(`${path}\\`);
+  for (const panel of [...api.panels]) {
+    const file = (panel.params as { path?: unknown } | undefined)?.path;
+    if (panel.view.contentComponent === "editor" && typeof file === "string" && under(file)) panel.api.close();
+  }
+}
+
 export function openFile(path: string, options: { line?: number } = {}) {
   const api = dockRegistry.get("main");
   if (!api) return null;
