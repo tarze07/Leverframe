@@ -10,6 +10,7 @@ import { openAgent, openAgentChat } from "../../workbench/commands";
 import { groupProfiles, KIND_LABELS } from "../profiles/profilesClient";
 import { folderName, type Agent, type AgentStatus } from "./agentsClient";
 import { AgentSettingsForm, currentSettings, joinArgs } from "./AgentSettingsForm";
+import { RemoteDirPicker } from "../remote/RemoteDirPicker";
 
 /** Sidebar view: AI coding agents, their availability in the chosen profile, and launching them. */
 export function AgentsView() {
@@ -281,13 +282,14 @@ function RemoteDirField({ profileId, host }: { profileId: string; host: string }
   const setRemoteDir = useAgentsStore((s) => s.setRemoteDir);
   const [value, setValue] = useState(saved);
   const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const inputId = useId();
 
-  const save = async () => {
-    if (value.trim() === saved) return;
+  const save = async (next = value) => {
+    if (next.trim() === saved) return;
     setError(null);
     try {
-      await setRemoteDir(profileId, value.trim() || null);
+      await setRemoteDir(profileId, next.trim() || null);
     } catch (e) {
       setError(String(e));
     }
@@ -298,22 +300,46 @@ function RemoteDirField({ profileId, host }: { profileId: string; host: string }
       <label htmlFor={inputId} className="text-[11px] text-lf-muted">
         Katalog na serwerze {host}
       </label>
-      <input
-        id={inputId}
-        value={value}
-        placeholder="~ (katalog domowy)"
-        spellCheck={false}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => void save()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") {
-            setValue(saved);
-            setError(null);
-          }
-        }}
-        className="rounded border border-lf-border bg-lf-editor px-1.5 py-1 font-mono text-xs text-lf-fg outline-none focus:border-lf-accent"
-      />
+      <div className="flex gap-1">
+        <input
+          id={inputId}
+          value={value}
+          placeholder="~ (katalog domowy)"
+          spellCheck={false}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              setValue(saved);
+              setError(null);
+            }
+          }}
+          className="min-w-0 flex-1 rounded border border-lf-border bg-lf-editor px-1.5 py-1 font-mono text-xs text-lf-fg outline-none focus:border-lf-accent"
+        />
+        <button
+          type="button"
+          aria-expanded={picking}
+          onClick={() => setPicking((v) => !v)}
+          title={`Przeglądaj foldery na ${host}`}
+          className="shrink-0 rounded border border-lf-border px-2 text-xs text-lf-fg hover:bg-lf-hover"
+        >
+          Wybierz…
+        </button>
+      </div>
+      {picking && (
+        <RemoteDirPicker
+          profileId={profileId}
+          host={host}
+          start={value.trim() || saved}
+          onChoose={(path) => {
+            setPicking(false);
+            setValue(path);
+            void save(path);
+          }}
+          onCancel={() => setPicking(false)}
+        />
+      )}
       <span className="text-[11px] text-lf-subtle">
         Np. <code className="font-mono">~/projekty/app</code>. Przed uruchomieniem agenta wykonywane jest <code className="font-mono">cd</code>.
       </span>

@@ -383,10 +383,21 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
     await app.click(`li[aria-label="Obraz ${SSH_IMAGE}"] button`, "Nowy kontener");
     const form = 'form[aria-label="Nowy kontener"]';
     await app.waitFor(`return !!document.querySelector('${form}')`);
-    assert.equal(await app.exec(`return [...document.querySelectorAll('${form} button')].some(b => b.textContent.trim() === 'Wybierz…')`), false, "no dialog of this machine");
     const label = await app.exec(`return [...document.querySelectorAll('${form} label')].find(l => l.textContent.startsWith('Folder projektu')).textContent`);
     assert.ok(label.startsWith(`Folder projektu na ${HOST_NAME}`), label);
-    await fill(`${form} input[placeholder^="np. /home"]`, env.project);
+    // The folder on the server, chosen by browsing it (#100): the picker lists the server's
+    // folders over SSH, a typed path is opened, "Wybierz ten folder" fills the field.
+    await press(form, "Wybierz…");
+    const picker = `${form} [role=dialog][aria-label^="Wybierz folder na"]`;
+    await app.waitFor(`return document.querySelector('${picker} input[aria-label="Ścieżka"]')?.value.startsWith('/')`, 30_000);
+    await fill(`${picker} input[aria-label="Ścieżka"]`, join(env.project, ".."));
+    await press(picker, "Przejdź");
+    const projectName = env.project.split("/").pop();
+    await app.waitFor(`return [...document.querySelectorAll('${picker} ul[aria-label=Foldery] button')].some(b => b.textContent.trim() === ${JSON.stringify(projectName)})`, 30_000);
+    await press(`${picker} ul[aria-label=Foldery]`, projectName);
+    await app.waitFor(`return document.querySelector('${picker} input[aria-label="Ścieżka"]').value === ${JSON.stringify(env.project)}`, 30_000);
+    await press(picker, "Wybierz ten folder");
+    await app.waitFor(`return document.querySelector('${form} input[placeholder^="np. /home"]').value === ${JSON.stringify(env.project)}`);
     await fill(`${form} input`, NAME);
     await app.waitFor(`return document.querySelector('${form} [aria-label=Polecenie]')?.innerText.includes(${JSON.stringify(`${env.project}:/workspace`)}) && document.querySelector('${form} [aria-label=Polecenie]').innerText.includes('--name ${NAME}')`, 20_000);
     await app.click(`${form} button[type=submit]`);

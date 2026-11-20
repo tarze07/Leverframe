@@ -10,6 +10,8 @@ import { TerminalSearch } from "../terminal/TerminalSearch";
 import { terminalTheme } from "../terminal/theme";
 import { CastPlayer, compressIdle, formatClock, parseCast, type Cast } from "./cast";
 import { sessionsClient } from "./sessionsClient";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { CopyButton } from "../../components/CopyButton";
 
 export interface SessionPlayerParams {
   sessionId: number;
@@ -18,6 +20,24 @@ export interface SessionPlayerParams {
 }
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
+
+/**
+ * The terminal's text up to this moment of the recording (scrollback included): wrapped lines
+ * joined, trailing spaces and empty lines at the end dropped. No escape sequences.
+ */
+export function terminalText(term: Pick<Terminal, "buffer">): string {
+  const buffer = term.buffer.active;
+  const lines: string[] = [];
+  for (let i = 0; i < buffer.length; i++) {
+    const line = buffer.getLine(i);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  return lines.map((l) => l.trimEnd()).join("\n");
+}
 const MAX_IDLE = 2;
 
 /** Dock panel replaying a recorded session (asciicast) in a read-only terminal. */
@@ -86,6 +106,12 @@ export function SessionPlayer({ params }: IDockviewPanelProps<SessionPlayerParam
       if (e.type === "keydown" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setSearchOpen(true);
+        return false;
+      }
+      // Ctrl+C / Ctrl+Shift+C (Cmd+C): the selection to the clipboard (the recording takes no input).
+      if (e.type === "keydown" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && term.hasSelection()) {
+        e.preventDefault();
+        void writeText(term.getSelection()).catch(() => undefined);
         return false;
       }
       return true;
@@ -221,6 +247,11 @@ export function SessionPlayer({ params }: IDockviewPanelProps<SessionPlayerParam
           />
           Pomijaj przerwy
         </label>
+        <CopyButton
+          label="Kopiuj tekst terminala"
+          text={() => (termRef.current ? terminalText(termRef.current) : "")}
+          className="p-1"
+        />
         <button
           type="button"
           onClick={() => setSearchOpen(true)}

@@ -85,6 +85,8 @@ pub fn run() {
             fs::commands::fs_write_text,
             fs::commands::fs_create,
             fs::commands::fs_delete,
+            fs::commands::remote_list_dirs,
+            fs::commands::remote_make_dir,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,
