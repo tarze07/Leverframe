@@ -73,3 +73,13 @@ export function keybindingOverrides(values: Record<string, unknown>): Record<str
     Object.entries(kb as Record<string, unknown>).filter(([, v]) => typeof v === "string" || v === null),
   ) as Record<string, string | null>;
 }
+
+/**
+ * Whether the window uses the system's frame (setting `windowFrame`). Not set: the system's on
+ * Windows (a frameless window shook there with fractional scaling), Leverframe's title bar elsewhere.
+ */
+export function systemFrame(setting: unknown, windows: boolean): boolean {
+  if (setting === "system") return true;
+  if (setting === "custom") return false;
+  return windows;
+}

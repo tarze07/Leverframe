@@ -230,6 +230,96 @@ pub fn write_text(path: &Path, content: &str, expected_mtime: Option<i64>) -> Re
     Ok(mtime_ms(&meta))
 }
 
+/// Checks a name typed for a new file or folder: one or more parts separated by `/` (folders on
+/// the way are created), none empty, `.`, `..` or with `\\`, `:`, control characters.
+fn valid_new_name(name: &str) -> Result<Vec<&str>, FsError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(FsError::other("Podaj nazwę"));
+    }
+    let parts: Vec<&str> = name.split('/').collect();
+    for part in &parts {
+        if part.is_empty()
+            || *part == "."
+            || *part == ".."
+            || part.trim() != *part
+            || part.chars().any(|c| {
+                c.is_control() || matches!(c, '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            })
+        {
+            return Err(FsError::other(format!("Nieprawidłowa nazwa: {name}")));
+        }
+    }
+    Ok(parts)
+}
+
+/// Creates the file (empty) or folder `name` in `parent`; never overwrites. Returns its path.
+pub fn create_entry(parent: &Path, name: &str, dir: bool) -> Result<PathBuf, FsError> {
+    if !parent.is_dir() {
+        return Err(FsError::other(format!(
+            "Folder {} nie istnieje",
+            parent.display()
+        )));
+    }
+    let target = valid_new_name(name)?
+        .iter()
+        .fold(parent.to_path_buf(), |p, part| p.join(part));
+    if target.symlink_metadata().is_ok() {
+        return Err(FsError::other(format!("{} już istnieje", target.display())));
+    }
+    let made = if dir {
+        std::fs::create_dir_all(&target)
+    } else {
+        target
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|_| {
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&target)
+                    .map(drop)
+            })
+    };
+    made.map_err(|e| FsError::other(format!("Nie można utworzyć {}: {e}", target.display())))?;
+    Ok(target)
+}
+
+/// Deletes a file or folder inside the project folder `root` (never `root` itself or anything
+/// outside it): to the system trash, or `permanently`. A symbolic link is removed, not its target.
+pub fn delete_entry(root: &Path, path: &Path, permanently: bool) -> Result<(), FsError> {
+    let meta = path
+        .symlink_metadata()
+        .map_err(|_| FsError::other(format!("{} nie istnieje", path.display())))?;
+    let root = root
+        .canonicalize()
+        .map_err(|e| FsError::other(format!("Folder projektu: {e}")))?;
+    // The folder holding the entry, resolved (the entry itself may be a link).
+    let holder = path
+        .parent()
+        .and_then(|p| p.canonicalize().ok())
+        .ok_or_else(|| FsError::other(format!("Nieprawidłowa ścieżka: {}", path.display())))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| FsError::other(format!("Nieprawidłowa ścieżka: {}", path.display())))?;
+    if !holder.join(name).starts_with(&root) || holder.join(name) == root {
+        return Err(FsError::other(
+            "Usuwać można tylko pliki i foldery wewnątrz folderu projektu",
+        ));
+    }
+    let what = path.display();
+    if !permanently {
+        return trash::delete(path)
+            .map_err(|e| FsError::other(format!("Nie można przenieść {what} do kosza: {e}")));
+    }
+    let removed = if meta.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+    removed.map_err(|e| FsError::other(format!("Nie można usunąć {what}: {e}")))
+}
+
 /// Absolute path of `rel` inside `root` (used by quick open).
 pub fn join(root: &Path, rel: &str) -> PathBuf {
     rel.split('/')
@@ -245,6 +335,78 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn creates_files_and_folders_without_overwriting() {
+        let d = temp("create");
+        let file = create_entry(&d, "src/nowy.ts", false).unwrap();
+        assert_eq!(file, d.join("src").join("nowy.ts"));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "");
+        let dir = create_entry(&d, " docs/obrazy ", true).unwrap();
+        assert!(dir.is_dir());
+        std::fs::write(&file, "treść").unwrap();
+        let err = create_entry(&d, "src/nowy.ts", false).unwrap_err();
+        assert!(err.to_string().contains("już istnieje"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "treść",
+            "not overwritten"
+        );
+        for bad in [
+            "",
+            "  ",
+            "../poza.txt",
+            "a//b",
+            "a/./b",
+            "C:x",
+            "a\\b",
+            "x?",
+        ] {
+            assert!(create_entry(&d, bad, false).is_err(), "{bad:?}");
+        }
+        assert!(!d.parent().unwrap().join("poza.txt").exists());
+        assert!(create_entry(&d.join("brak"), "a", false).is_err());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn deletes_only_inside_the_project() {
+        let base = temp("delete");
+        let root = base.join("projekt");
+        std::fs::create_dir_all(root.join("src/stare")).unwrap();
+        std::fs::write(root.join("src/stare/a.txt"), "a").unwrap();
+        std::fs::write(root.join("b.txt"), "b").unwrap();
+        std::fs::write(base.join("poza.txt"), "x").unwrap();
+
+        delete_entry(&root, &root.join("b.txt"), true).unwrap();
+        assert!(!root.join("b.txt").exists());
+        delete_entry(&root, &root.join("src/stare"), true).unwrap();
+        assert!(!root.join("src/stare").exists() && root.join("src").is_dir());
+
+        for outside in [
+            base.join("poza.txt"),
+            root.clone(),
+            root.join("../poza.txt"),
+        ] {
+            let err = delete_entry(&root, &outside, true).unwrap_err();
+            assert!(
+                err.to_string().contains("wewnątrz folderu projektu"),
+                "{outside:?}: {err}"
+            );
+        }
+        assert!(base.join("poza.txt").exists() && root.is_dir());
+        assert!(delete_entry(&root, &root.join("brak.txt"), true).is_err());
+
+        // A link to something outside: the link goes, its target stays.
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(base.join("poza.txt"), root.join("link")).unwrap();
+            delete_entry(&root, &root.join("link"), true).unwrap();
+            assert!(root.join("link").symlink_metadata().is_err());
+            assert!(base.join("poza.txt").exists());
+        }
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]

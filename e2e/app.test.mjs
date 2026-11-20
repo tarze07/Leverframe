@@ -86,6 +86,53 @@ describe("Leverframe", () => {
     assert.match(readFileSync(join(env.project, "src", "payments.ts"), "utf8"), /\/\/ e2e$/);
   });
 
+  it("creates and deletes files and folders in the file tree (#97)", async () => {
+    await showView("Pliki");
+    const item = (name) => `[role=treeitem][aria-label="${name}"]`;
+    const create = async (button, name) => {
+      await app.exec(`document.querySelector('button[aria-label="${button}"]').click()`);
+      await app.waitFor("return !!document.querySelector('form[aria-label^=\"Nowy \"] input')");
+      await app.exec(
+        `const i = document.querySelector('form[aria-label^="Nowy "] input');
+         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[0]);
+         i.dispatchEvent(new Event('input', { bubbles: true }));`,
+        [name],
+      );
+      await app.exec(`document.querySelector('form[aria-label^="Nowy "] button[type=submit]').click()`);
+      await app.waitFor("return !document.querySelector('form[aria-label^=\"Nowy \"]')");
+    };
+    const remove = async (name, choice) => {
+      await app.exec(`document.querySelector('${item(name)} button[aria-label="Usuń ${name}"]').click()`);
+      await app.waitFor(`return !!document.querySelector('[role=group][aria-label="Usuwanie ${name}"]')`);
+      await app.exec(
+        `[...document.querySelectorAll('[role=group][aria-label="Usuwanie ${name}"] button')].find(b => b.textContent.trim() === arguments[0]).click()`,
+        [choice],
+      );
+      await app.waitFor(`return !document.querySelector('${item(name)}')`, 20_000);
+    };
+
+    // New entries go to the last folder clicked: src.
+    await app.waitFor(`return !!document.querySelector('${item("src")}')`);
+    await app.exec(`document.querySelector('${item("src")} button').click()`);
+    const base = join(env.project, "src");
+    await create("Nowy folder…", "notatki/robocze");
+    assert.ok(existsSync(join(base, "notatki", "robocze")), "the folder and the one on the way");
+    await create("Nowy plik…", "notatki/plan.md");
+    assert.equal(readFileSync(join(base, "notatki", "plan.md"), "utf8"), "");
+    await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.trim() === 'plan.md')", 20_000);
+    await app.waitFor(`return !!document.querySelector('${item("plan.md")}')`);
+
+    // To the trash: gone from the folder, in the user's trash, its editor closed.
+    await remove("plan.md", "Do kosza");
+    assert.equal(existsSync(join(base, "notatki", "plan.md")), false);
+    assert.ok(existsSync(join(env.home, ".local", "share", "Trash", "files", "plan.md")), "in the trash");
+    await app.waitFor("return ![...document.querySelectorAll('.dv-tab')].some(t => t.innerText.trim() === 'plan.md')");
+
+    // A folder with its contents, permanently.
+    await remove("notatki", "Usuń na stałe");
+    assert.equal(existsSync(join(base, "notatki")), false);
+  });
+
   it("saves a Markdown file with the toolbar button and shows its preview", async () => {
     const bar = `[...document.querySelectorAll('[aria-label="Pasek edytora"]')].find(b => b.querySelector('span[title$="README.md"]'))`;
     await showView("Pliki");

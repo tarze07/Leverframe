@@ -26,6 +26,10 @@ export const fsClient = {
   readText: (path: string) => invoke<TextFile>("fs_read_text", { path }),
   writeText: (path: string, content: string, expectedMtime: number | null) =>
     invoke<number>("fs_write_text", { path, content, expectedMtime }),
+  /** An empty file or a folder `name` (may contain `/`) in `parent`; the new path. */
+  create: (parent: string, name: string, dir: boolean) => invoke<string>("fs_create", { parent, name, dir }),
+  /** A file or folder of the project folder: to the system trash, or permanently. */
+  remove: (path: string, permanently: boolean) => invoke<void>("fs_delete", { path, permanently }),
 };
 
 export function errorMessage(e: unknown): string {

@@ -1,12 +1,13 @@
 import { isTauri, windowControls } from "../lib/tauri";
-import { useSettingsStore } from "../store/settings";
+import { isWindows } from "../features/terminal/keys";
+import { systemFrame, useSettingsStore } from "../store/settings";
 
 /** Frameless-window title bar: drag region + window controls (only inside Tauri). */
 export function TitleBar() {
   const native = isTauri();
   // With the system's frame (setting windowFrame) the system draws the title and the buttons.
-  const systemFrame = useSettingsStore((s) => s.values.windowFrame === "system");
-  if (native && systemFrame) return null;
+  const system = useSettingsStore((s) => systemFrame(s.values.windowFrame, isWindows()));
+  if (native && system) return null;
   return (
     <header
       data-tauri-drag-region

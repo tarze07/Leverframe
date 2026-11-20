@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore, type PanelPosition } from "../../store/ui";
-import { useSettingsStore, type SettingKey } from "../../store/settings";
+import { systemFrame, useSettingsStore, type SettingKey } from "../../store/settings";
+import { isWindows } from "../terminal/keys";
 import { THEMES, themeById, type ThemeKind } from "../../theme/themes";
 import { isTauri, windowControls } from "../../lib/tauri";
 import { openFile } from "../../workbench/commands";
@@ -51,7 +52,7 @@ export function SettingsView() {
   const autoSaveId = useId();
   const dockerId = useId();
   const frameId = useId();
-  const windowFrame = useSettingsStore((s) => (s.values.windowFrame === "system" ? "system" : "custom"));
+  const windowFrame = useSettingsStore((s) => (systemFrame(s.values.windowFrame, isWindows()) ? "system" : "custom"));
   const dockerPath = useSettingsStore((s) => (typeof s.values.dockerPath === "string" ? s.values.dockerPath : ""));
   const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
   const confirmCommands = useSettingsStore((s) => s.values.acpConfirmCommands !== false);
@@ -134,7 +135,7 @@ export function SettingsView() {
           <option value="system">Systemowa</option>
         </select>
         <span className="text-[11px] text-lf-subtle">
-          Systemowa ramka pomaga, gdy okno drży przy skalowaniu ekranu innym niż 100% (Windows, okno niezmaksymalizowane).
+          Na Windows domyślnie systemowa: okno bez ramki drżało tam przy skalowaniu ekranu innym niż 100%.
         </span>
       </div>
       <div className="flex flex-col gap-1">

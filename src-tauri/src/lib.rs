@@ -27,12 +27,10 @@ pub fn run() {
             app.manage(profiles::ProfileService::new(&config_dir));
             app.manage(agents::AgentService::new(&config_dir));
             let settings_store = settings::SettingsStore::new(&config_dir);
-            // The system's window frame instead of Leverframe's title bar (setting windowFrame).
-            if settings_store
-                .get_string(settings::WINDOW_FRAME_KEY)
-                .as_deref()
-                == Some("system")
-            {
+            // The system's window frame instead of Leverframe's title bar (setting windowFrame;
+            // by default on Windows).
+            let frame = settings_store.get_string(settings::WINDOW_FRAME_KEY);
+            if settings::system_frame(frame.as_deref(), cfg!(windows)) {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_decorations(true);
                 }
@@ -85,6 +83,8 @@ pub fn run() {
             fs::commands::fs_read_text,
             fs::commands::fs_read_image,
             fs::commands::fs_write_text,
+            fs::commands::fs_create,
+            fs::commands::fs_delete,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,
