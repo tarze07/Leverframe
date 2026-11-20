@@ -190,9 +190,11 @@ pub fn mkdir(profile: &Profile, parent: &str, name: &str) -> Result<RemoteDirs, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::process::{Command, Stdio};
 
     /// Runs a script with the local `sh` (what the other side does), with this HOME.
+    #[cfg(unix)]
     fn sh(script: &str, home: &std::path::Path) -> String {
         use std::io::Write;
         let mut child = Command::new("sh")
@@ -211,6 +213,7 @@ mod tests {
         String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap()
     }
 
+    #[cfg(unix)]
     fn temp(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("lf-remote-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
