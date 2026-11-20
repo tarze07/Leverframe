@@ -14,6 +14,8 @@ type Children = Record<string, DirEntry[] | "loading" | { error: string }>;
 /** Sidebar view: file tree of the project folder (shared with the Agents panel). */
 export function FilesView() {
   const projectDir = useAgentsStore((s) => s.projectDir);
+  const recentDirs = useAgentsStore((s) => s.recentDirs);
+  const [folderMenu, setFolderMenu] = useState(false);
   const load = useAgentsStore((s) => s.load);
   const setProjectDir = useAgentsStore((s) => s.setProjectDir);
   const openQuick = useUiStore((s) => s.setQuickOpen);
@@ -66,7 +68,18 @@ export function FilesView() {
     return <Placeholder icon="files" title="Pliki" children="Drzewo plików jest dostępne w aplikacji desktopowej." />;
   }
 
+  const chooseFolder = async (dir: string) => {
+    setFolderMenu(false);
+    setActionError(null);
+    try {
+      await setProjectDir(dir);
+    } catch (e) {
+      setActionError(errorMessage(e));
+    }
+  };
+
   const pickFolder = async () => {
+    setFolderMenu(false);
     const picked = await openDialog({ directory: true, multiple: false, defaultPath: projectDir ?? undefined });
     if (typeof picked === "string") await setProjectDir(picked);
   };
@@ -97,6 +110,12 @@ export function FilesView() {
         <button type="button" onClick={() => void pickFolder()} className="rounded bg-lf-accent px-3 py-1 text-xs text-lf-accent-fg">
           Otwórz folder…
         </button>
+        {recentDirs.length > 0 && (
+          <div className="flex w-full flex-col gap-1 text-left">
+            <span className="text-[11px] text-lf-muted">Ostatnio otwierane</span>
+            <RecentFolders dirs={recentDirs} onChoose={(d) => void chooseFolder(d)} />
+          </div>
+        )}
       </div>
     );
   }
@@ -138,16 +157,41 @@ export function FilesView() {
   return (
     <div className="flex flex-col pb-4">
       <div className="flex items-center gap-1 px-3 pb-1">
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-lf-fg" title={projectDir}>
-          {folderName(projectDir)}
-        </span>
+        <button
+          type="button"
+          title={`${projectDir} – kliknij, aby otworzyć inny folder`}
+          aria-label="Zmień folder projektu"
+          aria-expanded={folderMenu}
+          onClick={() => setFolderMenu((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-xs font-semibold text-lf-fg hover:bg-lf-hover"
+        >
+          <span className="truncate">{folderName(projectDir)}</span>
+          <span className={`codicon codicon-chevron-${folderMenu ? "up" : "down"} shrink-0 text-lf-muted`} aria-hidden />
+        </button>
         <ToolbarButton icon="new-file" label="Nowy plik…" onClick={() => (setCreating("file"), setActionError(null))} />
         <ToolbarButton icon="new-folder" label="Nowy folder…" onClick={() => (setCreating("dir"), setActionError(null))} />
         <ToolbarButton icon="go-to-file" label="Szybkie otwieranie (Ctrl+P)" onClick={() => openQuick(true)} />
-        <ToolbarButton icon="folder-opened" label="Otwórz inny folder…" onClick={() => void pickFolder()} />
         <ToolbarButton icon="refresh" label="Odśwież" onClick={refresh} />
         <ToolbarButton icon="collapse-all" label="Zwiń wszystko" onClick={() => setExpanded(new Set())} />
       </div>
+      {folderMenu && (
+        <div className="mx-3 mb-2 flex flex-col gap-1 rounded border border-lf-border bg-lf-editor p-1">
+          <button
+            type="button"
+            onClick={() => void pickFolder()}
+            className="flex items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs text-lf-fg hover:bg-lf-hover"
+          >
+            <span className="codicon codicon-folder-opened text-lf-muted" aria-hidden />
+            Otwórz folder…
+          </button>
+          {recentDirs.some((d) => d !== projectDir) && (
+            <>
+              <span className="px-1.5 pt-1 text-[11px] text-lf-muted">Ostatnio otwierane</span>
+              <RecentFolders dirs={recentDirs.filter((d) => d !== projectDir)} onChoose={(d) => void chooseFolder(d)} />
+            </>
+          )}
+        </div>
+      )}
       {creating && (
         <NewEntryForm
           key={creating}
@@ -247,6 +291,27 @@ function Tree(props: TreeProps) {
           </li>
         );
       })}
+    </ul>
+  );
+}
+
+/** Recently opened project folders: one click opens one again. */
+function RecentFolders({ dirs, onChoose }: { dirs: string[]; onChoose: (dir: string) => void }) {
+  return (
+    <ul aria-label="Ostatnio otwierane foldery" className="flex flex-col">
+      {dirs.map((dir) => (
+        <li key={dir}>
+          <button
+            type="button"
+            title={dir}
+            onClick={() => onChoose(dir)}
+            className="flex w-full min-w-0 items-baseline gap-2 rounded px-1.5 py-0.5 text-left text-xs hover:bg-lf-hover"
+          >
+            <span className="shrink-0 text-lf-fg">{folderName(dir)}</span>
+            <span className="truncate text-[11px] text-lf-subtle">{dir}</span>
+          </button>
+        </li>
+      ))}
     </ul>
   );
 }

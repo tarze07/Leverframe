@@ -38,7 +38,7 @@ describe("FilesView", () => {
       if (cmd === "settings_set_project_dir") return (args as { path: string }).path;
       return undefined;
     });
-    useAgentsStore.setState({ projectDir: "/p", loaded: true });
+    useAgentsStore.setState({ projectDir: "/p", recentDirs: [], loaded: true });
   });
 
   it("shows the tree lazily and opens files", async () => {
@@ -61,7 +61,8 @@ describe("FilesView", () => {
     await screen.findByText("README.md");
     fireEvent.click(screen.getByLabelText("Szybkie otwieranie (Ctrl+P)"));
     expect(useUiStore.getState().quickOpen).toBe(true);
-    fireEvent.click(screen.getByLabelText("Otwórz inny folder…"));
+    fireEvent.click(screen.getByLabelText("Zmień folder projektu"));
+    fireEvent.click(screen.getByText("Otwórz folder…"));
     expect(await screen.findByText("Folder /broken nie istnieje")).toBeInTheDocument();
   });
 
@@ -130,5 +131,29 @@ describe("FilesView", () => {
     expect(screen.getByRole("group", { name: "Usuwanie src" })).toHaveTextContent("Usunąć folder src z zawartością?");
     fireEvent.click(screen.getByText("Usuń na stałe"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("fs_delete", { path: "/p/src", permanently: true }));
+  });
+
+  it("switches the project folder from the folder menu: a dialog or a recent folder", async () => {
+    useAgentsStore.setState({ recentDirs: ["/p", "/home/me/sklep", "/home/me/blog"] });
+    render(<FilesView />);
+    await screen.findByText("README.md");
+    const menu = screen.getByLabelText("Zmień folder projektu");
+    expect(menu).toHaveTextContent("p");
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menu);
+    const recent = screen.getByRole("list", { name: "Ostatnio otwierane foldery" });
+    // The folder open now is not offered again.
+    expect(within(recent).queryByTitle("/p")).toBeNull();
+    fireEvent.click(within(recent).getByTitle("/home/me/sklep"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_project_dir", { path: "/home/me/sklep" }));
+    await waitFor(() => expect(useAgentsStore.getState().projectDir).toBe("/home/me/sklep"));
+    expect(screen.queryByRole("list", { name: "Ostatnio otwierane foldery" })).toBeNull();
+  });
+
+  it("offers recent folders when none is open", async () => {
+    useAgentsStore.setState({ projectDir: null, recentDirs: ["/home/me/blog"] });
+    render(<FilesView />);
+    fireEvent.click(within(screen.getByRole("list", { name: "Ostatnio otwierane foldery" })).getByText("blog"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_project_dir", { path: "/home/me/blog" }));
   });
 });
