@@ -4,8 +4,18 @@ mod store;
 
 use serde::Serialize;
 
-/// `custom` (Leverframe's title bar, default) or `system` (the system's window frame).
+/// `custom` (Leverframe's title bar) or `system` (the system's window frame).
 pub const WINDOW_FRAME_KEY: &str = "windowFrame";
+
+/// Whether the window uses the system's frame. Not set: the system's on Windows (a frameless
+/// window shook there with fractional scaling when not maximized), Leverframe's elsewhere.
+pub fn system_frame(setting: Option<&str>, windows: bool) -> bool {
+    match setting {
+        Some("system") => true,
+        Some("custom") => false,
+        _ => windows,
+    }
+}
 
 pub use store::{write_atomic, SettingsStore};
 
@@ -420,5 +430,18 @@ mod settings_command_tests {
         assert!(s.values.is_empty());
         assert!(s.error.unwrap().contains("settings.json"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod window_frame_tests {
+    use super::system_frame;
+
+    #[test]
+    fn the_system_frame_is_the_default_on_windows_only() {
+        assert!(system_frame(None, true));
+        assert!(!system_frame(None, false));
+        assert!(system_frame(Some("system"), false));
+        assert!(!system_frame(Some("custom"), true));
     }
 }

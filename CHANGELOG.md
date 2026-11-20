@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Zmienione
+- **Systemowa ramka okna domyślnie na Windows**: okno bez ramki drżało przy skalowaniu ekranu innym niż 100% (np. 125%) w oknie niezmaksymalizowanym – na ramce systemowej problem znika (potwierdzone na Windows). Pasek tytułu Leverframe można przywrócić w Ustawieniach („Ramka okna”); na Linuksie i macOS domyślny pozostaje pasek Leverframe.
+
 ## [0.10.2] – 2026-11-19
 
 ### Naprawione
