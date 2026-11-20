@@ -68,6 +68,32 @@ describe("Leverframe", () => {
       "const l=[...document.querySelectorAll('li[aria-label^=\"Polecenie\"]')]; return l.length ? l.map(x => x.innerText) : null",
     );
     assert.ok(commands.some((c) => c.includes("kod 1")), "failed command shows its exit code");
+
+    // #101: the conversation is copied as Markdown (read back through the app's clipboard).
+    const clipboard = "return window.__TAURI_INTERNALS__.invoke('plugin:clipboard-manager|read_text')";
+    await app.exec("document.querySelector('button[aria-label=\"Kopiuj rozmowę\"]').click()");
+    await app.waitFor("return document.querySelector('button[aria-label=\"Kopiuj rozmowę\"]').textContent.includes('Skopiowano')");
+    const md = await app.exec(clipboard);
+    assert.match(md, /^# Napraw testy/);
+    assert.match(md, /\*\*Polecenie\*\*/);
+    // The text of the timeline can be selected.
+    assert.equal(
+      await app.exec("const st = getComputedStyle(document.querySelector('ol[aria-label=\"Oś czasu\"] p.select-text')); return st.userSelect || st.webkitUserSelect"),
+      "text",
+    );
+
+    // The recorded session: its terminal text up to now (opened from a search: at the end).
+    await app.click('[role="tab"]', "Historia");
+    await app.exec(
+      "const i=document.querySelector('input[placeholder^=\"Szukaj w nagraniach\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'refactor'); i.dispatchEvent(new Event('input',{bubbles:true}));",
+    );
+    await app.waitFor("return !!document.querySelector('ul[aria-label=\"Sesje\"] mark')", 15_000);
+    await app.exec("document.querySelector('ul[aria-label=\"Sesje\"] mark').closest('button').click()");
+    await app.waitFor("return !!document.querySelector('button[aria-label=\"Kopiuj tekst terminala\"]')", 15_000);
+    await app.waitFor("return document.querySelector('[data-testid=player-terminal]')?.textContent.toLowerCase().includes('refactor')", 15_000);
+    await app.exec("document.querySelector('button[aria-label=\"Kopiuj tekst terminala\"]').click()");
+    await app.waitFor("return document.querySelector('button[aria-label=\"Kopiuj tekst terminala\"]').textContent.includes('Skopiowano')");
+    assert.match((await app.exec(clipboard)).toLowerCase(), /refactor/);
   });
 
   it("edits and saves a file; ignored files are hidden", async () => {

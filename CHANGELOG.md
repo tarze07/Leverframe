@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Kopiowanie z widoków sesji** ([#101](https://github.com/tarze07/Leverframe/issues/101)): tekst rozmowy z logu agenta da się zaznaczać i kopiować (Ctrl+C); przyciski „Kopiuj” przy wiadomościach, wynikach i narzędziach oraz „Kopiuj rozmowę” (cała rozmowa jako Markdown, z rozumowaniem, gdy jest pokazane). W nagraniu sesji Ctrl+C / Ctrl+Shift+C kopiuje zaznaczenie, a „Kopiuj tekst terminala” – cały tekst do bieżącej chwili nagrania (bez kodów sterujących). Potwierdzenie „Skopiowano” albo komunikat o błędzie schowka.
+
 ## [0.11.0] – 2026-11-20
 
 ### Dodane

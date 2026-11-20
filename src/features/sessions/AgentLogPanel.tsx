@@ -7,10 +7,13 @@ import { useProfilesStore } from "../../store/profiles";
 import { dockerClient } from "../docker/dockerClient";
 import { hostPath } from "../docker/paths";
 import { plural } from "../../lib/plural";
+import { CopyButton } from "../../components/CopyButton";
 import {
   agentLogsClient,
   buildTimeline,
   changedFiles,
+  conversationMarkdown,
+  itemMarkdown,
   LOG_AGENT_NAMES,
   resumeCommand,
   toolLabel,
@@ -74,6 +77,12 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
                 .join(" · ")}
             </p>
           </div>
+          <CopyButton
+            label="Kopiuj rozmowę"
+            showLabel
+            text={() => conversationMarkdown(s, timeline, showThinking)}
+            className="mt-0.5 border border-lf-border px-1.5 py-0.5"
+          />
           {resume && (
             <button
               type="button"
@@ -156,25 +165,25 @@ export function AgentLogPanel({ params }: IDockviewPanelProps<AgentLogParams>) {
 function TimelineRow({ item, source, cwd }: { item: TimelineItem; source: string; cwd: string | null }) {
   if (item.kind === "user") {
     return (
-      <li className="ml-12 rounded-lg bg-lf-elevated px-3 py-2">
-        <Meta label="Ty" ts={item.ts} />
-        <p className="whitespace-pre-wrap break-words text-[13px] text-lf-fg">{item.text}</p>
+      <li className="group ml-12 rounded-lg bg-lf-elevated px-3 py-2">
+        <Meta label="Ty" ts={item.ts} copy={() => item.text} />
+        <p className="select-text whitespace-pre-wrap break-words text-[13px] text-lf-fg">{item.text}</p>
       </li>
     );
   }
   if (item.kind === "assistant") {
     return (
-      <li className="mr-12 px-1">
-        <Meta label="Agent" ts={item.ts} />
-        <p className="whitespace-pre-wrap break-words text-[13px] text-lf-fg">{item.text}</p>
+      <li className="group mr-12 px-1">
+        <Meta label="Agent" ts={item.ts} copy={() => item.text} />
+        <p className="select-text whitespace-pre-wrap break-words text-[13px] text-lf-fg">{item.text}</p>
       </li>
     );
   }
   if (item.kind === "thinking") {
     return (
-      <li className="mr-12 border-l-2 border-lf-border px-3">
-        <Meta label="Rozumowanie" ts={item.ts} />
-        <p className="whitespace-pre-wrap break-words text-xs italic text-lf-muted">{item.text}</p>
+      <li className="group mr-12 border-l-2 border-lf-border px-3">
+        <Meta label="Rozumowanie" ts={item.ts} copy={() => item.text} />
+        <p className="select-text whitespace-pre-wrap break-words text-xs italic text-lf-muted">{item.text}</p>
       </li>
     );
   }
@@ -189,7 +198,7 @@ function TimelineRow({ item, source, cwd }: { item: TimelineItem; source: string
       <div className="flex items-center gap-2 px-2 py-1.5">
         <span className={`codicon codicon-${isCommand ? "terminal" : call.files.length ? "edit" : "tools"} text-lf-muted`} aria-hidden />
         <span className="shrink-0 text-[11px] text-lf-muted">{call.name}</span>
-        <code className={`min-w-0 flex-1 truncate font-mono text-xs ${isCommand ? "text-lf-fg" : "text-lf-muted"}`} title={toolLabel(call)}>
+        <code className={`min-w-0 flex-1 select-text truncate font-mono text-xs ${isCommand ? "text-lf-fg" : "text-lf-muted"}`} title={toolLabel(call)}>
           {toolLabel(call)}
         </code>
         {result?.exitCode != null && (
@@ -199,9 +208,10 @@ function TimelineRow({ item, source, cwd }: { item: TimelineItem; source: string
         )}
         {result?.isError && result.exitCode == null && <span className="shrink-0 text-[10px] text-lf-danger">błąd</span>}
         <span className="shrink-0 text-[10px] text-lf-subtle">{time(item.ts)}</span>
+        {!isCommand && <CopyButton label="Kopiuj narzędzie z wynikiem" text={() => itemMarkdown(item)} />}
         {isCommand && (
           <>
-            <IconButton icon="copy" label="Kopiuj polecenie" onClick={() => copy(call.command!)} />
+            <CopyButton label="Kopiuj polecenie" text={() => call.command!} />
             <IconButton
               icon="run"
               label="Wpisz w nowym terminalu (bez uruchamiania)"
@@ -212,14 +222,17 @@ function TimelineRow({ item, source, cwd }: { item: TimelineItem; source: string
       </div>
       {result && result.output.trim() && (
         <details open={failed} className="border-t border-lf-border">
-          <summary className="cursor-pointer px-2 py-1 text-[11px] text-lf-muted hover:text-lf-fg">Wynik</summary>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all px-3 pb-2 font-mono text-[11px] text-lf-fg">{result.output}</pre>
+          <summary className="flex cursor-pointer items-center gap-2 px-2 py-1 text-[11px] text-lf-muted hover:text-lf-fg">
+            <span className="flex-1">Wynik</span>
+            <CopyButton label="Kopiuj wynik" text={() => result.output} />
+          </summary>
+          <pre className="max-h-80 select-text overflow-auto whitespace-pre-wrap break-all px-3 pb-2 font-mono text-[11px] text-lf-fg">{result.output}</pre>
         </details>
       )}
       {!isCommand && call.files.length === 0 && call.input != null && (
         <details className="border-t border-lf-border">
           <summary className="cursor-pointer px-2 py-1 text-[11px] text-lf-muted hover:text-lf-fg">Parametry</summary>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all px-3 pb-2 font-mono text-[11px] text-lf-muted">
+          <pre className="max-h-60 select-text overflow-auto whitespace-pre-wrap break-all px-3 pb-2 font-mono text-[11px] text-lf-muted">
             {typeof call.input === "string" ? call.input : JSON.stringify(call.input, null, 2)}
           </pre>
         </details>
@@ -228,11 +241,14 @@ function TimelineRow({ item, source, cwd }: { item: TimelineItem; source: string
   );
 }
 
-function Meta({ label, ts }: { label: string; ts: number | null }) {
+function Meta({ label, ts, copy }: { label: string; ts: number | null; copy: () => string }) {
   return (
-    <p className="mb-0.5 text-[10px] uppercase tracking-wide text-lf-subtle">
-      {label} {ts ? `· ${time(ts)}` : ""}
-    </p>
+    <div className="mb-0.5 flex items-center gap-2">
+      <p className="text-[10px] uppercase tracking-wide text-lf-subtle">
+        {label} {ts ? `· ${time(ts)}` : ""}
+      </p>
+      <CopyButton label={`Kopiuj: ${label}`} text={copy} className="opacity-0 focus:opacity-100 group-hover:opacity-100" />
+    </div>
   );
 }
 

@@ -157,6 +157,49 @@ describe("AgentLogPanel", () => {
     );
   });
 
+  it("lets the text be selected and copies messages, results and the whole conversation (#101)", async () => {
+    render(<AgentLogPanel {...props} />);
+    const answer = await screen.findByText("Gotowe, testy przechodzą.");
+    expect(answer).toHaveClass("select-text");
+    expect(screen.getByText("Napraw testy płatności", { selector: "p" })).toHaveClass("select-text");
+
+    fireEvent.click(screen.getByLabelText("Kopiuj: Agent"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Gotowe, testy przechodzą."));
+    expect(await screen.findByText("Skopiowano")).toBeInTheDocument();
+
+    const command = screen.getByRole("listitem", { name: "Polecenie npm test" });
+    fireEvent.click(within(command).getByLabelText("Kopiuj wynik"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Exit code 1\nFAIL payments"));
+    // The result stays open (the button is inside its summary).
+    expect(within(command).getByText(/FAIL payments/)).toBeVisible();
+
+    const edit = screen.getByRole("listitem", { name: "Narzędzie Edit" });
+    fireEvent.click(within(edit).getByLabelText("Kopiuj narzędzie z wynikiem"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("**Narzędzie** Edit: `/home/me/shop/src/pay.ts`")));
+
+    fireEvent.click(screen.getByLabelText("Kopiuj rozmowę"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringMatching(/^# Napraw testy płatności\n/)));
+    const md = writeText.mock.calls.at(-1)![0];
+    expect(md).toContain("_Claude Code · /home/me/shop · gałąź main · ");
+    expect(md).toContain("**Ty:**\n\nNapraw testy płatności");
+    expect(md).toContain("**Polecenie** (Bash) – kod 1:\n\n```sh\nnpm test\n```\n\nWynik:\n\n```\nExit code 1\nFAIL payments\n```");
+    expect(md).toContain("**Agent:**\n\nGotowe, testy przechodzą.");
+    expect(md).not.toContain("Ukryte rozumowanie");
+    // With the reasoning shown, it is copied too.
+    fireEvent.click(screen.getByLabelText("Pokaż rozumowanie"));
+    fireEvent.click(screen.getByLabelText("Kopiuj rozmowę"));
+    await waitFor(() => expect(writeText.mock.calls.at(-1)![0]).toContain("> Ukryte rozumowanie"));
+  });
+
+  it("says when the clipboard fails", async () => {
+    writeText.mockRejectedValueOnce(new Error("brak dostępu"));
+    render(<AgentLogPanel {...props} />);
+    await screen.findByText("Gotowe, testy przechodzą.");
+    fireEvent.click(screen.getByLabelText("Kopiuj rozmowę"));
+    expect(await screen.findByText("Błąd schowka")).toBeInTheDocument();
+    expect(screen.getByLabelText("Kopiuj rozmowę")).toHaveAttribute("title", expect.stringContaining("brak dostępu"));
+  });
+
   it("filters to commands only", async () => {
     render(<AgentLogPanel {...props} />);
     await screen.findByText("Gotowe, testy przechodzą.");
