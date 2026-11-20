@@ -71,3 +71,35 @@ pub async fn fs_delete(
     })?;
     blocking(move || delete_entry(&PathBuf::from(root), &PathBuf::from(path), permanently)).await
 }
+
+/// Folders of `path` on the computer of an SSH, WSL or container profile (`~` and empty: home).
+#[tauri::command]
+pub async fn remote_list_dirs(
+    profiles: tauri::State<'_, crate::profiles::ProfileService>,
+    profile_id: String,
+    path: String,
+    show_hidden: bool,
+) -> Result<super::remote::RemoteDirs, String> {
+    let profile = profiles
+        .resolve(&profile_id)
+        .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
+    tauri::async_runtime::spawn_blocking(move || super::remote::list(&profile, &path, show_hidden))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Makes the folder `name` in `parent` on that computer; returns the new folder's listing.
+#[tauri::command]
+pub async fn remote_make_dir(
+    profiles: tauri::State<'_, crate::profiles::ProfileService>,
+    profile_id: String,
+    parent: String,
+    name: String,
+) -> Result<super::remote::RemoteDirs, String> {
+    let profile = profiles
+        .resolve(&profile_id)
+        .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
+    tauri::async_runtime::spawn_blocking(move || super::remote::mkdir(&profile, &parent, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}

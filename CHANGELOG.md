@@ -6,6 +6,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ### Dodane
 - **Kopiowanie z widoków sesji** ([#101](https://github.com/tarze07/Leverframe/issues/101)): tekst rozmowy z logu agenta da się zaznaczać i kopiować (Ctrl+C); przyciski „Kopiuj” przy wiadomościach, wynikach i narzędziach oraz „Kopiuj rozmowę” (cała rozmowa jako Markdown, z rozumowaniem, gdy jest pokazane). W nagraniu sesji Ctrl+C / Ctrl+Shift+C kopiuje zaznaczenie, a „Kopiuj tekst terminala” – cały tekst do bieżącej chwili nagrania (bez kodów sterujących). Potwierdzenie „Skopiowano” albo komunikat o błędzie schowka.
+- **Wybór katalogu na komputerze zdalnym** ([#100](https://github.com/tarze07/Leverframe/issues/100)): przycisk „Wybierz…” przy „Katalog na serwerze” (panel „Agenci”, profile SSH – także z `~/.ssh/config`) i przy folderze projektu w „Nowy kontener” na serwerze otwiera przeglądanie folderów serwera przez SSH: w górę i w głąb, ścieżka wpisana ręcznie, ukryte foldery, nowy folder, „Wybierz ten folder”. Czytelne błędy (brak folderu, brak dostępu, brak połączenia).
 
 ## [0.11.0] – 2026-11-20
 

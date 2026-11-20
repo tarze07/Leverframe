@@ -298,7 +298,11 @@ describe("ContainersView", () => {
     const form = screen.getByRole("form", { name: "Nowy kontener" });
     const dir = within(form).getByLabelText("Folder projektu na gpu (w kontenerze: /workspace)");
     expect(dir).toHaveValue("/srv/sklep");
-    expect(within(form).queryByText("Wybierz…")).toBeNull();
+    // "Wybierz…" browses the server's folders (#100), not this machine's.
+    fireEvent.click(within(form).getByText("Wybierz…"));
+    expect(within(form).getByRole("dialog", { name: "Wybierz folder na gpu" })).toBeInTheDocument();
+    expect(pickFolder).not.toHaveBeenCalled();
+    fireEvent.click(within(within(form).getByRole("dialog")).getByText("Anuluj"));
     fireEvent.change(dir, { target: { value: "/srv/inny" } });
     await waitFor(() => expect(client.createPlan).toHaveBeenLastCalledWith(expect.objectContaining({ projectDir: "/srv/inny" })));
   });

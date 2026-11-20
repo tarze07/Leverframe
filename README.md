@@ -46,7 +46,7 @@ Pliki Markdown (`.md`) mają trzy widoki, przełączane na pasku: sam tekst, tek
 
 ## Agenci
 
-Panel „Agenci” uruchamia agenta CLI w nowym terminalu wybranego profilu. Folder, w którym startuje, wybierasz nad listą agentów (ikona zegara pokazuje ostatnio używane foldery); ten sam folder jest korzeniem panelu „Pliki”. W profilach WSL można wskazać też folder z dysku dystrybucji (w oknie wyboru: Linux → dystrybucja). Dla profili SSH wpisuje się katalog na serwerze – osobno dla każdego hosta.
+Panel „Agenci” uruchamia agenta CLI w nowym terminalu wybranego profilu. Folder, w którym startuje, wybierasz nad listą agentów (ikona zegara pokazuje ostatnio używane foldery); ten sam folder jest korzeniem panelu „Pliki”. W profilach WSL można wskazać też folder z dysku dystrybucji (w oknie wyboru: Linux → dystrybucja). Dla profili SSH podaje się katalog na serwerze – osobno dla każdego hosta: wpisany albo wybrany przyciskiem **Wybierz…**, który przegląda foldery serwera przez SSH (w górę, w głąb, ścieżka wpisana ręcznie, ukryte foldery, nowy folder). To samo okno wybiera folder projektu w „Nowy kontener”, gdy Docker jest na serwerze.
 
 **Ustawienia agenta** (przycisk ⚙ na karcie agenta):
 - **Argumenty w terminalu** – dopisywane do komendy agenta, np. `--model anthropic/claude-sonnet-4-5` dla OpenCode; słowa ze spacjami w cudzysłowie. Formularz pokazuje, co się uruchomi.

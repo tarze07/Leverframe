@@ -5,6 +5,7 @@ import { useDockerStore } from "../../store/docker";
 import { useProfilesStore } from "../../store/profiles";
 import { folderName } from "../agents/agentsClient";
 import { dockerClient, type ContainerSpec, type CreatePlan, type DockerImage, imageName } from "./dockerClient";
+import { RemoteDirPicker } from "../remote/RemoteDirPicker";
 
 export const fieldClass =
   "w-full rounded border border-lf-border bg-lf-editor px-2 py-1 text-xs text-lf-fg outline-none placeholder:text-lf-subtle focus:border-lf-accent";
@@ -94,12 +95,15 @@ export function NewContainerForm({ image, onDone }: { image: DockerImage; onDone
     };
   }, [specKey]);
 
+  const [picking, setPicking] = useState(false);
+  const chooseDir = (picked: string) => {
+    if (name === suggestedName(dir)) setName(suggestedName(picked));
+    setDir(picked);
+  };
+
   const pickDir = async () => {
     const picked = await openDialog({ directory: true, multiple: false, defaultPath: dir ?? undefined });
-    if (typeof picked === "string") {
-      if (name === suggestedName(dir)) setName(suggestedName(picked));
-      setDir(picked);
-    }
+    if (typeof picked === "string") chooseDir(picked);
   };
 
   const createIt = async () => {
@@ -146,17 +150,34 @@ export function NewContainerForm({ image, onDone }: { image: DockerImage; onDone
           spellCheck={false}
           className={`${fieldClass} min-w-0 flex-1 font-mono`}
         />
-        {!host && (
-          <button type="button" onClick={() => void pickDir()} className="shrink-0 rounded border border-lf-border px-2 text-lf-fg hover:bg-lf-hover">
-            Wybierz…
-          </button>
-        )}
+        <button
+          type="button"
+          aria-expanded={host ? picking : undefined}
+          onClick={() => (host ? setPicking((v) => !v) : void pickDir())}
+          title={host ? `Przeglądaj foldery na ${host.name}` : undefined}
+          className="shrink-0 rounded border border-lf-border px-2 text-lf-fg hover:bg-lf-hover"
+        >
+          Wybierz…
+        </button>
         {dir && (
           <button type="button" aria-label="Bez folderu projektu" onClick={() => setDir(null)} className="shrink-0 rounded px-1 text-lf-muted hover:bg-lf-hover">
             <span className="codicon codicon-close" aria-hidden />
           </button>
         )}
       </div>
+
+      {host?.id && picking && (
+        <RemoteDirPicker
+          profileId={host.id}
+          host={host.name}
+          start={dir}
+          onChoose={(path) => {
+            setPicking(false);
+            chooseDir(path);
+          }}
+          onCancel={() => setPicking(false)}
+        />
+      )}
 
       <label className="flex items-center gap-2 text-lf-fg">
         <input type="checkbox" checked={homeVolume} onChange={(e) => setHomeVolume(e.target.checked)} />

@@ -2,6 +2,7 @@
 //! text files with conflict detection, and the file list for quick open (Ctrl+P).
 
 pub mod commands;
+pub mod remote;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
