@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.11.0] – 2026-11-20
+
 ### Dodane
 - **Tworzenie i usuwanie plików oraz folderów w panelu „Pliki”** ([#97](https://github.com/tarze07/Leverframe/issues/97)): „Nowy plik…” i „Nowy folder…” (w ostatnio klikniętym folderze, nazwa może zawierać `/`; nowy plik otwiera się w edytorze, nic nie jest nadpisywane), usuwanie z potwierdzeniem do kosza systemowego albo na stałe – tylko wewnątrz folderu projektu; edytory usuniętych plików się zamykają.
 - **Zmiana folderu projektu w panelu „Pliki”**: nazwa folderu na górze panelu rozwija menu z „Otwórz folder…” i listą ostatnio otwieranych folderów (także na ekranie bez wybranego folderu).
@@ -215,6 +217,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.11.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.11.0
 [0.10.2]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.2
 [0.10.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.1
 [0.10.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.0
