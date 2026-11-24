@@ -3,6 +3,7 @@
 pub mod acp;
 pub mod agents;
 pub mod docker;
+pub mod envpath;
 pub mod fs;
 pub mod profiles;
 pub mod pty;
@@ -15,6 +16,9 @@ use tauri::{Emitter, Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Agents installed into the user's PATH after login are found too (before any thread starts).
+    #[cfg(windows)]
+    envpath::complete_windows_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())

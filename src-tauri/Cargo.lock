@@ -2181,6 +2181,7 @@ dependencies = [
  "tauri-plugin-opener",
  "trash",
  "vte",
+ "winreg 0.56.0",
 ]
 
 [[package]]
