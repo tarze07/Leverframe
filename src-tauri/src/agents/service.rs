@@ -33,6 +33,8 @@ pub struct AgentView {
     pub builtin: bool,
     /// The built-in conversation-mode command line (what "default" means in the settings).
     pub default_acp: Option<Vec<String>>,
+    /// How a first prompt is given in a terminal (`None`: not possible).
+    pub prompt_arg: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -109,6 +111,7 @@ impl AgentService {
                     default_acp: builtin_of(&a.id)
                         .and_then(|b| b.acp.as_ref())
                         .map(|acp| acp.command_line()),
+                    prompt_arg: a.prompt_arg.clone(),
                 })
                 .collect(),
             errors: catalog.errors,

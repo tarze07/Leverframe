@@ -55,6 +55,10 @@ pub struct AgentDef {
     /// Hidden in the "Agenci" view (`"disabled": true` in `agents.json`).
     #[serde(default)]
     pub hidden: bool,
+    /// How a first prompt is given in a terminal (tasks, #107): `""` – as the last argument
+    /// (`claude "…"`), or a flag before it (`gemini -i "…"`). `None`: the agent takes none.
+    #[serde(default)]
+    pub prompt_arg: Option<String>,
 }
 
 fn default_version_args() -> Vec<String> {
@@ -77,6 +81,9 @@ struct AgentEntry {
     acp: Option<Option<AcpDef>>,
     args: Option<Vec<String>>,
     env: Option<BTreeMap<String, String>>,
+    /// Missing = keep the built-in value; `null` = none.
+    #[serde(default, deserialize_with = "present")]
+    prompt_arg: Option<Option<String>>,
     #[serde(default)]
     disabled: bool,
 }
@@ -149,6 +156,14 @@ impl AgentDef {
                 return Err(format!(
                     "Agent {}: nieprawidłowa komenda ACP {:?} {:?}",
                     self.id, acp.command, acp.args
+                ));
+            }
+        }
+        if let Some(flag) = &self.prompt_arg {
+            if !flag.is_empty() && !is_safe_token(flag) {
+                return Err(format!(
+                    "Agent {}: nieprawidłowy promptArg {flag:?}",
+                    self.id
                 ));
             }
         }
@@ -235,6 +250,10 @@ fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<St
                     args: e.args.unwrap_or_else(|| base.args.clone()),
                     env: e.env.unwrap_or_else(|| base.env.clone()),
                     hidden: e.disabled,
+                    prompt_arg: match e.prompt_arg {
+                        None => base.prompt_arg.clone(),
+                        Some(p) => p,
+                    },
                 }
             }
             None => AgentDef {
@@ -249,6 +268,7 @@ fn apply(entries: Vec<AgentEntry>, into: &mut Vec<AgentDef>, errors: &mut Vec<St
                 args: e.args.unwrap_or_default(),
                 env: e.env.unwrap_or_default(),
                 hidden: e.disabled,
+                prompt_arg: e.prompt_arg.flatten(),
             },
         };
         if let Err(err) = def.validate() {

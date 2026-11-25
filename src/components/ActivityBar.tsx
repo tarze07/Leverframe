@@ -1,5 +1,6 @@
 import { useUiStore } from "../store/ui";
 import { isWaiting, useChatsStore } from "../store/chats";
+import { useTasksStore } from "../store/tasks";
 import { VIEWS, type ViewDef } from "./views";
 
 export function ActivityBar() {
@@ -18,6 +19,8 @@ function ActivityButton({ view }: { view: ViewDef }) {
   const selectView = useUiStore((s) => s.selectView);
   // Conversations waiting for a decision (their tab may be closed).
   const waiting = useChatsStore((s) => (view.id === "chats" ? Object.values(s.chats).filter((c) => isWaiting(c.state)).length : 0));
+  // Tasks an agent finished, waiting for the user's check (#109).
+  const review = useTasksStore((s) => (view.id === "tasks" ? s.review.project + s.review.global : 0));
   return (
     <button
       type="button"
@@ -37,6 +40,14 @@ function ActivityButton({ view }: { view: ViewDef }) {
           title={`Rozmowy czekające na decyzję: ${waiting}`}
         >
           {waiting}
+        </span>
+      )}
+      {review > 0 && (
+        <span
+          className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-lf-accent px-1 text-center text-[10px] font-semibold leading-4 text-lf-accent-fg"
+          title={`Zadania do sprawdzenia: ${review}`}
+        >
+          {review}
         </span>
       )}
     </button>

@@ -24,6 +24,8 @@ export interface Agent {
   builtin?: boolean;
   /** The built-in conversation-mode command line. */
   defaultAcp?: string[] | null;
+  /** How a first prompt is given in a terminal (`""`: last argument, or a flag); `null`: not possible. */
+  promptArg?: string | null;
 }
 
 /** What the agent's settings form saves (an override in the user's agents.json). */

@@ -114,3 +114,58 @@ pub async fn tasks_delete(
     let dir = dirs(&settings, &global).dir(scope)?;
     blocking(move || super::delete(&dir, &file, permanently)).await
 }
+
+/// Notes a start of an agent on a task (and sets it to „W toku”).
+#[tauri::command]
+pub async fn tasks_add_run(
+    settings: State<'_, SettingsStore>,
+    global: State<'_, GlobalTasksDir>,
+    scope: Scope,
+    file: String,
+    run: super::TaskRun,
+) -> Result<Task, String> {
+    let dir = dirs(&settings, &global).dir(scope)?;
+    blocking(move || super::add_run(&dir, scope, &file, &run)).await
+}
+
+fn profile(
+    profiles: &crate::profiles::ProfileService,
+    id: &str,
+) -> Result<crate::profiles::Profile, String> {
+    profiles
+        .resolve(id)
+        .ok_or_else(|| format!("Profil „{id}” nie istnieje"))
+}
+
+/// Copies a task to the computer of an SSH or container profile, into
+/// `<dir>/.leverframe/tasks/` (#108); its path there.
+#[tauri::command]
+pub async fn tasks_copy_to(
+    settings: State<'_, SettingsStore>,
+    global: State<'_, GlobalTasksDir>,
+    profiles: State<'_, crate::profiles::ProfileService>,
+    scope: Scope,
+    file: String,
+    profile_id: String,
+    dir: String,
+) -> Result<String, String> {
+    let tasks = dirs(&settings, &global).dir(scope)?;
+    let profile = profile(&profiles, &profile_id)?;
+    blocking(move || {
+        let path = super::task_path(&tasks, &file)?;
+        let text = super::read(&path)?;
+        crate::fs::remote::put_task(&profile, &dir, &file, &text)
+    })
+    .await
+}
+
+/// The text of a task's copy on that computer ("Pobierz wynik").
+#[tauri::command]
+pub async fn tasks_read_remote(
+    profiles: State<'_, crate::profiles::ProfileService>,
+    profile_id: String,
+    path: String,
+) -> Result<String, String> {
+    let profile = profile(&profiles, &profile_id)?;
+    blocking(move || crate::fs::remote::read_file(&profile, &path)).await
+}

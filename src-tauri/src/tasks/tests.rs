@@ -240,3 +240,53 @@ fn slugs_and_dates() {
         ]
     );
 }
+
+#[test]
+fn notes_runs_in_the_header_and_reads_them_back() {
+    let d = temp("runs");
+    let t = create(&d, Scope::Global, "Zadanie z historią").unwrap();
+    let first = TaskRun {
+        at: "2026-11-25T14:00:00.000Z".into(),
+        agent: "claude".into(),
+        profile: "local:bash".into(),
+        mode: "chat".into(),
+        cwd: Some("/home/jan/sklep, \"główny\"".into()),
+        remote: None,
+    };
+    let after = add_run(&d, Scope::Global, &t.file, &first).unwrap();
+    assert_eq!(after.status, Status::Doing);
+    assert_eq!(after.runs, std::slice::from_ref(&first));
+    let second = TaskRun {
+        at: "2026-11-25T15:00:00.000Z".into(),
+        agent: "opencode".into(),
+        profile: "docker:api".into(),
+        mode: "terminal".into(),
+        cwd: Some("/workspace".into()),
+        remote: Some("/root/api/.leverframe/tasks/1-zadanie-z-historia.md".into()),
+    };
+    // Status changed in between: the list stays one list, other keys stay.
+    update(&d, Scope::Global, &t.file, &status(Status::Review)).unwrap();
+    let after = add_run(&d, Scope::Global, &t.file, &second).unwrap();
+    assert_eq!(after.runs, [first, second]);
+    assert_eq!(after.status, Status::Doing);
+    let text = std::fs::read_to_string(&t.path).unwrap();
+    assert_eq!(text.matches("runs:").count(), 1);
+    assert!(
+        text.contains("\nruns:\n  - {at: \"2026-11-25T14:00:00.000Z\", agent: \"claude\""),
+        "{text}"
+    );
+    assert!(text.contains("# Zadanie z historią\n"));
+    // Status set after the runs: the list is kept.
+    let t2 = update(&d, Scope::Global, &t.file, &status(Status::Done)).unwrap();
+    assert_eq!(t2.runs.len(), 2);
+
+    let bad = TaskRun {
+        mode: "inny".into(),
+        ..TaskRun::default()
+    };
+    assert!(add_run(&d, Scope::Global, &t.file, &bad).is_err());
+    // Lines that are not runs are skipped.
+    assert_eq!(TaskRun::parse("  - zwykły punkt"), None);
+    assert_eq!(TaskRun::parse("  - {agent: \"x\"}"), None);
+    let _ = std::fs::remove_dir_all(d);
+}

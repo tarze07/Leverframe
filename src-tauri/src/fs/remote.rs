@@ -97,6 +97,75 @@ printf 'LF_END\n'
     ))
 }
 
+/// The script writing `content` to `<dir>/.leverframe/tasks/<name>` (a task for an agent there,
+/// #108); prints the file's absolute path. In a git repository `/.leverframe/` goes to its
+/// `.git/info/exclude` (once).
+pub fn put_task_script(dir: &str, name: &str, content: &str) -> Result<String, String> {
+    check(dir, "Ścieżka")?;
+    if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
+        return Err(format!("Nieprawidłowa nazwa pliku: {name}"));
+    }
+    check(name, "Nazwa")?;
+    // A here-document ending with a line that is not in the text.
+    let mut end = String::from("LF_TASK_END");
+    while content.lines().any(|l| l == end) {
+        end.push('_');
+    }
+    let body = content.strip_suffix('\n').unwrap_or(content);
+    Ok(format!(
+        r#"{resolve}cd -- "$p" 2>/dev/null || {{ printf 'LF_ERR\tnot-found\t%s\n' "$p"; exit 0; }}
+mkdir -p .leverframe/tasks 2>/dev/null || {{ printf 'LF_ERR\tdenied\t%s\n' "$p/.leverframe/tasks"; exit 0; }}
+cat > .leverframe/tasks/{name} <<'{end}' || {{ printf 'LF_ERR\tdenied\t%s\n' "$p/.leverframe/tasks"; exit 0; }}
+{body}
+{end}
+if [ -d .git ]; then
+  grep -qx '/.leverframe/' .git/info/exclude 2>/dev/null || {{ mkdir -p .git/info && printf '%s\n' '/.leverframe/' >> .git/info/exclude; }}
+fi
+printf 'LF_PWD\t%s\n' "$(pwd)/.leverframe/tasks/"{name}
+printf 'LF_END\n'
+"#,
+        resolve = resolve_snippet(dir),
+        name = quote(name),
+    ))
+}
+
+/// The script printing a file between `LF_FILE` and `LF_END` lines.
+pub fn cat_script(path: &str) -> Result<String, String> {
+    check(path, "Ścieżka")?;
+    Ok(format!(
+        r#"{resolve}if [ ! -f "$p" ]; then printf 'LF_ERR\tnot-found\t%s\n' "$p"; exit 0; fi
+printf 'LF_FILE\n'
+cat -- "$p" || exit 0
+printf '\nLF_END\n'
+"#,
+        resolve = resolve_snippet(path),
+    ))
+}
+
+/// The text printed by `cat_script` (ends with a newline when the file does).
+pub fn parse_file(out: &str, who: &str) -> Result<String, String> {
+    if let Some(start) = out.find("LF_FILE\n") {
+        let rest = &out[start + "LF_FILE\n".len()..];
+        if let Some(end) = rest.rfind("\nLF_END\n") {
+            return Ok(rest[..end].to_string());
+        }
+    }
+    parse(out, who)?;
+    Err(format!("Brak odpowiedzi z {who}"))
+}
+
+/// Writes a task's text into `dir` on the profile's computer; its path there.
+pub fn put_task(profile: &Profile, dir: &str, name: &str, content: &str) -> Result<String, String> {
+    let out = run(profile, &put_task_script(dir, name, content)?)?;
+    parse(&out, &profile.name).map(|d| d.path)
+}
+
+/// A file of the profile's computer.
+pub fn read_file(profile: &Profile, path: &str) -> Result<String, String> {
+    let out = run(profile, &cat_script(path)?)?;
+    parse_file(&out, &profile.name)
+}
+
 fn parent_of(path: &str) -> Option<String> {
     if path == "/" {
         return None;
@@ -282,6 +351,52 @@ mod tests {
         for bad in ["", "..", "a/b", "x\ny"] {
             assert!(mkdir_script("~", bad).is_err(), "{bad:?}");
         }
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copies_a_task_and_reads_it_back_through_sh() {
+        let home = temp("task");
+        let repo = home.join("sklep");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        let text = "---\nid: 1\n---\n# Zażółć 'cytat' $HOME `x`\nLF_TASK_END\nkoniec\n";
+        let path = parse(
+            &sh(&put_task_script("~/sklep", "1-a.md", text).unwrap(), &home),
+            "srv",
+        )
+        .unwrap()
+        .path;
+        let file = repo.join(".leverframe/tasks/1-a.md");
+        assert_eq!(path, file.to_string_lossy());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        // Again (a new run): overwritten; the exclude line once.
+        sh(
+            &put_task_script("~/sklep", "1-a.md", "nowy").unwrap(),
+            &home,
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "nowy\n");
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".git/info/exclude")).unwrap(),
+            "/.leverframe/\n"
+        );
+        assert_eq!(
+            parse_file(&sh(&cat_script(&path).unwrap(), &home), "srv").unwrap(),
+            "nowy\n"
+        );
+        // Not a repository: no .git made.
+        std::fs::create_dir_all(home.join("zwykly")).unwrap();
+        sh(&put_task_script("~/zwykly", "2-b.md", "b").unwrap(), &home);
+        assert!(!home.join("zwykly/.git").exists());
+        let err = parse_file(&sh(&cat_script("~/brak.md").unwrap(), &home), "srv").unwrap_err();
+        assert!(err.contains("nie ma folderu"), "{err}");
+        let err = parse(
+            &sh(&put_task_script("~/brak", "x.md", "x").unwrap(), &home),
+            "srv",
+        )
+        .unwrap_err();
+        assert!(err.contains("nie ma folderu"), "{err}");
+        assert!(put_task_script("~", "../x.md", "x").is_err());
         let _ = std::fs::remove_dir_all(home);
     }
 

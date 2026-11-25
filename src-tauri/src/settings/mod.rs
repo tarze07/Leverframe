@@ -320,6 +320,11 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
             Ok(())
         }
         ("acpConfirmCommands", Value::Bool(_)) => Ok(()),
+        // The first message for an agent started on a task (#107); `{plik}`, `{tytul}`.
+        ("tasksPrompt", Value::String(s)) if s.chars().count() <= 2000 && !s.contains('\0') => {
+            Ok(())
+        }
+        ("tasksPrompt", _) => Err("tasksPrompt: tekst do 2000 znaków".into()),
         ("acpConfirmCommands", _) => Err("acpConfirmCommands: true lub false".into()),
         ("autoSave", _) => Err("autoSave: \"off\", \"afterDelay\" lub \"onFocusChange\"".into()),
         // Path of the docker CLI; empty: `docker` from PATH.

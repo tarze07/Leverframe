@@ -12,6 +12,11 @@ import { useKeybindings } from "./lib/useKeybindings";
 import { useUiStore } from "./store/ui";
 import { useProfilesStore } from "./store/profiles";
 import { useSettingsStore } from "./store/settings";
+import { useAgentsStore } from "./store/agents";
+import { refreshTaskCounts } from "./store/tasks";
+import { isTauri } from "./lib/tauri";
+import { onFilesChanged } from "./lib/fileEvents";
+import { watchTaskRuns } from "./features/tasks/taskRun";
 import { QuickOpen } from "./features/editor/QuickOpen";
 import { CommandPalette } from "./workbench/CommandPalette";
 
@@ -47,6 +52,15 @@ export default function App() {
     void useProfilesStore.getState().load();
     void useSettingsStore.getState().load();
   }, []);
+
+  // Tasks (#109): runs of agents are watched, the tasks to check are counted on the activity bar.
+  const projectDir = useAgentsStore((s) => s.projectDir);
+  useEffect(() => (isTauri() ? watchTaskRuns() : undefined), []);
+  useEffect(() => {
+    if (!isTauri()) return;
+    void refreshTaskCounts();
+    return onFilesChanged(() => void refreshTaskCounts());
+  }, [projectDir]);
 
   const sidebarRef = usePanelRef();
   const workbenchRef = usePanelRef();

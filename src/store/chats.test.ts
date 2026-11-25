@@ -71,3 +71,29 @@ describe("conversations in a container", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 });
+
+describe("a conversation started on a task (#107)", () => {
+  beforeEach(() => {
+    endAllChats();
+    emitters.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it("sends its first message with the task file once the agent is ready, only once", async () => {
+    const prompt = vi.fn(async () => "end_turn");
+    startAcp.mockImplementationOnce(async (_req: unknown, onEvent: (e: AcpEvent) => void) => {
+      emitters.push(onEvent);
+      return { id: 1, prompt, stop: vi.fn(async () => undefined) } as unknown as AcpHandle;
+    });
+    const resource = { uri: "file:///home/me/sklep/.leverframe/tasks/1-a.md", name: "1-a.md" };
+    const id = createChat({ agentId: "claude", cwd: "/home/me/sklep", initialPrompt: { text: "Wykonaj zadanie", resource } });
+    await vi.waitFor(() => expect(emitters).toHaveLength(1));
+    // Not before the session is ready.
+    expect(prompt).not.toHaveBeenCalled();
+    emitters[0]({ type: "sessionReady", sessionId: "s1", cwd: "/home/me/sklep", modes: null, configOptions: null });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledWith("Wykonaj zadanie", resource));
+    expect(chatById(id)?.params.initialPrompt).toBeNull();
+    emitters[0]({ type: "sessionReady", sessionId: "s1", cwd: "/home/me/sklep", modes: null, configOptions: null });
+    expect(prompt).toHaveBeenCalledTimes(1);
+  });
+});

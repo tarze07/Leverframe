@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore, type PanelPosition } from "../../store/ui";
 import { systemFrame, useSettingsStore, type SettingKey } from "../../store/settings";
 import { isWindows } from "../terminal/keys";
+import { DEFAULT_TASK_PROMPT } from "../tasks/taskPrompt";
 import { THEMES, themeById, type ThemeKind } from "../../theme/themes";
 import { isTauri, windowControls } from "../../lib/tauri";
 import { openFile } from "../../workbench/commands";
@@ -56,6 +57,7 @@ export function SettingsView() {
   const dockerPath = useSettingsStore((s) => (typeof s.values.dockerPath === "string" ? s.values.dockerPath : ""));
   const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
   const confirmCommands = useSettingsStore((s) => s.values.acpConfirmCommands !== false);
+  const tasksPrompt = useSettingsStore((s) => (typeof s.values.tasksPrompt === "string" ? s.values.tasksPrompt : ""));
 
   const save = async (key: SettingKey, value: unknown) => {
     // Apply immediately, persist in settings.json (in the browser there is no file).
@@ -150,6 +152,7 @@ export function SettingsView() {
           ))}
         </select>
       </div>
+      <TasksPromptField value={tasksPrompt} onSave={(v) => void save("tasksPrompt", v)} />
       <label className="flex items-start gap-2 text-xs text-lf-fg">
         <input
           type="checkbox"
@@ -240,5 +243,32 @@ export function SettingsView() {
         </div>
       )}
     </form>
+  );
+}
+
+/** The first message for an agent started on a task (#107): saved when the field loses focus. */
+function TasksPromptField(props: { value: string; onSave: (value: string) => void }) {
+  const [text, setText] = useState(props.value || DEFAULT_TASK_PROMPT);
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-xs font-semibold text-lf-fg">
+        Zadania: polecenie dla agenta
+      </label>
+      <textarea
+        id={id}
+        rows={3}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const v = text.trim() === DEFAULT_TASK_PROMPT ? "" : text;
+          if (v !== props.value) props.onSave(v);
+        }}
+        className={`${inputClass} resize-y`}
+      />
+      <span className="text-[11px] text-lf-subtle">
+        Pierwsza wiadomość agenta uruchomionego na zadaniu. {"{plik}"} – ścieżka pliku zadania, {"{tytul}"} – jego tytuł. Puste: tekst domyślny.
+      </span>
+    </div>
   );
 }

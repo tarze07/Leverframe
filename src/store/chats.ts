@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { startAcp, type AcpEvent, type AcpHandle, type AcpStartRequest } from "../features/acp/acpClient";
+import { startAcp, type AcpEvent, type AcpHandle, type AcpStartRequest, type PromptResource } from "../features/acp/acpClient";
 import { chatReducer, initialChat, type ChatAction, type ChatState } from "../features/acp/chatState";
 import { transcriptActions, transcriptTerminalEvents } from "../features/acp/transcript";
 import { serveFsRequest, type FsRequest } from "../features/acp/agentFiles";
@@ -29,6 +29,8 @@ export interface ChatParams {
   historyId?: number | null;
   /** The agent's id of that conversation. */
   acpSessionId?: string | null;
+  /** Sent by itself once the agent is ready (a task started in conversation mode, #107). */
+  initialPrompt?: { text: string; resource?: PromptResource } | null;
 }
 
 export interface ChatEntry {
@@ -196,6 +198,7 @@ export function connectChat(id: string, resume?: AcpStartRequest["resume"]) {
     terminalEvent(id, event);
     if (event.type === "update") refreshEdited(id, rt.edits.feed(event.update));
     dispatchChat(id, { type: "event", event });
+    sendInitialPrompt(id);
     if (event.type === "fsRequest") {
       // Inside the session folder: served at once. Outside: the user decides.
       if (event.inside) void serveAndReply(event, rt.handle, rt.mtimes).catch(() => undefined);
@@ -227,6 +230,7 @@ export function connectChat(id: string, resume?: AcpStartRequest["resume"]) {
       else {
         rt.handle = h;
         patch(id, (e) => ({ live: e.state.status !== "exited" }));
+        sendInitialPrompt(id);
       }
     })
     .catch((e: unknown) => !disposed && dispatchChat(id, { type: "failed", message: String(e) }));
@@ -243,11 +247,20 @@ export function runChat(id: string, action: (h: AcpHandle) => Promise<unknown>) 
   if (h) void action(h).catch((e: unknown) => dispatchChat(id, { type: "failed", message: String(e) }));
 }
 
-export function sendChat(id: string, text: string) {
+/** The first message of a new conversation, once the agent is ready (only once). */
+function sendInitialPrompt(id: string) {
+  const chat = chatById(id);
+  const initial = chat?.params.initialPrompt;
+  if (!chat || !initial || chat.state.status !== "ready" || !chatHandle(id)) return;
+  patch(id, (e) => ({ params: { ...e.params, initialPrompt: null } }));
+  sendChat(id, initial.text, initial.resource);
+}
+
+export function sendChat(id: string, text: string, resource?: PromptResource) {
   const h = chatHandle(id);
   if (!h) return;
   dispatchChat(id, { type: "sent", text });
-  h.prompt(text).then(
+  (resource ? h.prompt(text, resource) : h.prompt(text)).then(
     (stopReason) => dispatchChat(id, { type: "turnEnded", stopReason }),
     (e: unknown) => dispatchChat(id, { type: "failed", message: String(e) }),
   );

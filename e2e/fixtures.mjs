@@ -18,7 +18,7 @@ export function makeHome() {
   // Fake agent: prints its version, or records that it ran (and where) and prints a marker.
   writeFileSync(
     join(bin, "claude"),
-    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9 (e2e)"; exit 0; fi\npwd > "$HOME/claude-ran.txt"\nprintf 'E2E-AGENT-OUTPUT refactor done\\n'\n`,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9 (e2e)"; exit 0; fi\npwd > "$HOME/claude-ran.txt"\nprintf '%s\\n' "$@" > "$HOME/claude-args.txt"\nprintf 'E2E-AGENT-OUTPUT refactor done\\n'\n`,
   );
   chmodSync(join(bin, "claude"), 0o755);
   // Conversation mode: the fake ACP agent stands in for Claude's adapter.

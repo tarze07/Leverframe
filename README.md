@@ -95,6 +95,34 @@ Rozmowy trafiają do historii w panelu „Sesje” (zakładka **Historia**, obok
 | OpenCode | baza `~/.local/share/opencode/opencode.db` (na SSH i w kontenerze czytana przez `opencode db` po tamtej stronie) | `opencode --session <id>` |
 | Agy | `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl` (folder z `history.jsonl`) | `agy --conversation <id>` |
 
+## Zadania
+
+Widok „Zadania” (ikona listy na pasku po lewej) trzyma zadania do zlecenia agentom – osobno dla projektu i globalnie (przełącznik **Projekt / Globalne**). Każde zadanie to plik Markdown z krótkim nagłówkiem:
+
+```markdown
+---
+id: 7
+title: "Dodać eksport CSV"
+status: todo        # todo | doing | review | done
+created: 2026-11-25
+runs:
+  - {at: "2026-11-25T14:02:11.000Z", agent: "claude", profile: "local:bash", mode: "chat", cwd: "/home/ja/sklep"}
+---
+# Dodać eksport CSV
+
+## Opis
+…
+```
+
+- **Gdzie:** zadania projektu w `<projekt>/.leverframe/tasks/`, globalne w folderze danych aplikacji (`tasks/`). Folder `.leverframe/` nie trafia do repozytorium: Leverframe dopisuje `/.leverframe/` do `.git/info/exclude` (także na serwerze i w kontenerze), nie zmieniając `.gitignore`. Plik można edytować w edytorze Leverframe albo ręcznie – nieznane klucze nagłówka zostają.
+- **Lista:** grupy Do zrobienia / W toku / Do sprawdzenia / Gotowe z licznikami, filtr po tytule lub `#numerze`; menu zadania (⋮ albo prawy przycisk) zmienia status, przenosi między projektem a globalnymi i usuwa (do kosza albo na stałe).
+- **Uruchom agenta** (▶ przy zadaniu): agent, profil (lokalny, WSL, SSH, kontener – także na serwerze), tryb i – dla zadań globalnych – folder pracy.
+  - *Rozmowa* sama wysyła pierwszą wiadomość: polecenie z plikiem zadania i ten plik jako zasób (`resource_link`).
+  - *Terminal* uruchamia agenta z poleceniem jako pierwszym promptem (`claude "…"`, `codex "…"`, `gemini -i "…"`, `opencode --prompt "…"`; pole `promptArg` w `agents.json`, `null` – brak).
+  - Plik trafia tam, gdzie pracuje agent: lokalnie i w WSL to ten sam plik; kontener widzi go przez zamontowany folder projektu; na serwerze SSH i w kontenerze bez tego folderu Leverframe kopiuje plik do `<folder pracy>/.leverframe/tasks/` (przy każdym uruchomieniu). **Pobierz wynik** przy takim uruchomieniu pokazuje różnice kopii agenta i po potwierdzeniu zapisuje ją w zadaniu.
+- **Polecenie dla agenta** ustawisz w Ustawieniach („Zadania: polecenie dla agenta”, `tasksPrompt` w `settings.json`); `{plik}` to ścieżka pliku zadania, `{tytul}` – tytuł. Domyślnie agent ma na końcu dopisać do pliku sekcję „## Wynik”.
+- **Statusy i historia:** uruchomienie przestawia zadanie na *W toku*; gdy agent skończy (koniec tury rozmowy, zamknięcie terminala agenta) – na *Do sprawdzenia*, a ich liczba widnieje na ikonie widoku. *Gotowe* ustawiasz sam. Lista **Uruchomienia** przy zadaniu otwiera trwającą rozmowę lub terminal, a zakończone – z historii sesji.
+
 ## Kontenery Docker
 
 **Wymagania**: Docker Engine (Linux) albo Docker Desktop (Windows, macOS) z kontenerami Linuksa, program `docker` w `PATH` (inną ścieżkę ustawia się w ustawieniach: **Program Docker**, `dockerPath`) i uprawnienia do niego (w Linuksie zwykle grupa `docker`). Leverframe korzysta z wiersza poleceń `docker` – nie potrzebuje niczego więcej; bez Dockera widok „Kontenery” mówi, czego brakuje.
@@ -163,7 +191,8 @@ Plik `settings.json` (paleta poleceń → „Otwórz settings.json”) – zmian
   "fontFamily": "JetBrains Mono, monospace",
   "fontSize": 14,
   "keybindings": { "palette.open": "Ctrl+K", "view.files": null },
-  "recordSessions": true
+  "recordSessions": true,
+  "tasksPrompt": "Wykonaj zadanie z pliku {plik}."
 }
 ```
 

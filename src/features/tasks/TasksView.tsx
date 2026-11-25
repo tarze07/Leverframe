@@ -4,11 +4,14 @@ import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
 import { onFilesChanged } from "../../lib/fileEvents";
 import { useAgentsStore } from "../../store/agents";
-import { useTasksStore } from "../../store/tasks";
+import { refreshTaskCounts, useTasksStore } from "../../store/tasks";
 import { closeEditorsUnder, openFile } from "../../workbench/commands";
 import { folderName } from "../agents/agentsClient";
 import { errorMessage } from "../editor/fsClient";
+import { RunTaskForm, TaskRunsList } from "./TaskRuns";
 import { STATUSES, statusLabel, tasksClient, type Task, type TaskScope, type TaskStatus } from "./tasksClient";
+
+type TaskPanel = "run" | "runs" | null;
 
 const SCOPES: { id: TaskScope; label: string }[] = [
   { id: "project", label: "Projekt" },
@@ -33,6 +36,9 @@ export function TasksView() {
   const [creating, setCreating] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<TaskStatus>>(new Set(["done"]));
   const [menu, setMenu] = useState<string | null>(null);
+  // Open "Uruchom agenta" / "Uruchomienia" per task file – kept here: a task changing its status
+  // moves to another group (and its item is made again).
+  const [panels, setPanels] = useState<Record<string, TaskPanel>>({});
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,6 +101,7 @@ export function TasksView() {
       setMenu(null);
       setDeleting(null);
       await reload();
+      void refreshTaskCounts();
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -222,6 +229,9 @@ export function TasksView() {
                           onDelete={() => (setDeleting(t.file), setMenu(null))}
                           onConfirmDelete={(permanently) => void remove(t, permanently)}
                           onCancelDelete={() => setDeleting(null)}
+                          onStarted={() => void reload()}
+                          panel={panels[t.file] ?? null}
+                          setPanel={(p) => setPanels((now) => ({ ...now, [t.file]: p }))}
                         />
                       ))}
                     </ul>
@@ -245,8 +255,14 @@ function TaskItem(props: {
   onDelete: () => void;
   onConfirmDelete: (permanently: boolean) => void;
   onCancelDelete: () => void;
+  onStarted: () => void;
+  panel: TaskPanel;
+  setPanel: (panel: TaskPanel) => void;
 }) {
   const t = props.task;
+  const { panel, setPanel } = props;
+  const running = useTasksStore((s) => Object.values(s.live).some((r) => r.path === t.path));
+  const toggle = (p: "run" | "runs") => setPanel(panel === p ? null : p);
   const item = "flex w-full items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs text-lf-fg hover:bg-lf-hover";
   return (
     <li aria-label={`#${t.id} ${t.title}`}>
@@ -265,6 +281,29 @@ function TaskItem(props: {
         >
           <span className="shrink-0 font-mono text-[11px] text-lf-subtle">#{t.id}</span>
           <span className={`truncate ${t.status === "done" ? "text-lf-muted line-through" : ""}`}>{t.title}</span>
+          {running && <span className="codicon codicon-loading codicon-modifier-spin shrink-0 text-lf-accent" title="Agent pracuje nad zadaniem" aria-label="trwa" />}
+        </button>
+        {t.runs.length > 0 && (
+          <button
+            type="button"
+            title="Uruchomienia"
+            aria-label={`Uruchomienia: ${t.title}`}
+            aria-expanded={panel === "runs"}
+            onClick={() => toggle("runs")}
+            className="shrink-0 rounded px-1 text-[10px] text-lf-subtle hover:text-lf-fg"
+          >
+            <span className="codicon codicon-history align-middle" aria-hidden /> {t.runs.length}
+          </button>
+        )}
+        <button
+          type="button"
+          title="Uruchom agenta…"
+          aria-label={`Uruchom agenta: ${t.title}`}
+          aria-expanded={panel === "run"}
+          onClick={() => toggle("run")}
+          className="shrink-0 rounded p-0.5 text-lf-muted opacity-0 hover:text-lf-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+        >
+          <span className="codicon codicon-play" aria-hidden />
         </button>
         <button
           type="button"
@@ -285,6 +324,10 @@ function TaskItem(props: {
               {s.label}
             </button>
           ))}
+          <button type="button" role="menuitem" onClick={() => (setPanel("run"), props.onMenu(false))} className={item}>
+            <span className="codicon codicon-play text-lf-muted" aria-hidden />
+            Uruchom agenta…
+          </button>
           <button type="button" role="menuitem" onClick={props.onMove} className={item}>
             <span className="codicon codicon-move text-lf-muted" aria-hidden />
             {t.scope === "project" ? "Przenieś do globalnych" : "Przenieś do projektu"}
@@ -298,6 +341,8 @@ function TaskItem(props: {
           </button>
         </div>
       )}
+      {panel === "run" && <RunTaskForm task={t} onStarted={() => (setPanel(null), props.onStarted())} onCancel={() => setPanel(null)} />}
+      {panel === "runs" && <TaskRunsList task={t} />}
       {props.deleting && (
         <div role="group" aria-label={`Usuwanie zadania #${t.id}`} className="flex flex-wrap items-center gap-1 py-1 pl-4 text-[11px]">
           <span className="text-lf-fg">Usunąć zadanie „{t.title}”?</span>

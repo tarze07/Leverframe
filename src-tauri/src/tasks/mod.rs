@@ -80,6 +80,120 @@ pub struct Task {
     /// The file's absolute path.
     pub path: String,
     pub scope: Scope,
+    /// Agents started on the task (#109), oldest first.
+    pub runs: Vec<TaskRun>,
+}
+
+/// One start of an agent on a task, kept in the header's `runs` list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRun {
+    /// When it started (ISO 8601, as the frontend gives it).
+    pub at: String,
+    pub agent: String,
+    /// Profile id (empty: the default profile).
+    #[serde(default)]
+    pub profile: String,
+    /// `chat` (conversation mode) or `terminal`.
+    pub mode: String,
+    /// The working folder (as the agent sees it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// The task's copy on the agent's computer (SSH, container without the folder; #108).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<String>,
+}
+
+const RUN_FIELDS: [&str; 6] = ["at", "agent", "profile", "mode", "cwd", "remote"];
+
+impl TaskRun {
+    fn field(&self, key: &str) -> Option<&str> {
+        match key {
+            "at" => Some(&self.at),
+            "agent" => Some(&self.agent),
+            "profile" => Some(&self.profile),
+            "mode" => Some(&self.mode),
+            "cwd" => self.cwd.as_deref(),
+            "remote" => self.remote.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// `  - {at: "…", agent: "…", …}` – a YAML list item with a flow mapping.
+    fn line(&self) -> String {
+        let fields: Vec<String> = RUN_FIELDS
+            .iter()
+            .filter_map(|k| self.field(k).map(|v| format!("{k}: {}", quote(v))))
+            .collect();
+        format!("  - {{{}}}", fields.join(", "))
+    }
+
+    /// Reads a line written by `line` (other lines: `None`).
+    fn parse(line: &str) -> Option<TaskRun> {
+        let inner = line.trim().strip_prefix("- {")?.strip_suffix('}')?;
+        let mut run = TaskRun::default();
+        let mut rest = inner;
+        loop {
+            rest = rest.trim_start_matches([' ', ',']);
+            if rest.is_empty() {
+                break;
+            }
+            let (key, after) = rest.split_once(':')?;
+            let after = after.trim_start();
+            let (raw, next) = if let Some(body) = after.strip_prefix('"') {
+                // Up to the closing quote (not one escaped with `\`).
+                let mut end = None;
+                let mut escaped = false;
+                for (i, c) in body.char_indices() {
+                    match c {
+                        _ if escaped => escaped = false,
+                        '\\' => escaped = true,
+                        '"' => {
+                            end = Some(i);
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                let end = end?;
+                (&after[..end + 2], &body[end + 1..])
+            } else {
+                let end = after.find(',').unwrap_or(after.len());
+                (&after[..end], &after[end..])
+            };
+            let value = unquote(raw);
+            match key.trim() {
+                "at" => run.at = value,
+                "agent" => run.agent = value,
+                "profile" => run.profile = value,
+                "mode" => run.mode = value,
+                "cwd" => run.cwd = Some(value),
+                "remote" => run.remote = Some(value),
+                _ => {}
+            }
+            rest = next;
+        }
+        (!run.at.is_empty() && !run.agent.is_empty()).then_some(run)
+    }
+}
+
+/// The lines of the `runs` list: (index of `runs:`, the items after it).
+fn runs_span(header: &[String]) -> Option<(usize, usize)> {
+    let start = header.iter().position(|l| line_key(l) == Some("runs"))?;
+    let items = header[start + 1..]
+        .iter()
+        .take_while(|l| l.starts_with([' ', '\t']) && l.trim().starts_with('-'))
+        .count();
+    Some((start, items))
+}
+
+fn parse_runs(header: &[String]) -> Vec<TaskRun> {
+    runs_span(header).map_or_else(Vec::new, |(start, n)| {
+        header[start + 1..start + 1 + n]
+            .iter()
+            .filter_map(|l| TaskRun::parse(l))
+            .collect()
+    })
 }
 
 /// What `update` changes (`None`: left as it is).
@@ -254,6 +368,7 @@ pub fn parse_task(text: &str, file: &str, path: &Path, scope: Scope) -> Task {
         file: file.to_string(),
         path: path.to_string_lossy().into_owned(),
         scope,
+        runs: parse_runs(&header),
     }
 }
 
@@ -362,7 +477,7 @@ fn valid_file(file: &str) -> Result<(), String> {
     }
 }
 
-fn read(path: &Path) -> Result<String, String> {
+pub(crate) fn read(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("Nie można odczytać {}: {e}", path.display()))
 }
 
@@ -440,7 +555,7 @@ pub fn create(dir: &Path, scope: Scope, title: &str) -> Result<Task, String> {
     Ok(parse_task(&text, &file, &path, scope))
 }
 
-fn task_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
+pub(crate) fn task_path(dir: &Path, file: &str) -> Result<PathBuf, String> {
     valid_file(file)?;
     let path = dir.join(file);
     if !path.is_file() {
@@ -455,6 +570,39 @@ pub fn update(dir: &Path, scope: Scope, file: &str, change: &TaskChange) -> Resu
     let text = read(&path)?;
     let task = parse_task(&text, file, &path, scope);
     let text = apply(&text, &task, change)?;
+    write(&path, &text)?;
+    Ok(parse_task(&text, file, &path, scope))
+}
+
+/// Notes a start of an agent on the task (at the end of `runs`) and sets it to „W toku”.
+pub fn add_run(dir: &Path, scope: Scope, file: &str, run: &TaskRun) -> Result<Task, String> {
+    if run.at.is_empty()
+        || run.agent.is_empty()
+        || !["chat", "terminal"].contains(&run.mode.as_str())
+    {
+        return Err("Nieprawidłowe uruchomienie zadania".into());
+    }
+    let path = task_path(dir, file)?;
+    let text = read(&path)?;
+    let task = parse_task(&text, file, &path, scope);
+    let text = apply(
+        &text,
+        &task,
+        &TaskChange {
+            title: None,
+            status: Some(Status::Doing),
+        },
+    )?;
+    let mut doc = split(&text);
+    let header = doc.header.get_or_insert_with(Vec::new);
+    match runs_span(header) {
+        Some((start, n)) => header.insert(start + 1 + n, run.line()),
+        None => {
+            header.push("runs:".into());
+            header.push(run.line());
+        }
+    }
+    let text = join_doc(&doc);
     write(&path, &text)?;
     Ok(parse_task(&text, file, &path, scope))
 }
