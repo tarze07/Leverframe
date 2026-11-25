@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Naprawione
+- **Windows: agenci zainstalowani poza `PATH` Leverframe** (np. Claude Code w `%USERPROFILE%\.claude\bin`): Leverframe dziedziczył `PATH` z chwili logowania, więc foldery dopisane później do `PATH` użytkownika lub systemu (instalator, polityka firmowa) były pomijane – agent był „niezainstalowany”, a w terminalu nie startował. Przy starcie Leverframe uzupełnia `PATH` o ścieżki z rejestru i o istniejące foldery instalacji agentów (`.claude\bin`, `.claude\local`, `.local\bin`, `.opencode\bin`, `AppData\Roaming\npm`); dziedziczą go wykrywanie, terminale i tryb rozmowy.
+
 ## [0.12.0] – 2026-11-20
 
 ### Dodane
