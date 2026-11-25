@@ -1282,3 +1282,23 @@ fn real_docker_conversation_when_available() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn a_prompt_names_a_task_file_as_a_resource_link() {
+    use super::session::{prompt_blocks, ResourceLink};
+    let link = ResourceLink {
+        uri: "file:///workspace/.leverframe/tasks/1-a.md".into(),
+        name: "1-a.md".into(),
+    };
+    assert_eq!(
+        prompt_blocks("Wykonaj zadanie", Some(&link)),
+        serde_json::json!([
+            { "type": "text", "text": "Wykonaj zadanie" },
+            { "type": "resource_link", "uri": "file:///workspace/.leverframe/tasks/1-a.md", "name": "1-a.md" }
+        ])
+    );
+    assert_eq!(
+        prompt_blocks("x", None),
+        serde_json::json!([{ "type": "text", "text": "x" }])
+    );
+}

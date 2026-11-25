@@ -307,6 +307,7 @@ pub async fn acp_prompt(
     service: State<'_, AcpService>,
     id: u64,
     text: String,
+    resource: Option<super::session::ResourceLink>,
 ) -> Result<String, String> {
     let session = service.get(id)?;
     let transcript = service.transcript(id);
@@ -314,7 +315,7 @@ pub async fn acp_prompt(
         if let Some(t) = &transcript {
             t.sent(&text);
         }
-        let result = session.prompt(&text);
+        let result = session.prompt_with(&text, resource.as_ref());
         if let (Some(t), Ok(reason)) = (&transcript, &result) {
             t.turn_ended(reason);
         }

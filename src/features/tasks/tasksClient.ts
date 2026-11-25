@@ -14,6 +14,23 @@ export interface Task {
   file: string;
   path: string;
   scope: TaskScope;
+  /** Agents started on the task, oldest first (#109). */
+  runs: TaskRun[];
+}
+
+export type RunMode = "chat" | "terminal";
+
+/** One start of an agent on a task (the header's `runs`). */
+export interface TaskRun {
+  /** ISO 8601. */
+  at: string;
+  agent: string;
+  /** Profile id ("" – the default profile). */
+  profile: string;
+  mode: RunMode;
+  cwd?: string | null;
+  /** The task's copy on the agent's computer (SSH, container without the folder). */
+  remote?: string | null;
 }
 
 export const STATUSES: { id: TaskStatus; label: string }[] = [
@@ -33,4 +50,9 @@ export const tasksClient = {
     invoke<Task>("tasks_update", { scope, file, change }),
   move: (scope: TaskScope, file: string, to: TaskScope) => invoke<Task>("tasks_move", { scope, file, to }),
   remove: (scope: TaskScope, file: string, permanently: boolean) => invoke<void>("tasks_delete", { scope, file, permanently }),
+  addRun: (scope: TaskScope, file: string, run: TaskRun) => invoke<Task>("tasks_add_run", { scope, file, run }),
+  /** Copies the task to `<dir>/.leverframe/tasks/` on a profile's computer; the path there. */
+  copyTo: (scope: TaskScope, file: string, profileId: string, dir: string) =>
+    invoke<string>("tasks_copy_to", { scope, file, profileId, dir }),
+  readRemote: (profileId: string, path: string) => invoke<string>("tasks_read_remote", { profileId, path }),
 };

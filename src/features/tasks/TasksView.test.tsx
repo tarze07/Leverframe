@@ -29,6 +29,7 @@ const task = (scope: TaskScope, id: number, title: string, status: Task["status"
   file: `${id}-${title.toLowerCase().replace(/\W+/g, "-")}.md`,
   path: `${dir(scope)}/${id}-${title.toLowerCase().replace(/\W+/g, "-")}.md`,
   scope,
+  runs: [],
 });
 
 describe("TasksView (#106)", () => {

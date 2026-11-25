@@ -5,6 +5,8 @@ export interface PtySpawnRequest {
   profileId?: string;
   /** Agent to start (marks the session as an agent session). */
   agentId?: string;
+  /** The agent's first prompt, given as its `promptArg` (a task). */
+  agentPrompt?: string;
   /** Program to run; omitted = default shell (PowerShell on Windows, login $SHELL elsewhere). */
   program?: string;
   args?: string[];

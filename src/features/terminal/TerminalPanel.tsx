@@ -30,6 +30,8 @@ export interface TerminalPanelParams {
   profileId?: string;
   /** Agent to start in the terminal; its command is typed once the shell is ready. */
   agentId?: string;
+  /** The agent's first prompt (a task, #107). */
+  agentPrompt?: string;
   /** Command typed once the shell is ready (resume a session, re-run a command). */
   initialCommand?: string;
   /** Press Enter after `initialCommand` (default false: the user reviews and runs it). */
@@ -187,6 +189,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     prepareContainerTerminal({
       profileId: params?.profileId,
       agentId: params?.agentId,
+      agentPrompt: params?.agentPrompt,
       program,
       args: params?.args,
       cwd: params?.cwd,

@@ -646,6 +646,12 @@ impl AcpSession {
     /// Sends a text prompt and waits for the end of the turn; returns the stop reason
     /// (`end_turn`, `cancelled`, `max_tokens`, …). Updates arrive as events meanwhile.
     pub fn prompt(&self, text: &str) -> Result<String, String> {
+        self.prompt_with(text, None)
+    }
+
+    /// A prompt with a file the agent should read (`resource_link`, a base content type of ACP:
+    /// every agent takes it) – a task's file (#107).
+    pub fn prompt_with(&self, text: &str, link: Option<&ResourceLink>) -> Result<String, String> {
         let session_id = self
             .session_id()
             .ok_or("Sesja agenta jeszcze się nie rozpoczęła")?;
@@ -654,7 +660,7 @@ impl AcpSession {
         }
         let result = self.conn.request(
             "session/prompt",
-            json!({ "sessionId": session_id, "prompt": [{ "type": "text", "text": text }] }),
+            json!({ "sessionId": session_id, "prompt": prompt_blocks(text, link) }),
             None,
         );
         self.busy.store(false, Ordering::SeqCst);
@@ -1182,4 +1188,21 @@ fn spawn_exit_watcher(session: &Arc<AcpSession>) {
                 }
             }
         });
+}
+
+/// A file named in a prompt.
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+pub struct ResourceLink {
+    /// `file:///…` (a path of the agent's computer).
+    pub uri: String,
+    pub name: String,
+}
+
+/// The content of `session/prompt`: the text, then the file.
+pub fn prompt_blocks(text: &str, link: Option<&ResourceLink>) -> Value {
+    let mut blocks = vec![json!({ "type": "text", "text": text })];
+    if let Some(l) = link {
+        blocks.push(json!({ "type": "resource_link", "uri": l.uri, "name": l.name }));
+    }
+    Value::Array(blocks)
 }

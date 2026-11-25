@@ -484,6 +484,13 @@ impl Agent {
                 self.chunk(&session, "agent_thought_chunk", "myślę");
                 self.chunk(&session, "agent_message_chunk", "Echo: ");
                 self.chunk(&session, "agent_message_chunk", other);
+                // Files named in the prompt (a task's file).
+                if let Some(blocks) = params["prompt"].as_array() {
+                    for b in blocks.iter().filter(|b| b["type"] == "resource_link") {
+                        let uri = b["uri"].as_str().unwrap_or_default();
+                        self.chunk(&session, "agent_message_chunk", &format!(" [plik: {uri}]"));
+                    }
+                }
                 self.update(
                     &session,
                     json!({ "sessionUpdate": "plan", "entries": [

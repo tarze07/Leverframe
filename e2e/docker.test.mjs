@@ -67,6 +67,42 @@ function imageFolder(home) {
   return dir;
 }
 
+/** Tasks in the "Zadania" view (#108): a new one, an agent started on it. */
+function taskSteps(app) {
+  const form = (id) => `[role=group][aria-label="Uruchom agenta: zadanie #${id}"]`;
+  return {
+    async create(title) {
+      await app.waitFor("return !!document.querySelector('button[aria-label=\"Nowe zadanie…\"]:not([disabled])')", 20_000);
+      await app.exec(`document.querySelector('button[aria-label="Nowe zadanie…"]').click()`);
+      await app.waitFor("return !!document.querySelector('form[aria-label=\"Nowe zadanie\"] input')");
+      await app.exec(
+        `const i = document.querySelector('form[aria-label="Nowe zadanie"] input');
+         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[0]);
+         i.dispatchEvent(new Event('input', { bubbles: true }));`,
+        [title],
+      );
+      await app.exec(`document.querySelector('form[aria-label="Nowe zadanie"] button[type=submit]').click()`);
+      await app.waitFor(`return !!document.querySelector('li[aria-label$=" ${title}"]')`, 20_000);
+    },
+    async run(id, title, profileId) {
+      await app.exec(`document.querySelector('button[aria-label="Uruchom agenta: ${title}"]').click()`);
+      await app.waitFor(`return !!document.querySelector('${form(id)} select[aria-label="Profil"] option[value="${profileId}"]')`, 20_000);
+      await app.exec(
+        `for (const [label, value] of [["Agent", "claude"], ["Profil", arguments[1]]]) {
+           const s = document.querySelector(arguments[0] + ' select[aria-label="' + label + '"]');
+           Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, value);
+           s.dispatchEvent(new Event('change', { bubbles: true }));
+         }
+         [...document.querySelectorAll(arguments[0] + ' button')].find(b => b.textContent.trim() === 'Uruchom').click();`,
+        [form(id), profileId],
+      );
+      await app.waitFor(`return !document.querySelector('${form(id)}')`, 60_000);
+    },
+    /** Some conversation's transcript contains the text. */
+    logHas: (text) => `return [...document.querySelectorAll('[data-testid=agent-chat] [role=log]')].some(l => l.textContent.includes(${JSON.stringify(text)}))`,
+  };
+}
+
 describe("Leverframe with Docker", { skip: !available && "Docker is not available" }, () => {
   const env = available ? makeHome() : null;
   let driver;
@@ -243,6 +279,41 @@ describe("Leverframe with Docker", { skip: !available && "Docker is not availabl
     assert.match(await app.exec(`return document.querySelector('${chat} header').textContent`), new RegExp(`${CONTAINER} · /workspace`));
     await say("dalej w kontenerze");
     await app.waitFor(has("Echo: dalej w kontenerze"), 20_000);
+  });
+
+  it("starts an agent on tasks in the container: the mounted file, a copy of a global task and its result (#108)", async () => {
+    const steps = taskSteps(app);
+    const profileId = `container:${CONTAINER}`;
+    const globalDir = join(env.home, ".local", "share", "io.github.tarze07.leverframe", "tasks");
+    try {
+      await showView("Zadania");
+      await app.click('[aria-label="Lista zadań"] button', "Projekt");
+      await steps.create("Zadanie w kontenerze");
+      await steps.run(1, "Zadanie w kontenerze", profileId);
+      // The container sees the project folder: the file itself, by its path there.
+      await app.waitFor(steps.logHas("Echo: Wykonaj zadanie opisane w pliku .leverframe/tasks/1-zadanie-w-kontenerze.md"), 60_000);
+      await app.waitFor(steps.logHas("[plik: file:///workspace/.leverframe/tasks/1-zadanie-w-kontenerze.md]"));
+
+      // A global task is not in the container: it is copied to its folder.
+      await app.click('[aria-label="Lista zadań"] button', "Globalne");
+      await steps.create("Globalne w kontenerze");
+      await steps.run(1, "Globalne w kontenerze", profileId);
+      await app.waitFor(steps.logHas("[plik: file:///workspace/.leverframe/tasks/1-globalne-w-kontenerze.md]"), 60_000);
+      const copy = join(env.project, ".leverframe", "tasks", "1-globalne-w-kontenerze.md");
+      assert.match(readFileSync(copy, "utf8"), /title: "Globalne w kontenerze"/);
+      // The agent's result in the copy comes back after the changes are shown.
+      writeFileSync(copy, `${readFileSync(copy, "utf8")}\n## Wynik\nGotowe w kontenerze.\n`);
+      await app.exec(`document.querySelector('button[aria-label="Uruchomienia: Globalne w kontenerze"]').click()`);
+      await app.waitFor("return [...document.querySelectorAll('[role=group][aria-label=\"Uruchomienia zadania #1\"] button')].some(b => b.textContent.trim() === 'Pobierz wynik')");
+      await press('[role=group][aria-label="Uruchomienia zadania #1"]', "Pobierz wynik");
+      await app.waitFor("return !!document.querySelector('[role=group][aria-label=\"Wynik z komputera agenta\"]')", 30_000);
+      await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.textContent.includes('Zmiana: 1-globalne-w-kontenerze.md'))");
+      await press('[role=group][aria-label="Wynik z komputera agenta"]', "Zapisz w zadaniu");
+      for (let i = 0; i < 100 && !readFileSync(join(globalDir, "1-globalne-w-kontenerze.md"), "utf8").includes("Gotowe w kontenerze."); i++) await sleep(100);
+      assert.match(readFileSync(join(globalDir, "1-globalne-w-kontenerze.md"), "utf8"), /## Wynik\nGotowe w kontenerze\.\n$/);
+    } finally {
+      rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
+    }
   });
 
   it("removes the container and its volume", async () => {
@@ -474,6 +545,26 @@ describe(`Leverframe with Docker on an SSH host${noClient ? " without a local do
     // Files of the SSH host are not this machine's: Leverframe does not offer file access.
     await say("edit");
     await app.waitFor(has("edit: klient nie udostępnia plików"), 20_000);
+  });
+
+  it("starts an agent on a task in the container there: a copy on the server, its result (#108)", async () => {
+    const steps = taskSteps(app);
+    const profileId = `container:${HOST_ID}:${NAME}`;
+    try {
+      await showView("Zadania");
+      await app.click('[aria-label="Lista zadań"] button', "Projekt");
+      await steps.create("Zadanie na serwerze");
+      await steps.run(1, "Zadanie na serwerze", profileId);
+      await app.waitFor(steps.logHas("Echo: Wykonaj zadanie opisane w pliku .leverframe/tasks/1-zadanie-na-serwerze.md"), 60_000);
+      await app.waitFor(steps.logHas("[plik: file:///workspace/.leverframe/tasks/1-zadanie-na-serwerze.md]"));
+      // The copy is on the server (here the same folder): fetched, nothing has changed.
+      await app.exec(`document.querySelector('button[aria-label="Uruchomienia: Zadanie na serwerze"]').click()`);
+      await app.waitFor("return [...document.querySelectorAll('[role=group][aria-label=\"Uruchomienia zadania #1\"] button')].some(b => b.textContent.trim() === 'Pobierz wynik')");
+      await press('[role=group][aria-label="Uruchomienia zadania #1"]', "Pobierz wynik");
+      await app.waitFor("return document.querySelector('[role=group][aria-label=\"Uruchomienia zadania #1\"] [role=status]')?.textContent.includes('nie różni się')", 30_000);
+    } finally {
+      rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
+    }
   });
 
   it("removes the container and its volume there", async () => {

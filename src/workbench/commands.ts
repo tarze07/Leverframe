@@ -11,7 +11,7 @@ import { LOG_AGENT_NAMES, type LogSummary } from "../features/sessions/agentLogs
 import { terminalRegistry } from "../features/terminal/registry";
 import type { TerminalPanelParams } from "../features/terminal/TerminalPanel";
 import { dockRegistry, type DockId } from "./docks";
-import { chatById, chatForHistory, createChat, endChat, requestChatScroll, type ChatEntry } from "../store/chats";
+import { chatById, chatForHistory, createChat, endChat, requestChatScroll, type ChatEntry, type ChatParams } from "../store/chats";
 
 let counter = 0;
 const newPanelId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${++counter}`;
@@ -56,13 +56,16 @@ export function openProfile(profileId?: string, options: Omit<OpenTerminalOption
 }
 
 /** Opens a terminal in a profile (default when omitted) and starts an agent in it. */
-export function openAgent(agentId: string, options: { profileId?: string | null; cwd?: string | null; split?: "right" | "below" } = {}) {
+export function openAgent(
+  agentId: string,
+  options: { profileId?: string | null; cwd?: string | null; split?: "right" | "below"; prompt?: string } = {},
+) {
   const profileId = options.profileId ?? undefined;
   const agent = useAgentsStore.getState().agentById(agentId);
   const profile = useProfilesStore.getState().byId(profileId ?? useProfilesStore.getState().defaultProfileId);
   const id = openTerminal({
     split: options.split,
-    params: { profileId, agentId, cwd: options.cwd ?? undefined },
+    params: { profileId, agentId, cwd: options.cwd ?? undefined, agentPrompt: options.prompt },
   });
   if (id && agent) {
     dockRegistry.get("panel")?.getPanel(id)?.api.setTitle(profile ? `${agent.name} · ${profile.name}` : agent.name);
@@ -102,11 +105,16 @@ export function openAgentTerminal(storeKey: string, title: string) {
  */
 export function openAgentChat(
   agentId: string,
-  options: { profileId?: string | null; cwd?: string | null; dock?: DockId } = {},
+  options: { profileId?: string | null; cwd?: string | null; dock?: DockId; initialPrompt?: ChatParams["initialPrompt"] } = {},
 ) {
   const dock = options.dock ?? "main";
   if (!dockRegistry.get(dock)) return null;
-  const id = createChat({ agentId, profileId: options.profileId ?? null, cwd: options.cwd ?? null });
+  const id = createChat({
+    agentId,
+    profileId: options.profileId ?? null,
+    cwd: options.cwd ?? null,
+    ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
+  });
   openChatPanel(id, dock);
   return id;
 }

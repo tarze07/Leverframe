@@ -6,6 +6,7 @@
       "name": "Claude Code",
       "description": "Agent programistyczny Anthropic",
       "commands": ["claude"],
+      "promptArg": "",
       "docsUrl": "https://code.claude.com/docs/en/setup",
       "install": [
         { "platform": "unix", "command": "curl -fsSL https://claude.ai/install.sh | bash" },
@@ -21,6 +22,7 @@
       "name": "Codex",
       "description": "Agent programistyczny OpenAI",
       "commands": ["codex"],
+      "promptArg": "",
       "docsUrl": "https://developers.openai.com/codex/cli",
       "install": [{ "platform": "any", "command": "npm i -g @openai/codex" }],
       "acp": {
@@ -33,6 +35,7 @@
       "name": "Gemini CLI",
       "description": "Agent programistyczny Google",
       "commands": ["gemini"],
+      "promptArg": "-i",
       "docsUrl": "https://github.com/google-gemini/gemini-cli",
       "install": [{ "platform": "any", "command": "npm install -g @google/gemini-cli" }],
       "acp": { "command": "gemini", "args": ["--acp"] }
@@ -50,6 +53,7 @@
       "name": "OpenCode",
       "description": "Agent programistyczny open source (wielu dostawców modeli)",
       "commands": ["opencode"],
+      "promptArg": "--prompt",
       "docsUrl": "https://opencode.ai/docs",
       "install": [
         { "platform": "unix", "command": "curl -fsSL https://opencode.ai/install | bash" },

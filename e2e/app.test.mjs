@@ -688,4 +688,73 @@ describe("Leverframe", () => {
     );
     await app.waitFor("return document.querySelector('li[aria-label^=\"Rozmowa Claude Code\"]')?.textContent.includes('kod 3')", 20_000);
   });
+  it("starts an agent on a task: conversation with the file, terminal with the message, history, statuses (#107, #109)", async () => {
+    const chat = "[data-testid=agent-chat]";
+    const tasksDir = join(env.project, ".leverframe", "tasks");
+    const file = join(tasksDir, "1-agent-na-zadaniu.md");
+    const title = "Agent na zadaniu";
+    const waitFile = async (pattern, timeout = 20_000) => {
+      const end = Date.now() + timeout;
+      while (Date.now() < end) {
+        if (existsSync(file) && pattern.test(readFileSync(file, "utf8"))) return;
+        await sleep(150);
+      }
+      assert.fail(`${file} does not match ${pattern}: ${existsSync(file) ? readFileSync(file, "utf8") : "(none)"}`);
+    };
+    const openRunForm = async () => {
+      await app.exec(`document.querySelector('button[aria-label="Uruchom agenta: ${title}"]').click()`);
+      await app.waitFor(`return !!document.querySelector('[role=group][aria-label="Uruchom agenta: zadanie #1"]')`);
+    };
+    try {
+      await showView("Zadania");
+      await app.click('[aria-label="Lista zadań"] button', "Projekt");
+      await app.waitFor("return !!document.querySelector('button[aria-label=\"Nowe zadanie…\"]:not([disabled])')", 20_000);
+      await app.exec(`document.querySelector('button[aria-label="Nowe zadanie…"]').click()`);
+      await app.waitFor("return !!document.querySelector('form[aria-label=\"Nowe zadanie\"] input')");
+      await app.exec(
+        `const i = document.querySelector('form[aria-label="Nowe zadanie"] input');
+         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[0]);
+         i.dispatchEvent(new Event('input', { bubbles: true }));`,
+        [title],
+      );
+      await app.exec(`document.querySelector('form[aria-label="Nowe zadanie"] button[type=submit]').click()`);
+      await app.waitFor(`return !!document.querySelector('li[aria-label="#1 ${title}"]')`, 20_000);
+
+      // Conversation mode: the first message names the file, the file goes as a resource link.
+      await openRunForm();
+      await app.exec(
+        `const s = document.querySelector('select[aria-label="Agent"]');
+         Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'claude');
+         s.dispatchEvent(new Event('change', { bubbles: true }));`,
+      );
+      await app.click('[role=group][aria-label="Uruchom agenta: zadanie #1"] button', "Uruchom");
+      await app.waitFor(
+        `return [...document.querySelectorAll('${chat} [role=log]')].some(l => l.textContent.includes('Echo: Wykonaj zadanie opisane w pliku .leverframe/tasks/1-agent-na-zadaniu.md (${title})'))`,
+        30_000,
+      );
+      const log = await app.exec(`return [...document.querySelectorAll('${chat} [role=log]')].map(l => l.textContent).join(' ')`);
+      assert.ok(log.includes(`[plik: file://${encodeURI(file)}]`), log);
+      // The turn ended: „Do sprawdzenia”, the run in the header, the count on the activity bar.
+      await waitFile(/\nstatus: review\n/);
+      assert.match(readFileSync(file, "utf8"), /\nruns:\n  - \{at: "[^"]+", agent: "claude", profile: "local:bash", mode: "chat", cwd: "[^"]+"\}\n/);
+      await app.waitFor(`return document.querySelector('nav button[aria-label="Zadania"]').textContent.trim() === '1'`, 20_000);
+      await app.waitFor(`return !!document.querySelector('ul[aria-label="Zadania: Do sprawdzenia"] li[aria-label="#1 ${title}"]')`, 20_000);
+      await app.exec(`document.querySelector('button[aria-label="Uruchomienia: ${title}"]').click()`);
+      await app.waitFor(`return document.querySelector('[role=group][aria-label="Uruchomienia zadania #1"]')?.textContent.includes('Claude Code · bash · rozmowa')`);
+
+      // Terminal: the agent starts with the message as its argument; the task is „W toku” again.
+      const args = join(env.home, "claude-args.txt");
+      rmSync(args, { force: true });
+      await openRunForm();
+      await app.click('[role=group][aria-label="Uruchom agenta: zadanie #1"] label', "Terminal");
+      await app.click('[role=group][aria-label="Uruchom agenta: zadanie #1"] button', "Uruchom");
+      for (let i = 0; i < 150 && !existsSync(args); i++) await sleep(100);
+      assert.match(readFileSync(args, "utf8"), /^Wykonaj zadanie opisane w pliku \.leverframe\/tasks\/1-agent-na-zadaniu\.md \(Agent na zadaniu\)\. Na końcu/);
+      await waitFile(/\nstatus: doing\n[\s\S]*mode: "terminal"/);
+      assert.equal(readFileSync(join(env.home, "claude-ran.txt"), "utf8").trim(), env.project);
+    } finally {
+      rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
+      rmSync(join(env.home, "claude-args.txt"), { force: true });
+    }
+  });
 });

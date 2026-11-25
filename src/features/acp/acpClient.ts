@@ -59,6 +59,12 @@ export interface PermissionOption {
 }
 
 /** ACP v1 content block; text is shown, the others by name. */
+/** A file named in a prompt (`resource_link`): a path of the agent's computer as `file://…`. */
+export interface PromptResource {
+  uri: string;
+  name: string;
+}
+
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "resource_link"; uri: string; name?: string }
@@ -138,7 +144,7 @@ export interface AcpStartRequest {
 export interface AcpHandle {
   id: number;
   /** Resolves with the stop reason (`end_turn`, `cancelled`, `max_tokens`, …). */
-  prompt(text: string): Promise<string>;
+  prompt(text: string, resource?: PromptResource): Promise<string>;
   cancel(): Promise<void>;
   replyPermission(requestId: number, optionId: string | null): Promise<void>;
   /** Answers a file request: the text read, nothing for a write, or an error. */
@@ -173,7 +179,7 @@ export async function startAcp(request: AcpStartRequest, onEvent: (event: AcpEve
   });
   return {
     id,
-    prompt: (text) => invoke<string>("acp_prompt", { id, text }),
+    prompt: (text, resource) => invoke<string>("acp_prompt", { id, text, resource: resource ?? null }),
     cancel: () => invoke("acp_cancel", { id }),
     replyPermission: (requestId, optionId) => invoke("acp_permission_reply", { id, requestId, optionId }),
     replyFs: (requestId, reply) =>

@@ -10,7 +10,7 @@ mod model;
 mod service;
 mod settings;
 
-pub use command::{shell_of, typed_command, Shell};
+pub use command::{args_with_prompt, prompt_word, shell_of, typed_command, Shell};
 pub use detect::{
     detect, detect_command, parse_output, posix_script, powershell_script, run_script, AgentStatus,
     LOGIN_PATH_PRELUDE,

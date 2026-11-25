@@ -69,6 +69,9 @@ pub struct PtySpawnRequest {
     /// `docker_prepare_container`; the project folder when it is mounted).
     #[serde(default)]
     pub container_dir: Option<String>,
+    /// With `agent_id`: the agent's first prompt (a task, #107), given as its `promptArg`.
+    #[serde(default)]
+    pub agent_prompt: Option<String>,
     #[serde(default)]
     pub env: Vec<(String, String)>,
     pub cols: u16,
@@ -236,15 +239,21 @@ pub fn resolve_request(
         }
     }
     // The program found in the profile, with the user's arguments and variables.
-    let agent_command = agent.map(|a| {
-        let command = agents.command_for(&a, profile.as_ref().map(|p| p.id.as_str()));
-        crate::agents::typed_command(
-            &command,
-            &a.args,
-            &a.env,
-            crate::agents::shell_of(profile.as_ref()),
-        )
-    });
+    let agent_command = match agent {
+        Some(a) => {
+            let command = agents.command_for(&a, profile.as_ref().map(|p| p.id.as_str()));
+            let shell = crate::agents::shell_of(profile.as_ref());
+            let args = match &request.agent_prompt {
+                Some(prompt) => {
+                    crate::agents::args_with_prompt(&a.args, a.prompt_arg.as_deref(), prompt, shell)
+                        .map_err(|e| format!("{}: {e}", a.name))?
+                }
+                None => a.args.clone(),
+            };
+            Some(crate::agents::typed_command(&command, &args, &a.env, shell))
+        }
+        None => None,
+    };
     Ok(Resolved {
         opts,
         profile,
