@@ -11,6 +11,8 @@ import { errorMessage } from "../editor/fsClient";
 import { RunTaskForm, TaskRunsList } from "./TaskRuns";
 import { STATUSES, statusLabel, tasksClient, type Task, type TaskScope, type TaskStatus } from "./tasksClient";
 
+type TaskPanel = "run" | "runs" | null;
+
 const SCOPES: { id: TaskScope; label: string }[] = [
   { id: "project", label: "Projekt" },
   { id: "global", label: "Globalne" },
@@ -34,6 +36,9 @@ export function TasksView() {
   const [creating, setCreating] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<TaskStatus>>(new Set(["done"]));
   const [menu, setMenu] = useState<string | null>(null);
+  // Open "Uruchom agenta" / "Uruchomienia" per task file – kept here: a task changing its status
+  // moves to another group (and its item is made again).
+  const [panels, setPanels] = useState<Record<string, TaskPanel>>({});
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
@@ -225,6 +230,8 @@ export function TasksView() {
                           onConfirmDelete={(permanently) => void remove(t, permanently)}
                           onCancelDelete={() => setDeleting(null)}
                           onStarted={() => void reload()}
+                          panel={panels[t.file] ?? null}
+                          setPanel={(p) => setPanels((now) => ({ ...now, [t.file]: p }))}
                         />
                       ))}
                     </ul>
@@ -249,11 +256,13 @@ function TaskItem(props: {
   onConfirmDelete: (permanently: boolean) => void;
   onCancelDelete: () => void;
   onStarted: () => void;
+  panel: TaskPanel;
+  setPanel: (panel: TaskPanel) => void;
 }) {
   const t = props.task;
-  const [panel, setPanel] = useState<"run" | "runs" | null>(null);
+  const { panel, setPanel } = props;
   const running = useTasksStore((s) => Object.values(s.live).some((r) => r.path === t.path));
-  const toggle = (p: "run" | "runs") => setPanel((now) => (now === p ? null : p));
+  const toggle = (p: "run" | "runs") => setPanel(panel === p ? null : p);
   const item = "flex w-full items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs text-lf-fg hover:bg-lf-hover";
   return (
     <li aria-label={`#${t.id} ${t.title}`}>

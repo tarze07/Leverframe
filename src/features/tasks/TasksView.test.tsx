@@ -200,3 +200,21 @@ describe("TasksView (#106)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("brak dostępu");
   });
 });
+
+describe("TasksView panels (#109)", () => {
+  it("keeps a task's runs open when it changes its group", async () => {
+    const run = { at: "2026-11-25T14:00:00.000Z", agent: "claude", profile: "", mode: "chat" as const };
+    const tasks = [{ ...task("project", 1, "Eksport CSV", "doing"), runs: [run] }];
+    invoke.mockReset();
+    invoke.mockImplementation(async (cmd: string) => (cmd === "tasks_list" ? tasks.map((t) => ({ ...t })) : undefined));
+    useAgentsStore.setState({ projectDir: "/p", recentDirs: [], loaded: true, agents: [] } as never);
+    useTasksStore.setState({ scope: "project", live: {} });
+    render(<TasksView />);
+    fireEvent.click(await screen.findByLabelText("Uruchomienia: Eksport CSV"));
+    expect(screen.getByRole("group", { name: "Uruchomienia zadania #1" })).toBeInTheDocument();
+    tasks[0].status = "review";
+    act(() => notifyFilesChanged([tasks[0].path]));
+    await within(await screen.findByRole("list", { name: "Zadania: Do sprawdzenia" })).findByText("Eksport CSV");
+    expect(screen.getByRole("group", { name: "Uruchomienia zadania #1" })).toBeInTheDocument();
+  });
+});

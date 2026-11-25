@@ -301,8 +301,9 @@ describe("Leverframe with Docker", { skip: !available && "Docker is not availabl
       await app.waitFor(steps.logHas("[plik: file:///workspace/.leverframe/tasks/1-globalne-w-kontenerze.md]"), 60_000);
       const copy = join(env.project, ".leverframe", "tasks", "1-globalne-w-kontenerze.md");
       assert.match(readFileSync(copy, "utf8"), /title: "Globalne w kontenerze"/);
-      // The agent's result in the copy comes back after the changes are shown.
-      writeFileSync(copy, `${readFileSync(copy, "utf8")}\n## Wynik\nGotowe w kontenerze.\n`);
+      // The agent's result in the copy comes back after the changes are shown (written in the
+      // container: the copy belongs to its user).
+      docker("exec", CONTAINER, "sh", "-c", "printf '\\n## Wynik\\nGotowe w kontenerze.\\n' >> /workspace/.leverframe/tasks/1-globalne-w-kontenerze.md");
       await app.exec(`document.querySelector('button[aria-label="Uruchomienia: Globalne w kontenerze"]').click()`);
       await app.waitFor("return [...document.querySelectorAll('[role=group][aria-label=\"Uruchomienia zadania #1\"] button')].some(b => b.textContent.trim() === 'Pobierz wynik')");
       await press('[role=group][aria-label="Uruchomienia zadania #1"]', "Pobierz wynik");
@@ -312,6 +313,7 @@ describe("Leverframe with Docker", { skip: !available && "Docker is not availabl
       for (let i = 0; i < 100 && !readFileSync(join(globalDir, "1-globalne-w-kontenerze.md"), "utf8").includes("Gotowe w kontenerze."); i++) await sleep(100);
       assert.match(readFileSync(join(globalDir, "1-globalne-w-kontenerze.md"), "utf8"), /## Wynik\nGotowe w kontenerze\.\n$/);
     } finally {
+      quiet("exec", CONTAINER, "rm", "-rf", "/workspace/.leverframe");
       rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
     }
   });
