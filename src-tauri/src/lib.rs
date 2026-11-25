@@ -9,6 +9,7 @@ pub mod profiles;
 pub mod pty;
 pub mod sessions;
 pub mod settings;
+pub mod tasks;
 #[cfg(test)]
 mod test_support;
 
@@ -41,6 +42,7 @@ pub fn run() {
             }
             app.manage(settings_store);
             let data_dir = app.path().app_data_dir()?;
+            app.manage(tasks::commands::GlobalTasksDir(data_dir.join("tasks")));
             app.manage(sessions::SessionService::open(&data_dir, &config_dir)?);
             let logs = std::sync::Arc::new(sessions::logs::AgentLogService::new());
             let handle = app.handle().clone();
@@ -91,6 +93,12 @@ pub fn run() {
             fs::commands::fs_delete,
             fs::commands::remote_list_dirs,
             fs::commands::remote_make_dir,
+            tasks::commands::tasks_list,
+            tasks::commands::tasks_dir,
+            tasks::commands::tasks_create,
+            tasks::commands::tasks_update,
+            tasks::commands::tasks_move,
+            tasks::commands::tasks_delete,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,
