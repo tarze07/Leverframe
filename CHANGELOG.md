@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Lista zadań – widok „Zadania”** ([#104](https://github.com/tarze07/Leverframe/issues/104), [#105](https://github.com/tarze07/Leverframe/issues/105), [#106](https://github.com/tarze07/Leverframe/issues/106)): nowa ikona na pasku aktywności z listą zadań projektu albo globalną (przełącznik „Projekt / Globalne”). Zadanie to plik Markdown z krótkim nagłówkiem (numer, tytuł, status, data): w projekcie w `.leverframe/tasks/`, globalne w danych aplikacji. Zadania pogrupowane według statusu (Do zrobienia / W toku / Do sprawdzenia / Gotowe) z licznikami i filtrem; „Nowe zadanie…” tworzy plik z szablonem i otwiera go w edytorze; menu zadania (także pod prawym przyciskiem) zmienia status, przenosi między projektem a globalnymi i usuwa (do kosza albo na stałe). Lista odświeża się po zapisaniu pliku zadania w edytorze. Folder `.leverframe/` nie trafia do repozytorium: Leverframe dopisuje go do `.git/info/exclude` (bez zmian w `.gitignore`). Polecenia „Zadania: pokaż” i „Zadania: nowe zadanie” w palecie poleceń. Uruchamianie agenta na zadaniu – w kolejnych etapach.
+
 ### Naprawione
 - **Windows: agenci zainstalowani poza `PATH` Leverframe** (np. Claude Code w `%USERPROFILE%\.claude\bin`): Leverframe dziedziczył `PATH` z chwili logowania, więc foldery dopisane później do `PATH` użytkownika lub systemu (instalator, polityka firmowa) były pomijane – agent był „niezainstalowany”, a w terminalu nie startował. Przy starcie Leverframe uzupełnia `PATH` o ścieżki z rejestru i o istniejące foldery instalacji agentów (`.claude\bin`, `.claude\local`, `.local\bin`, `.opencode\bin`, `AppData\Roaming\npm`); dziedziczą go wykrywanie, terminale i tryb rozmowy.
 

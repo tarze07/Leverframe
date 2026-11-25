@@ -10,6 +10,7 @@ export interface ViewDef {
 export const VIEWS: ViewDef[] = [
   { id: "terminals", title: "Terminale", icon: "terminal" },
   { id: "agents", title: "Agenci", icon: "hubot" },
+  { id: "tasks", title: "Zadania", icon: "tasklist" },
   { id: "chats", title: "Rozmowy", icon: "comment-discussion" },
   { id: "containers", title: "Kontenery", icon: "package" },
   { id: "sessions", title: "Sesje", icon: "history" },

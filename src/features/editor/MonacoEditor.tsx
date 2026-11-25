@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { notifyFilesChanged } from "../../lib/fileEvents";
 import type { IDockviewPanelProps } from "dockview-react";
 import { isMarkdownPath, useEditorStore, type EditorView } from "../../store/editor";
 import { useSettingsStore } from "../../store/settings";
@@ -83,6 +84,8 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
         savedVersion.current = version;
         setBanner(null);
         markDirty();
+        // Views listing files (the task list reads titles and statuses) see the change.
+        notifyFilesChanged([path]);
         // Editing settings.json in the editor applies the settings on save.
         if (path === useSettingsStore.getState().path) void useSettingsStore.getState().load();
         return true;
