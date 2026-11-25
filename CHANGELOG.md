@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.13.0] – 2026-11-25
+
 ### Dodane
 - **Lista zadań – widok „Zadania”** ([#104](https://github.com/tarze07/Leverframe/issues/104), [#105](https://github.com/tarze07/Leverframe/issues/105), [#106](https://github.com/tarze07/Leverframe/issues/106)): nowa ikona na pasku aktywności z listą zadań projektu albo globalną (przełącznik „Projekt / Globalne”). Zadanie to plik Markdown z krótkim nagłówkiem (numer, tytuł, status, data): w projekcie w `.leverframe/tasks/`, globalne w danych aplikacji. Zadania pogrupowane według statusu (Do zrobienia / W toku / Do sprawdzenia / Gotowe) z licznikami i filtrem; „Nowe zadanie…” tworzy plik z szablonem i otwiera go w edytorze; menu zadania (także pod prawym przyciskiem) zmienia status, przenosi między projektem a globalnymi i usuwa (do kosza albo na stałe). Lista odświeża się po zapisaniu pliku zadania w edytorze. Folder `.leverframe/` nie trafia do repozytorium: Leverframe dopisuje go do `.git/info/exclude` (bez zmian w `.gitignore`). Polecenia „Zadania: pokaż” i „Zadania: nowe zadanie” w palecie poleceń.
 - **Agent na zadaniu** ([#107](https://github.com/tarze07/Leverframe/issues/107), [#108](https://github.com/tarze07/Leverframe/issues/108), [#109](https://github.com/tarze07/Leverframe/issues/109)): „Uruchom agenta…” przy zadaniu – wybór agenta, profilu (lokalny, WSL, SSH, kontener lokalny i na serwerze), trybu i folderu pracy (zadania globalne). Tryb rozmowy sam wysyła pierwszą wiadomość z plikiem zadania jako zasobem (`resource_link`); tryb terminala uruchamia agenta z poleceniem jako pierwszym promptem (nowe pole `promptArg` w `agents.json`: Claude Code, Codex, Gemini CLI `-i`, OpenCode `--prompt`). Polecenie ustawia się w Ustawieniach („Zadania: polecenie dla agenta”, `tasksPrompt`, z `{plik}` i `{tytul}`). Kontener widzi plik przez zamontowany folder projektu; na serwer SSH i do kontenera bez tego folderu plik jest kopiowany (`.leverframe/tasks/`, z wpisem w `.git/info/exclude`), a „Pobierz wynik” pokazuje różnice kopii agenta i zapisuje ją w zadaniu po potwierdzeniu. Uruchomienia są zapisywane w nagłówku zadania (`runs`) i widoczne na liście „Uruchomienia” (trwające otwierają rozmowę lub terminal, zakończone – historię sesji). Zadanie przechodzi samo na „W toku” przy starcie i na „Do sprawdzenia”, gdy agent skończy; liczba zadań do sprawdzenia jest na ikonie widoku.
@@ -230,6 +232,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.13.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.13.0
 [0.12.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.11.0
 [0.10.2]: https://github.com/tarze07/Leverframe/releases/tag/v0.10.2
