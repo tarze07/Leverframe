@@ -4,6 +4,7 @@ import { useAgentLogsStore } from "../store/agentLogs";
 import { useProfilesStore } from "../store/profiles";
 import { useSessionsStore } from "../store/sessions";
 import { useSettingsStore } from "../store/settings";
+import { useTasksStore } from "../store/tasks";
 import { useUiStore, type ViewId } from "../store/ui";
 import { THEMES, themeById } from "../theme/themes";
 import { currentEditor, saveAllEditors } from "../store/editor";
@@ -103,6 +104,16 @@ export function allCommands(): AppCommand[] {
     },
     { id: "view.terminals", title: "Pokaż terminale", category: "Widok", run: () => showView("terminals") },
     { id: "view.agents", title: "Pokaż agentów", category: "Widok", run: () => showView("agents") },
+    { id: "view.tasks", title: "Zadania: pokaż", category: "Zadania", run: () => showView("tasks") },
+    {
+      id: "tasks.new",
+      title: "Zadania: nowe zadanie",
+      category: "Zadania",
+      run: () => {
+        showView("tasks");
+        useTasksStore.getState().requestNewTask();
+      },
+    },
     { id: "view.chats", title: "Pokaż rozmowy", category: "Widok", run: () => showView("chats") },
     { id: "view.containers", title: "Pokaż kontenery", category: "Widok", run: () => showView("containers") },
     { id: "view.sessions", title: "Pokaż sesje", category: "Widok", run: () => showView("sessions") },

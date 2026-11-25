@@ -7,11 +7,13 @@ import { SessionsView } from "../features/sessions/SessionsView";
 import { ChatsView } from "../features/acp/ChatsView";
 import { ContainersView } from "../features/docker/ContainersView";
 import { FilesView } from "../features/files/FilesView";
+import { TasksView } from "../features/tasks/TasksView";
 import { SettingsView } from "../features/settings/SettingsView";
 
 const VIEW_COMPONENTS: Record<ViewId, ComponentType> = {
   terminals: TerminalsView,
   agents: AgentsView,
+  tasks: TasksView,
   chats: ChatsView,
   containers: ContainersView,
   sessions: SessionsView,

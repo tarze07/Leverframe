@@ -2,7 +2,7 @@
 // after `npm run tauri build -- --debug --no-bundle`, inside an X server (e.g. `xvfb-run`).
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { App, KEY, startDriver } from "./driver.mjs";
@@ -157,6 +157,85 @@ describe("Leverframe", () => {
     // A folder with its contents, permanently.
     await remove("notatki", "Usuń na stałe");
     assert.equal(existsSync(join(base, "notatki")), false);
+  });
+
+  it("keeps tasks in the project and globally: create, status, move, delete (#106)", async () => {
+    const tasksDir = join(env.project, ".leverframe", "tasks");
+    const globalDir = join(env.home, ".local", "share", "io.github.tarze07.leverframe", "tasks");
+    // The project as a git repository: its tasks stay out of it (.git/info/exclude).
+    mkdirSync(join(env.project, ".git"), { recursive: true });
+    const task = (title) => `li[aria-label$=" ${title}"]`;
+    const inGroup = (group, title) => `return !!document.querySelector('ul[aria-label="Zadania: ${group}"] ${task(title)}')`;
+    const create = async (title) => {
+      await app.exec(`document.querySelector('button[aria-label="Nowe zadanie…"]').click()`);
+      await app.waitFor("return !!document.querySelector('form[aria-label=\"Nowe zadanie\"] input')");
+      await app.exec(
+        `const i = document.querySelector('form[aria-label="Nowe zadanie"] input');
+         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[0]);
+         i.dispatchEvent(new Event('input', { bubbles: true }));`,
+        [title],
+      );
+      await app.exec(`document.querySelector('form[aria-label="Nowe zadanie"] button[type=submit]').click()`);
+      await app.waitFor("return !document.querySelector('form[aria-label=\"Nowe zadanie\"]')");
+    };
+    const menu = async (title, entry) => {
+      await app.exec(`document.querySelector('button[aria-label="Więcej: ${title}"]').click()`);
+      await app.waitFor("return !!document.querySelector('[role=menu]')");
+      await app.click("[role=menu] [role=menuitem]", entry);
+    };
+    const remove = async (title, choice) => {
+      await menu(title, "Usuń…");
+      await app.waitFor("return !!document.querySelector('[role=group][aria-label^=\"Usuwanie zadania\"]')");
+      await app.click('[role=group][aria-label^="Usuwanie zadania"] button', choice);
+      await app.waitFor(`return !document.querySelector('${task(title)}')`, 20_000);
+    };
+    const tab = (name) => `return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.trim() === '${name}')`;
+
+    try {
+      await showView("Zadania");
+      await app.click('[aria-label="Lista zadań"] button', "Projekt");
+      await app.waitFor("return document.body.innerText.includes('Brak zadań')", 20_000);
+      await create("Eksport do CSV: „pilne”");
+      const file = join(tasksDir, "1-eksport-do-csv-pilne.md");
+      assert.match(readFileSync(file, "utf8"), /^---\nid: 1\ntitle: "Eksport do CSV: „pilne”"\nstatus: todo\n/);
+      await app.waitFor(tab("1-eksport-do-csv-pilne.md"), 20_000);
+      await app.waitFor(inGroup("Do zrobienia", "Eksport do CSV: „pilne”"));
+      assert.match(readFileSync(join(env.project, ".git", "info", "exclude"), "utf8"), /^\/\.leverframe\/$/m);
+      assert.equal(readFileSync(join(env.project, ".gitignore"), "utf8"), "node_modules/\n", ".gitignore unchanged");
+
+      await menu("Eksport do CSV: „pilne”", "W toku");
+      await app.waitFor(inGroup("W toku", "Eksport do CSV: „pilne”"));
+      assert.match(readFileSync(file, "utf8"), /\nstatus: doing\n/);
+
+      // A title changed in the file shows after a refresh.
+      writeFileSync(file, readFileSync(file, "utf8").replace('title: "Eksport do CSV: „pilne”"', "title: Eksport CSV i XLSX"));
+      await app.exec(`document.querySelector('aside[aria-label="Zadania"] button[aria-label="Odśwież"]').click()`);
+      await app.waitFor(inGroup("W toku", "Eksport CSV i XLSX"));
+
+      // A global task, moved to the project.
+      await app.click('[aria-label="Lista zadań"] button', "Globalne");
+      await app.waitFor("return document.body.innerText.includes('Brak zadań')", 20_000);
+      await create("Wspólne narzędzia");
+      assert.ok(existsSync(join(globalDir, "1-wspolne-narzedzia.md")), "in the app's data folder");
+      await app.waitFor(inGroup("Do zrobienia", "Wspólne narzędzia"));
+      await menu("Wspólne narzędzia", "Przenieś do projektu");
+      await app.waitFor(`return !document.querySelector('${task("Wspólne narzędzia")}')`);
+      assert.equal(existsSync(join(globalDir, "1-wspolne-narzedzia.md")), false);
+      assert.match(readFileSync(join(tasksDir, "2-wspolne-narzedzia.md"), "utf8"), /^---\nid: 2\n/);
+      await app.waitFor(`return !(${tab("1-wspolne-narzedzia.md").slice(7)})`);
+
+      await app.click('[aria-label="Lista zadań"] button', "Projekt");
+      await app.waitFor(inGroup("Do zrobienia", "Wspólne narzędzia"), 20_000);
+      await remove("Wspólne narzędzia", "Usuń na stałe");
+      assert.equal(existsSync(join(tasksDir, "2-wspolne-narzedzia.md")), false);
+      await remove("Eksport CSV i XLSX", "Do kosza");
+      assert.equal(existsSync(file), false);
+      assert.ok(existsSync(join(env.home, ".local", "share", "Trash", "files", "1-eksport-do-csv-pilne.md")), "in the trash");
+      await app.waitFor(`return !(${tab("1-eksport-do-csv-pilne.md").slice(7)})`);
+    } finally {
+      rmSync(join(env.project, ".git"), { recursive: true, force: true });
+      rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
+    }
   });
 
   it("saves a Markdown file with the toolbar button and shows its preview", async () => {
