@@ -10,7 +10,7 @@ import { Workbench } from "./components/Workbench";
 import { safeStorage } from "./lib/storage";
 import { useAppearance } from "./lib/useAppearance";
 import { useKeybindings } from "./lib/useKeybindings";
-import { useUiStore } from "./store/ui";
+import { isSidePosition, panelFirst, useUiStore } from "./store/ui";
 import { useProfilesStore } from "./store/profiles";
 import { useSettingsStore } from "./store/settings";
 import { useAgentsStore } from "./store/agents";
@@ -82,7 +82,29 @@ export default function App() {
   const onWorkbenchResize = useCollapsibleSync(workbenchRef, maximized !== "panel", (v) =>
     useUiStore.getState().setMaximized(v ? null : "panel"),
   );
-  const side = panelPosition === "right";
+  const side = isSidePosition(panelPosition);
+  const first = panelFirst(panelPosition);
+  // Same elements for every position, so the terminals keep running when the panel moves.
+  const workbench = (
+    <Panel key="workbench" id="workbench" panelRef={workbenchRef} minSize={side ? 200 : 120} collapsible onResize={onWorkbenchResize}>
+      <Workbench />
+    </Panel>
+  );
+  const separator = <Separator key="separator" className={`lf-separator ${side ? "lf-separator-col" : "lf-separator-row"}`} />;
+  const bottom = (
+    <Panel
+      key="bottom"
+      id="bottom"
+      panelRef={bottomRef}
+      defaultSize={side ? "40%" : 220}
+      minSize={side ? 200 : 100}
+      collapsible
+      groupResizeBehavior="preserve-pixel-size"
+      onResize={onBottomResize}
+    >
+      <BottomPanel />
+    </Panel>
+  );
 
   const mainLayout = useDefaultLayout({ id: "leverframe.layout.main", storage: safeStorage });
   const centerLayout = useDefaultLayout({ id: "leverframe.layout.center", storage: safeStorage });
@@ -107,29 +129,9 @@ export default function App() {
           </Panel>
           <Separator className="lf-separator lf-separator-col" />
           <Panel id="center" minSize={300}>
-            {/* Same children for both positions, so the terminals keep running when the panel moves. */}
             <Group orientation={side ? "horizontal" : "vertical"} {...centerLayout}>
-              <Panel
-                id="workbench"
-                panelRef={workbenchRef}
-                minSize={side ? 200 : 120}
-                collapsible
-                onResize={onWorkbenchResize}
-              >
-                <Workbench />
-              </Panel>
-              <Separator className={`lf-separator ${side ? "lf-separator-col" : "lf-separator-row"}`} />
-              <Panel
-                id="bottom"
-                panelRef={bottomRef}
-                defaultSize={side ? "40%" : 220}
-                minSize={side ? 200 : 100}
-                collapsible
-                groupResizeBehavior="preserve-pixel-size"
-                onResize={onBottomResize}
-              >
-                <BottomPanel />
-              </Panel>
+              {/* Keyed and only reordered when swapped (#124): the terminals keep running. */}
+              {(first ? [bottom, separator, workbench] : [workbench, separator, bottom])}
             </Group>
           </Panel>
         </Group>

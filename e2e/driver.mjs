@@ -81,6 +81,37 @@ export class App {
     );
   }
 
+  /**
+   * A real mouse click (pointer actions: move, press, release) on the element `click` would
+   * choose – unlike `click`, the browser gives it the focus as for a user.
+   */
+  async mouseClick(selector, text = "") {
+    await this.exec(
+      `document.querySelectorAll('[data-lf-mouse]').forEach(e => e.removeAttribute('data-lf-mouse'));
+       const el = [...document.querySelectorAll(arguments[0])].find(e => !arguments[1] || (e.innerText || '').includes(arguments[1]) || (e.getAttribute('aria-label') || '').includes(arguments[1]) || (e.title || '').includes(arguments[1]));
+       if (!el) throw new Error('not found: ' + arguments[0] + ' ' + arguments[1]);
+       el.setAttribute('data-lf-mouse', '1'); return true;`,
+      [selector, text],
+    );
+    const found = await req("POST", this.path("/element"), { using: "css selector", value: "[data-lf-mouse]" });
+    const origin = { "element-6066-11e4-a52e-4f735466cecf": Object.values(found)[0] };
+    await req("POST", this.path("/actions"), {
+      actions: [
+        {
+          type: "pointer",
+          id: "mouse",
+          parameters: { pointerType: "mouse" },
+          actions: [
+            { type: "pointerMove", origin, x: 0, y: 0 },
+            { type: "pointerDown", button: 0 },
+            { type: "pointerUp", button: 0 },
+          ],
+        },
+      ],
+    });
+    await req("DELETE", this.path("/actions")).catch(() => {});
+  }
+
   keys(actions) {
     return req("POST", this.path("/actions"), { actions: [{ type: "key", id: "kb", actions }] });
   }

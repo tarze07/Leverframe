@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   DockviewReact,
   themeDark,
@@ -13,6 +13,7 @@ import {
 import { safeStorage } from "../lib/storage";
 import { dockRegistry, type DockId } from "./docks";
 import { useUiStore } from "../store/ui";
+import { clickedTab, focusPanel } from "./panelFocus";
 
 export interface DockAreaProps {
   id: DockId;
@@ -61,10 +62,35 @@ export function DockArea({ id, components, tabComponents, addDefaultPanels, onEm
   );
 
   useEffect(() => () => dockRegistry.set(id, null), [id]);
+
+  // A tab clicked: the keyboard goes to its panel, not to the tab (#125).
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const onClick = (e: MouseEvent) => {
+      const tab = clickedTab(e.target, el);
+      if (!tab) return;
+      // Once dockview has made the tab active (it may do so a moment after the click), the panel
+      // of the group holding the tab – the dock's active panel may still be another group's.
+      const focusChosen = (attempt = 0) => {
+        if (!tab.classList.contains("dv-active-tab") && attempt < 20) {
+          requestAnimationFrame(() => focusChosen(attempt + 1));
+          return;
+        }
+        const api = dockRegistry.get(id);
+        const panel = api?.groups.find((g) => g.element.contains(tab))?.activePanel ?? api?.activePanel;
+        if (panel) focusPanel(panel.id, panel.view.content.element);
+      };
+      setTimeout(() => focusChosen(), 0);
+    };
+    el.addEventListener("click", onClick);
+    return () => el.removeEventListener("click", onClick);
+  }, [id]);
   const resolvedTheme = useUiStore((s) => s.resolvedTheme);
 
   return (
-    <div className="h-full w-full" data-testid={`dock-${id}`}>
+    <div ref={root} className="h-full w-full" data-testid={`dock-${id}`}>
       <DockviewReact
         components={components}
         tabComponents={tabComponents}

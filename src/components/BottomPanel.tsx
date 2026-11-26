@@ -1,4 +1,4 @@
-import { useUiStore } from "../store/ui";
+import { useUiStore, isSidePosition, turnedPosition } from "../store/ui";
 import { isTauri } from "../lib/tauri";
 import { TerminalPanel } from "../features/terminal/TerminalPanel";
 import { AgentChatPanel } from "../features/acp/AgentChatPanel";
@@ -32,6 +32,7 @@ export function BottomPanel() {
   const toggleMaximized = useUiStore((s) => s.togglePanelMaximized);
   const position = useUiStore((s) => s.panelPosition);
   const setPosition = useUiStore((s) => s.setPanelPosition);
+  const swap = useUiStore((s) => s.swapPanel);
   return (
     <section aria-label="Panel terminala" className="flex h-full flex-col bg-lf-panel">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-lf-border px-4 text-[11px] font-semibold uppercase tracking-wider">
@@ -41,11 +42,16 @@ export function BottomPanel() {
           <ProfileMenu />
           <PanelButton icon="split-horizontal" label="Podziel terminal" onClick={() => openTerminal({ split: "right" })} />
           <PanelButton icon="trash" label="Zamknij aktywny terminal" onClick={() => closeActiveTerminal()} />
-          {position === "bottom" ? (
-            <PanelButton icon="layout-sidebar-right" label="Przenieś panel obok edytora" onClick={() => setPosition("right")} />
+          {isSidePosition(position) ? (
+            <PanelButton icon="layout-panel" label={position === "left" ? "Przenieś panel nad edytor" : "Przenieś panel pod edytor"} onClick={() => setPosition(turnedPosition(position))} />
           ) : (
-            <PanelButton icon="layout-panel" label="Przenieś panel pod edytor" onClick={() => setPosition("bottom")} />
+            <PanelButton
+              icon={position === "top" ? "layout-sidebar-left" : "layout-sidebar-right"}
+              label={position === "top" ? "Przenieś panel obok edytora (po lewej)" : "Przenieś panel obok edytora"}
+              onClick={() => setPosition(turnedPosition(position))}
+            />
           )}
+          <PanelButton icon="arrow-swap" label="Zamień miejscami terminal i edytor" onClick={swap} />
           <PanelButton
             icon={maximized ? "screen-normal" : "screen-full"}
             label={maximized ? "Przywróć edytor (Ctrl+Shift+M)" : "Maksymalizuj panel – ukryj edytor (Ctrl+Shift+M)"}

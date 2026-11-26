@@ -5,7 +5,7 @@ import { useProfilesStore } from "../store/profiles";
 import { useSessionsStore } from "../store/sessions";
 import { useSettingsStore } from "../store/settings";
 import { useTasksStore } from "../store/tasks";
-import { useUiStore, type ViewId } from "../store/ui";
+import { isSidePosition, turnedPosition, useUiStore, type ViewId } from "../store/ui";
 import { THEMES, themeById } from "../theme/themes";
 import { currentEditor, saveAllEditors } from "../store/editor";
 import { dockRegistry } from "./docks";
@@ -107,10 +107,11 @@ export function allCommands(): AppCommand[] {
     },
     {
       id: "view.panelPosition",
-      title: ui().panelPosition === "bottom" ? "Przenieś panel terminala obok edytora" : "Przenieś panel terminala pod edytor",
+      title: isSidePosition(ui().panelPosition) ? "Przenieś panel terminala pod / nad edytor" : "Przenieś panel terminala obok edytora",
       category: "Widok",
-      run: () => ui().setPanelPosition(ui().panelPosition === "bottom" ? "right" : "bottom"),
+      run: () => ui().setPanelPosition(turnedPosition(ui().panelPosition)),
     },
+    { id: "view.swapPanel", title: "Zamień miejscami terminal i edytor", category: "Widok", run: () => ui().swapPanel() },
     { id: "view.terminals", title: "Pokaż terminale", category: "Widok", run: () => showView("terminals") },
     { id: "view.agents", title: "Pokaż agentów", category: "Widok", run: () => showView("agents") },
     { id: "view.tasks", title: "Zadania: pokaż", category: "Zadania", run: () => showView("tasks") },

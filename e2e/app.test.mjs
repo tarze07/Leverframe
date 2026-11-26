@@ -383,6 +383,20 @@ describe("Leverframe", () => {
     await app.waitFor(`const e = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(), p = document.querySelector('${panel}').getBoundingClientRect(); return p.width > 0 && p.y >= e.bottom - 2`);
     assert.equal(await pidAfter("pid-end.txt"), pid);
 
+    // Swapped with the editor (#124): above it, then on its left; the shell keeps running.
+    const where = (cond) => `const e = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(), p = document.querySelector('${panel}').getBoundingClientRect(); return p.width > 0 && p.height > 0 && ${cond}`;
+    await app.click(`${panel} button`, "Zamień miejscami terminal i edytor");
+    await app.waitFor(where("p.bottom <= e.y + 2"));
+    assert.equal(await pidAfter("pid-top.txt"), pid, "same shell above the editor");
+    await app.click(`${panel} button`, "Przenieś panel obok edytora (po lewej)");
+    await app.waitFor(where("p.right <= e.x + 2"));
+    assert.equal(await pidAfter("pid-left.txt"), pid, "same shell on the left");
+    await app.click(`${panel} button`, "Zamień miejscami terminal i edytor");
+    await app.waitFor(where("p.x >= e.right - 2"));
+    await app.click(`${panel} button`, "Przenieś panel pod edytor");
+    await app.waitFor(where("p.y >= e.bottom - 2"));
+    assert.equal(await pidAfter("pid-back.txt"), pid);
+
     // A new terminal does not change the layout: the maximized panel stays maximized.
     const editorHidden = "const r = document.querySelector('[data-testid=dock-main]').getBoundingClientRect(); return r.width === 0 || r.height === 0";
     await app.chord(KEY.ctrl, KEY.shift, "m");
@@ -871,6 +885,47 @@ describe("Leverframe", () => {
       rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
       rmSync(globalDir, { recursive: true, force: true });
     }
+  });
+
+  it("gives the keyboard to the panel whose tab is clicked: terminal, file, conversation (#125)", async () => {
+    // Real mouse clicks: the browser leaves the focus on the tab unless the panel takes it.
+    const panelTabs = "[data-testid=dock-panel] .dv-tab";
+    await app.chord(KEY.ctrl, KEY.shift, "`");
+    await sleep(1500);
+    const count = await app.exec(`return document.querySelectorAll('${panelTabs}').length`);
+    assert.ok(count >= 2, `terminal tabs: ${count}`);
+    for (const [i, name] of [[0, "focus-a.txt"], [count - 1, "focus-b.txt"]]) {
+      await app.exec(`document.querySelectorAll('[data-lf-tab]').forEach(t => t.removeAttribute('data-lf-tab')); document.querySelectorAll('${panelTabs}')[${i}].setAttribute('data-lf-tab', '1')`);
+      await app.mouseClick("[data-lf-tab]");
+      await app.waitFor("return document.activeElement?.classList.contains('xterm-helper-textarea')", 5_000);
+      await app.type(`echo ok > "$HOME/${name}"${KEY.enter}`);
+      const file = join(env.home, name);
+      for (let t = 0; t < 50 && !existsSync(file); t++) await sleep(100);
+      assert.ok(existsSync(file), `typed into terminal tab ${i}`);
+    }
+
+    // A file's tab: its editor.
+    await showView("Pliki");
+    await app.waitFor("return !!document.querySelector('[role=treeitem][aria-label=\"README.md\"]')", 20_000);
+    await app.click('[role=treeitem][aria-label="README.md"] button');
+    await app.waitFor("return [...document.querySelectorAll('[data-testid=dock-main] .dv-tab')].some(t => t.innerText.trim() === 'README.md')", 20_000);
+    // A live conversation: its message box; an ended one (the agent crashed in an earlier test):
+    // the conversation itself.
+    const clickTab = async (pick) => {
+      await app.exec(
+        `document.querySelectorAll('[data-lf-tab]').forEach(t => t.removeAttribute('data-lf-tab'));
+         const t = [...document.querySelectorAll('[data-testid=dock-main] .dv-tab')].find(t => (${pick})(t.innerText.trim()));
+         t.setAttribute('data-lf-tab', '1');
+         t.scrollIntoView({ block: 'nearest', inline: 'nearest' });`,
+      );
+      await app.mouseClick("[data-lf-tab]");
+    };
+    await clickTab("(t) => t === 'Claude Code · rozmowa · bash'");
+    await app.waitFor("return document.activeElement?.getAttribute('aria-label') === 'Wiadomość do agenta'", 5_000);
+    await clickTab("(t) => t.startsWith('Claude Code · rozmowa · ') && /[0-9]{4}/.test(t)");
+    await app.waitFor("return document.activeElement?.getAttribute('role') === 'log' && !!document.activeElement.closest('[data-testid=agent-chat]')", 5_000);
+    await clickTab("(t) => t === 'README.md'");
+    await app.waitFor("return document.activeElement?.classList.contains('inputarea') && !!document.activeElement.closest('[data-testid=monaco-container]')", 5_000);
   });
 });
 
