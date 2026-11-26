@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.14.0] – 2026-11-26
+
 ### Dodane
 - **Własne foldery zadań** ([#114](https://github.com/tarze07/Leverframe/issues/114)): w Ustawieniach „Zadania: folder w projekcie” (`tasksProjectDir`, ścieżka względna, domyślnie `.leverframe/tasks`) i „Zadania: folder zadań globalnych” (`tasksGlobalDir`, dowolny folder, np. w OneDrive). Zmiana folderu z zadaniami pyta, czy je przenieść (bez nadpisywania; zajęty numer dostaje kolejny). Do `.git/info/exclude` trafia ustawiony folder (opcja „Zadania projektu poza repozytorium”, `tasksExcludeFromGit`); kopie na serwerze SSH i w kontenerze idą do folderu o tej samej nazwie. „Otwórz folder zadań” w widoku „Zadania”.
 
@@ -238,6 +240,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.14.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.14.0
 [0.13.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.13.0
 [0.12.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.11.0
