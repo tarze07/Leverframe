@@ -81,6 +81,21 @@ pub fn for_profile(settings: &SettingsStore, profile: &crate::profiles::Profile)
     }
 }
 
+/// Runs `f` with the profiles (and jobs) on a thread for blocking work: finding the Docker of a
+/// profile may wait for detection (`docker`, `ssh` to a host – seconds), which must hold up
+/// neither the window nor the async runtime's few threads (#115).
+async fn with_profiles<T: Send + 'static>(
+    app: tauri::AppHandle,
+    f: impl FnOnce(&ProfileService, &DockerJobs) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        f(&app.state::<ProfileService>(), &app.state::<DockerJobs>())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
@@ -91,47 +106,41 @@ async fn blocking<T: Send + 'static>(
 
 /// Whether Docker is installed and running (never an error: the reason is in `message`).
 #[tauri::command]
-pub async fn docker_info(profiles: State<'_, ProfileService>) -> Result<DockerInfo, String> {
-    let d = current(&profiles)?;
+pub async fn docker_info(app: tauri::AppHandle) -> Result<DockerInfo, String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || Ok(d.info())).await
 }
 
 #[tauri::command]
-pub async fn docker_images(
-    profiles: State<'_, ProfileService>,
-) -> Result<Vec<DockerImage>, String> {
-    let d = current(&profiles)?;
+pub async fn docker_images(app: tauri::AppHandle) -> Result<Vec<DockerImage>, String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.images().map_err(String::from)).await
 }
 
 #[tauri::command]
-pub async fn docker_containers(
-    profiles: State<'_, ProfileService>,
-) -> Result<Vec<DockerContainer>, String> {
-    let d = current(&profiles)?;
+pub async fn docker_containers(app: tauri::AppHandle) -> Result<Vec<DockerContainer>, String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.containers().map_err(String::from)).await
 }
 
 #[tauri::command]
-pub async fn docker_volumes(
-    profiles: State<'_, ProfileService>,
-) -> Result<Vec<DockerVolume>, String> {
-    let d = current(&profiles)?;
+pub async fn docker_volumes(app: tauri::AppHandle) -> Result<Vec<DockerVolume>, String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.volumes().map_err(String::from)).await
 }
 
 #[tauri::command]
 pub async fn docker_inspect(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     container: String,
 ) -> Result<ContainerDetails, String> {
-    let d = current(&profiles)?;
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.inspect(&container).map_err(String::from)).await
 }
 
 /// What creating the container will do: `docker run` and warnings (shown before it runs).
 #[tauri::command]
-pub async fn docker_create_plan(
+pub fn docker_create_plan(
     profiles: State<'_, ProfileService>,
     mut spec: ContainerSpec,
 ) -> Result<CreatePlan, String> {
@@ -142,22 +151,25 @@ pub async fn docker_create_plan(
 /// Creates a container for agents; its id.
 #[tauri::command]
 pub async fn docker_create(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     mut spec: ContainerSpec,
 ) -> Result<String, String> {
-    spec.on_ssh_host = source_id(profiles.settings()).is_some();
-    let d = current(&profiles)?;
+    let (on_ssh_host, d) = with_profiles(app, |profiles, _| {
+        Ok((source_id(profiles.settings()).is_some(), current(profiles)?))
+    })
+    .await?;
+    spec.on_ssh_host = on_ssh_host;
     blocking(move || d.create(&spec).map_err(String::from)).await
 }
 
 /// `action`: `start`, `stop` or `restart`.
 #[tauri::command]
 pub async fn docker_container_action(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     container: String,
     action: String,
 ) -> Result<(), String> {
-    let d = current(&profiles)?;
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || {
         match action.as_str() {
             "start" => d.start(&container),
@@ -172,36 +184,30 @@ pub async fn docker_container_action(
 
 #[tauri::command]
 pub async fn docker_remove_container(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     container: String,
     force: bool,
 ) -> Result<(), String> {
-    let d = current(&profiles)?;
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.remove(&container, force).map_err(String::from)).await
 }
 
 #[tauri::command]
-pub async fn docker_remove_image(
-    profiles: State<'_, ProfileService>,
-    image: String,
-) -> Result<(), String> {
-    let d = current(&profiles)?;
+pub async fn docker_remove_image(app: tauri::AppHandle, image: String) -> Result<(), String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.remove_image(&image).map_err(String::from)).await
 }
 
 #[tauri::command]
-pub async fn docker_remove_volume(
-    profiles: State<'_, ProfileService>,
-    volume: String,
-) -> Result<(), String> {
-    let d = current(&profiles)?;
+pub async fn docker_remove_volume(app: tauri::AppHandle, volume: String) -> Result<(), String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.remove_volume(&volume).map_err(String::from)).await
 }
 
 /// Removes unused images; what Docker freed (e.g. "Total reclaimed space: 1.2GB").
 #[tauri::command]
-pub async fn docker_prune_images(profiles: State<'_, ProfileService>) -> Result<String, String> {
-    let d = current(&profiles)?;
+pub async fn docker_prune_images(app: tauri::AppHandle) -> Result<String, String> {
+    let d = with_profiles(app, |profiles, _| current(profiles)).await?;
     blocking(move || d.prune_images().map_err(String::from)).await
 }
 
@@ -230,33 +236,37 @@ fn start_job(
 /// Pulls an image; progress and end through `on_event`. Returns the job id (for `docker_cancel`).
 #[tauri::command]
 pub async fn docker_pull(
-    profiles: State<'_, ProfileService>,
-    jobs: State<'_, DockerJobs>,
+    app: tauri::AppHandle,
     image: String,
     on_event: Channel<JobEvent>,
 ) -> Result<u64, String> {
-    start_job(&profiles, &jobs, pull_args(&image), on_event)
+    with_profiles(app, move |profiles, jobs| {
+        start_job(profiles, jobs, pull_args(&image), on_event)
+    })
+    .await
 }
 
 /// Builds an image from a folder with a Dockerfile.
 #[tauri::command]
 pub async fn docker_build(
-    profiles: State<'_, ProfileService>,
-    jobs: State<'_, DockerJobs>,
+    app: tauri::AppHandle,
     dir: String,
     tag: String,
     dockerfile: Option<String>,
     on_event: Channel<JobEvent>,
 ) -> Result<u64, String> {
-    if current(&profiles)?.ssh().is_some() {
-        return Err(LOCAL_FOLDER_OVER_SSH.into());
-    }
-    start_job(
-        &profiles,
-        &jobs,
-        build_args(&dir, &tag, dockerfile.as_deref()),
-        on_event,
-    )
+    with_profiles(app, move |profiles, jobs| {
+        if current(profiles)?.ssh().is_some() {
+            return Err(LOCAL_FOLDER_OVER_SSH.into());
+        }
+        start_job(
+            profiles,
+            jobs,
+            build_args(&dir, &tag, dockerfile.as_deref()),
+            on_event,
+        )
+    })
+    .await
 }
 
 /// Name of the image with agents of this version (`leverframe-agents:<version>`).
@@ -272,28 +282,32 @@ pub const LOCAL_FOLDER_OVER_SSH: &str = "Docker na serwerze jest używany przez 
 /// on standard input (`docker build -`, it needs no other files), so it also works through ssh.
 #[tauri::command]
 pub async fn docker_build_agents_image(
-    profiles: State<'_, ProfileService>,
-    jobs: State<'_, DockerJobs>,
+    app: tauri::AppHandle,
     on_event: Channel<JobEvent>,
 ) -> Result<u64, String> {
-    jobs.start_with_input(
-        &current(&profiles)?,
-        &super::image::agents_build_args(),
-        Some(super::image::AGENTS_DOCKERFILE.as_bytes().to_vec()),
-        Arc::new(ChannelEvents(on_event)),
-    )
-    .map_err(String::from)
+    with_profiles(app, move |profiles, jobs| {
+        jobs.start_with_input(
+            &current(profiles)?,
+            &super::image::agents_build_args(),
+            Some(super::image::AGENTS_DOCKERFILE.as_bytes().to_vec()),
+            Arc::new(ChannelEvents(on_event)),
+        )
+        .map_err(String::from)
+    })
+    .await
 }
 
 /// Follows a container's logs until `docker_cancel`.
 #[tauri::command]
 pub async fn docker_logs(
-    profiles: State<'_, ProfileService>,
-    jobs: State<'_, DockerJobs>,
+    app: tauri::AppHandle,
     container: String,
     on_event: Channel<JobEvent>,
 ) -> Result<u64, String> {
-    start_job(&profiles, &jobs, logs_args(&container), on_event)
+    with_profiles(app, move |profiles, jobs| {
+        start_job(profiles, jobs, logs_args(&container), on_event)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -305,19 +319,23 @@ pub fn docker_cancel(jobs: State<'_, DockerJobs>, job: u64) {
 /// when the profile starts it by itself) and the project folder's path in the container.
 #[tauri::command]
 pub async fn docker_prepare_container(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     profile_id: String,
     cwd: Option<String>,
     start: bool,
 ) -> Result<PreparedContainer, String> {
-    let profile = profiles
-        .resolve(&profile_id)
-        .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
+    let (profile, d) = with_profiles(app, move |profiles, _| {
+        let profile = profiles
+            .resolve(&profile_id)
+            .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
+        let d = for_profile(profiles.settings(), &profile);
+        Ok((profile, d))
+    })
+    .await?;
     let target = profile
         .container
         .clone()
         .ok_or_else(|| format!("{} nie jest profilem kontenera", profile.name))?;
-    let d = for_profile(profiles.settings(), &profile);
     let remote = target.host.is_some();
     blocking(move || {
         let start = start || target.auto_start;
@@ -396,7 +414,12 @@ pub struct DockerSources {
 }
 
 #[tauri::command]
-pub async fn docker_sources(profiles: State<'_, ProfileService>) -> Result<DockerSources, String> {
+pub async fn docker_sources(app: tauri::AppHandle) -> Result<DockerSources, String> {
+    with_profiles(app, |profiles, _| Ok(sources_of(profiles))).await
+}
+
+/// The Dockers to choose from and how SSH hosts are reached.
+fn sources_of(profiles: &ProfileService) -> DockerSources {
     let settings = profiles.settings();
     let mut list = sources(&profiles.all());
     let transport = transport(settings);
@@ -406,46 +429,52 @@ pub async fn docker_sources(profiles: State<'_, ProfileService>) -> Result<Docke
             s.warning = None;
         }
     }
-    Ok(DockerSources {
+    DockerSources {
         sources: list,
         current: source_id(settings),
         mode: ssh_mode(settings),
         local_client: super::remote::local_client_available(docker(settings).program()),
         transport,
-    })
+    }
 }
 
 /// Sets how the Docker of SSH hosts is reached: `auto`, `client` or `ssh`.
 #[tauri::command]
 pub async fn docker_set_ssh_mode(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     mode: String,
 ) -> Result<DockerSources, String> {
-    profiles.settings().set(
-        super::remote::DOCKER_SSH_MODE_KEY,
-        serde_json::Value::String(mode),
-    )?;
-    // Profiles of containers on the host change their command.
-    profiles.refresh();
-    docker_sources(profiles).await
+    with_profiles(app, move |profiles, _| {
+        profiles.settings().set(
+            super::remote::DOCKER_SSH_MODE_KEY,
+            serde_json::Value::String(mode),
+        )?;
+        // Profiles of containers on the host change their command.
+        profiles.refresh();
+        Ok(sources_of(profiles))
+    })
+    .await
 }
 
 /// Chooses the Docker of the "Kontenery" view: an SSH profile's id, or `None` for this machine.
 /// Containers made for Leverframe there become profiles.
 #[tauri::command]
 pub async fn docker_set_source(
-    profiles: State<'_, ProfileService>,
+    app: tauri::AppHandle,
     id: Option<String>,
 ) -> Result<DockerSources, String> {
-    if let Some(id) = &id {
-        super::remote::route(&profiles.all(), id, transport(profiles.settings()))?;
-    }
-    let value = id
-        .clone()
-        .map(serde_json::Value::String)
-        .unwrap_or(serde_json::Value::Null);
-    profiles
-        .settings()
-        .set(super::remote::DOCKER_SOURCE_KEY, value)?;
-    docker_sources(profiles).await
+    with_profiles(app, move |profiles, _| {
+        if let Some(id) = &id {
+            super::remote::route(&profiles.all(), id, transport(profiles.settings()))?;
+        }
+        let value = id
+            .clone()
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null);
+        profiles
+            .settings()
+            .set(super::remote::DOCKER_SOURCE_KEY, value)?;
+        Ok(sources_of(profiles))
+    })
+    .await
 }

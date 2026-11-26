@@ -10,7 +10,7 @@ use tauri::State;
 use super::fs::{ContainerFs, FsKind};
 use super::{launch_for, AcpEvent, AcpEvents, AcpService};
 use crate::agents::AgentService;
-use crate::profiles::{Profile, ProfileKind, ProfileService};
+use crate::profiles::{Profile, ProfileKind};
 use crate::sessions::{AcpTranscript, ConversationInfo, SessionService};
 use crate::settings::SettingsStore;
 
@@ -209,8 +209,8 @@ async fn blocking<T: Send + 'static>(
 /// arrives as events.
 #[tauri::command]
 pub async fn acp_start(
+    app: tauri::AppHandle,
     service: State<'_, AcpService>,
-    profiles: State<'_, ProfileService>,
     agents: State<'_, AgentService>,
     settings: State<'_, SettingsStore>,
     sessions: State<'_, SessionService>,
@@ -219,12 +219,8 @@ pub async fn acp_start(
 ) -> Result<u64, String> {
     let command = resolve_command(&request, &agents)?;
     let profile = match &request.profile_id {
-        Some(id) => Some(
-            profiles
-                .resolve(id)
-                .ok_or_else(|| format!("Profil „{id}” nie istnieje"))?,
-        ),
-        None => profiles.default_profile(),
+        Some(id) => Some(crate::profiles::commands::resolve(&app, id).await?),
+        None => crate::profiles::commands::with_profiles(&app, |p| p.default_profile()).await?,
     };
     let local_cwd = request.cwd.clone().or_else(crate::pty::home_dir);
     let container = match profile

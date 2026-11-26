@@ -6,6 +6,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ### Naprawione
 - **Edytor bez kolorowania składni, z liniami rysowanymi jedna na drugiej** (regresja 0.14.0): ekran startowy z #115 był wbudowanym `<style>`/`<script>` w `index.html`; Tauri dopisał ich skróty do CSP, a przeglądarka przy skrótach ignoruje `'unsafe-inline'` – odrzucała więc style, które edytor (Monaco) dodaje w trakcie pracy (kolory, układ linii, kursor). Ekran startowy jest teraz w plikach `start.css` i `start.js`; test E2E sprawdza kolory składni i położenie nowej linii.
+- **Losowe opóźnienia przy Dockerze przez SSH i w rozmowach** (regresja 0.14.0): polecenia przeniesione w #115 z wątku okna do środowiska async (terminal, Docker) wykrywały profile – także przez `ssh` na serwer – w jego nielicznych wątkach, przez co inne polecenia i zdarzenia (np. rozmowy z agentem) czekały. Wykrywanie i wyszukiwanie profili działa teraz w wątkach dla pracy blokującej (`spawn_blocking`): terminal, polecenia Dockera, lista i odświeżanie profili, wykrywanie agentów, start rozmowy, logi agentów, kopie zadań.
 
 ## [0.14.0] – 2026-11-26
 

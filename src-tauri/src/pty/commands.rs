@@ -261,22 +261,46 @@ pub fn resolve_request(
     })
 }
 
-// Tauri injects each managed service as its own argument.
-#[allow(clippy::too_many_arguments)]
+/// Starts a terminal. Neither on the window's thread nor on the async runtime's: finding the
+/// profile may wait for its detection (WSL, `docker`, `ssh` to a host – seconds, #115).
 #[tauri::command]
 pub async fn pty_spawn(
-    manager: State<'_, PtyManager>,
-    profiles: State<'_, ProfileService>,
-    agents: State<'_, AgentService>,
-    sessions: State<'_, SessionService>,
-    settings: State<'_, SettingsStore>,
+    app: tauri::AppHandle,
     request: PtySpawnRequest,
     on_data: Channel<InvokeResponseBody>,
     on_exit: Channel<PtyExit>,
 ) -> Result<PtySpawnResponse, String> {
-    let mut resolved = resolve_request(request, &profiles, &agents)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        spawn(
+            &app.state::<PtyManager>(),
+            &app.state::<ProfileService>(),
+            &app.state::<AgentService>(),
+            &app.state::<SessionService>(),
+            &app.state::<SettingsStore>(),
+            request,
+            on_data,
+            on_exit,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn(
+    manager: &PtyManager,
+    profiles: &ProfileService,
+    agents: &AgentService,
+    sessions: &SessionService,
+    settings: &SettingsStore,
+    request: PtySpawnRequest,
+    on_data: Channel<InvokeResponseBody>,
+    on_exit: Channel<PtyExit>,
+) -> Result<PtySpawnResponse, String> {
+    let mut resolved = resolve_request(request, profiles, agents)?;
     if let Some(profile) = &resolved.profile {
-        let dir = crate::settings::remote_dir(&settings, &profile.id);
+        let dir = crate::settings::remote_dir(settings, &profile.id);
         apply_ssh_dir(&mut resolved, dir.as_deref());
     }
     let Resolved {
@@ -308,7 +332,7 @@ pub async fn pty_spawn(
         Some(r) => Arc::new(RecordedEvents {
             inner: channels,
             recorder: r.clone(),
-            sessions: (*sessions).clone(),
+            sessions: sessions.clone(),
         }),
         None => Arc::new(channels),
     };

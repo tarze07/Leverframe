@@ -5,7 +5,6 @@ use tauri::State;
 use super::detect::{detect, AgentStatus};
 use super::service::{AgentService, AgentsState};
 use super::settings::AgentSettings;
-use crate::profiles::ProfileService;
 
 const DETECT_TIMEOUT: Duration = Duration::from_secs(25);
 
@@ -17,8 +16,8 @@ pub async fn agents_list(agents: State<'_, AgentService>) -> Result<AgentsState,
 /// Checks which agents are installed in a profile. Cached per profile unless `force`.
 #[tauri::command]
 pub async fn agents_detect(
+    app: tauri::AppHandle,
     agents: State<'_, AgentService>,
-    profiles: State<'_, ProfileService>,
     profile_id: String,
     force: bool,
 ) -> Result<Vec<AgentStatus>, String> {
@@ -27,9 +26,7 @@ pub async fn agents_detect(
             return Ok(cached);
         }
     }
-    let profile = profiles
-        .resolve(&profile_id)
-        .ok_or_else(|| format!("Profil „{profile_id}” nie istnieje"))?;
+    let profile = crate::profiles::commands::resolve(&app, &profile_id).await?;
     // Hidden agents are not checked (the view does not show them).
     let defs: Vec<_> = agents
         .catalog()
@@ -37,7 +34,11 @@ pub async fn agents_detect(
         .into_iter()
         .filter(|a| !a.hidden)
         .collect();
-    let docker = crate::docker::commands::for_profile(profiles.settings(), &profile);
+    let docker = {
+        use tauri::Manager;
+        let settings = app.state::<crate::settings::SettingsStore>();
+        crate::docker::commands::for_profile(&settings, &profile)
+    };
     // Detection runs processes (and may wait on the network for SSH): keep it off the async workers.
     let result = tauri::async_runtime::spawn_blocking(move || {
         // A container must run to be checked: started when its profile starts it by itself.
