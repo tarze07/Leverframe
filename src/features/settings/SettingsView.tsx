@@ -27,7 +27,9 @@ const AUTO_SAVE: { value: string; label: string }[] = [
 
 const PANEL_POSITIONS: { value: PanelPosition; label: string }[] = [
   { value: "bottom", label: "Pod edytorem" },
+  { value: "top", label: "Nad edytorem" },
   { value: "right", label: "Obok edytora (po prawej)" },
+  { value: "left", label: "Obok edytora (po lewej)" },
 ];
 
 const inputClass =

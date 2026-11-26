@@ -4,6 +4,12 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Zamiana miejscami terminala i edytora** ([#124](https://github.com/tarze07/Leverframe/issues/124)): panel terminala może być też nad edytorem i po jego lewej stronie (Ustawienia „Panel terminala”: pod / nad / po prawej / po lewej). Przycisk i polecenie „Zamień miejscami terminal i edytor” (pod ↔ nad, prawo ↔ lewo); terminale działają dalej, rozmiary paneli zostają.
+
+### Naprawione
+- **Klawiatura w zakładce po jej kliknięciu** ([#125](https://github.com/tarze07/Leverframe/issues/125)): po kliknięciu zakładki fokus zostawał na samej zakładce i trzeba było jeszcze kliknąć w jej zawartość. Teraz przechodzi do terminala, edytora (albo podglądu Markdown), pola wiadomości rozmowy (przycisku prośby o zgodę, gdy agent czeka; zapisu rozmowy, gdy się zakończyła) lub głównego obszaru innych zakładek – także w podzielonych grupach, gdy dockview aktywuje zakładkę chwilę po kliknięciu. Testy E2E klikają zakładki prawdziwą myszą (WebDriver), nie przez `element.click()`.
+
 ## [0.15.0] – 2026-11-26
 
 ### Dodane

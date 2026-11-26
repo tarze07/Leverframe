@@ -180,7 +180,9 @@ Etykieta przechodzi na obraz pochodny, więc jego kontenery też są profilami L
 
 ## Układ okna
 
-Panel terminala może być pod edytorem albo obok niego (przycisk w nagłówku panelu, ustawienia lub paleta poleceń: „Przenieś panel terminala obok edytora”). Przycisk maksymalizacji w nagłówku panelu (Ctrl+Shift+M) ukrywa edytor, a ten sam przycisk na pasku zakładek edytora ukrywa terminal; ponowne kliknięcie przywraca układ. Przeciągnięcie separatora do końca działa tak samo. Uruchomione terminale działają dalej przy każdej zmianie układu.
+Panel terminala może być pod edytorem, nad nim, po prawej albo po lewej (przyciski w nagłówku panelu, „Panel terminala” w Ustawieniach lub paleta poleceń). „Zamień miejscami terminal i edytor” przenosi panel na drugą stronę edytora (pod ↔ nad, prawo ↔ lewo), a „Przenieś panel obok edytora / pod edytor” – obok niego albo pod (nad) nim. Przycisk maksymalizacji w nagłówku panelu (Ctrl+Shift+M) ukrywa edytor, a ten sam przycisk na pasku zakładek edytora ukrywa terminal; ponowne kliknięcie przywraca układ. Przeciągnięcie separatora do końca działa tak samo. Uruchomione terminale działają dalej przy każdej zmianie układu.
+
+Kliknięcie zakładki przenosi do niej klawiaturę: w terminalu i w edytorze można od razu pisać, w rozmowie z agentem – w polu wiadomości (albo na przycisku prośby o zgodę, gdy agent czeka na decyzję), w podglądzie Markdown i innych widokach działa przewijanie klawiszami.
 
 ## Ustawienia
 

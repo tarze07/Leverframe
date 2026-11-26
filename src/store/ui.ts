@@ -8,7 +8,18 @@ export const DEFAULT_FONT_MONO = '"JetBrains Mono", "Cascadia Code", "Fira Code"
 export const DEFAULT_FONT_SIZE = 13;
 
 /** Where the terminal panel sits relative to the editor area. */
-export type PanelPosition = "bottom" | "right";
+export type PanelPosition = "bottom" | "right" | "top" | "left";
+
+/** The terminal panel beside the editor (a column), not above or below it (a row). */
+export const isSidePosition = (p: PanelPosition) => p === "right" || p === "left";
+/** The terminal panel comes before the editor (above it or on its left, #124). */
+export const panelFirst = (p: PanelPosition) => p === "top" || p === "left";
+/** The other side of the editor: bottom ↔ top, right ↔ left. */
+export const swappedPosition = (p: PanelPosition): PanelPosition =>
+  ({ bottom: "top", top: "bottom", right: "left", left: "right" })[p] as PanelPosition;
+/** Beside the editor ↔ above or below it, on the same side (bottom ↔ right, top ↔ left). */
+export const turnedPosition = (p: PanelPosition): PanelPosition =>
+  ({ bottom: "right", right: "bottom", top: "left", left: "top" })[p] as PanelPosition;
 /** Area that fills the center: "panel" hides the editor, "editor" hides the terminal panel. */
 export type Maximized = "panel" | "editor" | null;
 
@@ -30,6 +41,8 @@ export interface UiState {
   setResolvedTheme: (kind: "dark" | "light", id: string) => void;
   panelPosition: PanelPosition;
   setPanelPosition: (position: PanelPosition) => void;
+  /** Swaps the terminal panel and the editor (#124). */
+  swapPanel: () => void;
   maximized: Maximized;
   /** Terminal panel over the whole center (editor hidden), or back. */
   togglePanelMaximized: () => void;
@@ -76,6 +89,7 @@ export const useUiStore = create<UiState>()(
       setResolvedTheme: (resolvedTheme, resolvedThemeId) => set({ resolvedTheme, resolvedThemeId }),
       panelPosition: "bottom",
       setPanelPosition: (panelPosition) => set({ panelPosition }),
+      swapPanel: () => set({ panelPosition: swappedPosition(get().panelPosition) }),
       maximized: null,
       togglePanelMaximized: () =>
         set(get().maximized === "panel" ? { maximized: null } : { maximized: "panel", bottomPanelVisible: true }),

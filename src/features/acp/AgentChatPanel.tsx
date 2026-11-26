@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { panelFocus } from "../../workbench/panelFocus";
 import type { IDockviewPanelProps } from "dockview-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Placeholder } from "../../components/Placeholder";
@@ -135,11 +136,34 @@ function Chat({ chat, api }: { chat: ChatEntry; api: IDockviewPanelProps<AgentCh
   useEffect(() => {
     if (chat.scrollSeq > 0) scrollToEnd();
   }, [chat.scrollSeq, scrollToEnd]);
+  // The keyboard goes to the decision the agent waits for, else to the message box (#125).
+  const root = useRef<HTMLDivElement>(null);
+  const focusChat = useCallback(() => {
+    const el = root.current;
+    if (!el) return;
+    // A decision waited for; the message box; a conversation from the history: "Wznów rozmowę";
+    // else the conversation itself (scrolled with the keyboard).
+    const target =
+      el.querySelector<HTMLElement>('[role=group][aria-label="Prośba o zgodę"] button') ??
+      el.querySelector<HTMLElement>('textarea[aria-label="Wiadomość do agenta"]:not([disabled])') ??
+      el.querySelector<HTMLElement>('[aria-label="Rozmowa z historii"] button') ??
+      el.querySelector<HTMLElement>("[role=log]");
+    if (target?.getAttribute("role") === "log") target.tabIndex = -1;
+    target?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     if (typeof api?.onDidActiveChange !== "function") return;
-    const sub = api.onDidActiveChange((e) => e.isActive && scrollToEnd());
-    return () => sub.dispose();
-  }, [api, scrollToEnd]);
+    const sub = api.onDidActiveChange((e) => {
+      if (!e.isActive) return;
+      scrollToEnd();
+      requestAnimationFrame(focusChat);
+    });
+    const unregister = typeof api.id === "string" ? panelFocus.register(api.id, focusChat) : () => undefined;
+    return () => {
+      sub.dispose();
+      unregister();
+    };
+  }, [api, scrollToEnd, focusChat]);
 
   // The tab shows when the agent waits for a decision (the panel may be in the background).
   const waiting = isWaiting(state);
@@ -177,7 +201,7 @@ function Chat({ chat, api }: { chat: ChatEntry; api: IDockviewPanelProps<AgentCh
   const usage = usageText(state.usage);
   const install = agent?.acp?.install ?? [];
   return (
-    <div className="flex h-full flex-col bg-lf-editor text-xs" data-testid="agent-chat" onKeyDown={onKeyDown}>
+    <div ref={root} className="flex h-full flex-col bg-lf-editor text-xs" data-testid="agent-chat" onKeyDown={onKeyDown}>
       <header className="flex shrink-0 items-center gap-2 border-b border-lf-border px-3 py-1.5" aria-label="Sesja agenta">
         <span className="codicon codicon-comment-discussion text-lf-muted" aria-hidden />
         <span className="font-semibold text-lf-fg">{title}</span>

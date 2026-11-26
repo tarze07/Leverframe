@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore } from "./ui";
+import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore, isSidePosition, panelFirst, swappedPosition, turnedPosition } from "./ui";
 
 const initial = useUiStore.getState();
 
@@ -74,5 +74,26 @@ describe("ui store", () => {
     expect(useUiStore.getState()).toMatchObject({ fontMono: DEFAULT_FONT_MONO, fontSize: DEFAULT_FONT_SIZE });
     s.setFontSize(100);
     expect(useUiStore.getState().fontSize).toBe(32);
+  });
+});
+
+describe("terminal panel positions (#124)", () => {
+  it("swaps the panel with the editor and turns it beside or below on the same side", () => {
+    expect(swappedPosition("bottom")).toBe("top");
+    expect(swappedPosition("top")).toBe("bottom");
+    expect(swappedPosition("right")).toBe("left");
+    expect(swappedPosition("left")).toBe("right");
+    expect(turnedPosition("bottom")).toBe("right");
+    expect(turnedPosition("top")).toBe("left");
+    expect(turnedPosition("left")).toBe("top");
+    expect(isSidePosition("left") && isSidePosition("right") && !isSidePosition("top")).toBe(true);
+    expect(panelFirst("top") && panelFirst("left") && !panelFirst("bottom") && !panelFirst("right")).toBe(true);
+
+    useUiStore.setState({ panelPosition: "bottom" });
+    useUiStore.getState().swapPanel();
+    expect(useUiStore.getState().panelPosition).toBe("top");
+    useUiStore.getState().setPanelPosition("right");
+    useUiStore.getState().swapPanel();
+    expect(useUiStore.getState().panelPosition).toBe("left");
   });
 });

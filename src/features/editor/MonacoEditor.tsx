@@ -6,6 +6,7 @@ import { useSettingsStore } from "../../store/settings";
 import { useAgentsStore } from "../../store/agents";
 import { CopyButton } from "../../components/CopyButton";
 import { pathText } from "../files/copyPath";
+import { panelFocus } from "../../workbench/panelFocus";
 import { useUiStore } from "../../store/ui";
 import { baseName, errorMessage, fsClient, isConflict } from "./fsClient";
 import { applyEditorTheme, editorThemeName, ensureTheme, languageForPath, monaco } from "./monacoSetup";
@@ -229,8 +230,22 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
       })
       .catch((e: unknown) => !disposed && setLoadError(errorMessage(e)));
 
+    // A chosen tab (#125): the text, or the preview when only the preview is shown.
+    const unregisterFocus = panelFocus.register(api.id, () => {
+      if (useEditorStore.getState().editors[api.id]?.view !== "preview") {
+        focusEditor();
+        return;
+      }
+      const preview = container.parentElement?.querySelector<HTMLElement>("[data-testid=markdown-preview]");
+      if (preview) {
+        preview.tabIndex = -1;
+        preview.focus({ preventScroll: true });
+      }
+    });
+
     return () => {
       disposed = true;
+      unregisterFocus();
       cancelAnimationFrame(focusFrame);
       clearTimeout(previewTimer);
       clearTimeout(autoSaveTimer);

@@ -19,6 +19,7 @@ import { prepareContainerTerminal } from "../docker/containerTerminal";
 import { terminalKeyAction } from "./keys";
 import { isAppShortcut } from "../../lib/useKeybindings";
 import { terminalRegistry } from "./registry";
+import { panelFocus } from "../../workbench/panelFocus";
 import { createAgentStarter, type AgentStarter } from "./agentStart";
 import { useAgentsStore } from "../../store/agents";
 import { terminalTheme } from "./theme";
@@ -184,6 +185,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       focus: () => term.focus(),
       clear: () => term.clear(),
     });
+    const unregisterFocus = panelFocus.register(api.id, () => term.focus());
 
     // Container profiles: the container runs and the project folder is known in it first.
     prepareContainerTerminal({
@@ -258,6 +260,7 @@ function XtermTerminal({ api, params }: IDockviewPanelProps<TerminalPanelParams>
 
     return () => {
       disposed = true;
+      unregisterFocus();
       starter?.dispose();
       stopObserving();
       activeSub.dispose();
