@@ -149,22 +149,13 @@ pub async fn tasks_add_run(
     blocking(move || super::add_run(&dir, scope, &file, &run)).await
 }
 
-fn profile(
-    profiles: &crate::profiles::ProfileService,
-    id: &str,
-) -> Result<crate::profiles::Profile, String> {
-    profiles
-        .resolve(id)
-        .ok_or_else(|| format!("Profil „{id}” nie istnieje"))
-}
-
 /// Copies a task to the computer of an SSH or container profile, into the project's tasks
 /// folder under `dir` (`<dir>/.leverframe/tasks/` by default; #108, #114); its path there.
 #[tauri::command]
 pub async fn tasks_copy_to(
     settings: State<'_, SettingsStore>,
     global: State<'_, GlobalTasksDir>,
-    profiles: State<'_, crate::profiles::ProfileService>,
+    app: tauri::AppHandle,
     scope: Scope,
     file: String,
     profile_id: String,
@@ -173,7 +164,7 @@ pub async fn tasks_copy_to(
     let dirs = dirs(&settings, &global);
     let tasks = dirs.dir(scope)?;
     let ex = exclude(&settings);
-    let profile = profile(&profiles, &profile_id)?;
+    let profile = crate::profiles::commands::resolve(&app, &profile_id).await?;
     blocking(move || {
         let path = super::task_path(&tasks, &file)?;
         let text = super::read(&path)?;
@@ -185,11 +176,11 @@ pub async fn tasks_copy_to(
 /// The text of a task's copy on that computer ("Pobierz wynik").
 #[tauri::command]
 pub async fn tasks_read_remote(
-    profiles: State<'_, crate::profiles::ProfileService>,
+    app: tauri::AppHandle,
     profile_id: String,
     path: String,
 ) -> Result<String, String> {
-    let profile = profile(&profiles, &profile_id)?;
+    let profile = crate::profiles::commands::resolve(&app, &profile_id).await?;
     blocking(move || crate::fs::remote::read_file(&profile, &path)).await
 }
 

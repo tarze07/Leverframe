@@ -115,8 +115,7 @@ describe("Leverframe", () => {
     await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.includes('● payments.ts'))");
     // The editor's own styles apply (a CSP with hashes refused them: no colors, lines drawn over
     // each other): tokens in several colors, the new line under the others.
-    const colors = await app.exec("return new Set([...document.querySelectorAll('.view-line span span')].map(s => getComputedStyle(s).color)).size");
-    assert.ok(colors >= 3, `syntax colors: ${colors}`);
+    await app.waitFor("return new Set([...document.querySelectorAll('.view-line span span')].map(s => getComputedStyle(s).color)).size >= 3", 10_000);
     await app.waitFor("return [...document.querySelectorAll('.line-numbers')].some(n => n.textContent.trim() === '3')");
     await app.waitFor("return [...document.querySelectorAll('.view-line')].some(l => l.innerText.replace(/\\u00a0/g, ' ').trim() === '// e2e')");
     const tops = await app.exec("return [...document.querySelectorAll('.view-line')].map(l => [l.innerText.replace(/\\u00a0/g, ' ').trim(), l.getBoundingClientRect().top])");
