@@ -4,6 +4,8 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+## [0.16.0] – 2026-11-26
+
 ### Dodane
 - **Zamiana miejscami terminala i edytora** ([#124](https://github.com/tarze07/Leverframe/issues/124)): panel terminala może być też nad edytorem i po jego lewej stronie (Ustawienia „Panel terminala”: pod / nad / po prawej / po lewej). Przycisk i polecenie „Zamień miejscami terminal i edytor” (pod ↔ nad, prawo ↔ lewo); terminale działają dalej, rozmiary paneli zostają.
 
@@ -257,6 +259,7 @@ Pierwsza wersja testowa (alfa). Obejmuje etapy 0–2 [planu projektu](https://gi
 - Panele „Agenci”, „Sesje” i „Pliki” są jeszcze puste (etapy 3–6).
 - Brak automatycznych aktualizacji.
 
+[0.16.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.16.0
 [0.15.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.15.0
 [0.14.1]: https://github.com/tarze07/Leverframe/releases/tag/v0.14.1
 [0.14.0]: https://github.com/tarze07/Leverframe/releases/tag/v0.14.0
