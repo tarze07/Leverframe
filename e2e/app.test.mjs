@@ -118,6 +118,7 @@ describe("Leverframe", () => {
     const colors = await app.exec("return new Set([...document.querySelectorAll('.view-line span span')].map(s => getComputedStyle(s).color)).size");
     assert.ok(colors >= 3, `syntax colors: ${colors}`);
     await app.waitFor("return [...document.querySelectorAll('.line-numbers')].some(n => n.textContent.trim() === '3')");
+    await app.waitFor("return [...document.querySelectorAll('.view-line')].some(l => l.innerText.replace(/\\u00a0/g, ' ').trim() === '// e2e')");
     const tops = await app.exec("return [...document.querySelectorAll('.view-line')].map(l => [l.innerText.replace(/\\u00a0/g, ' ').trim(), l.getBoundingClientRect().top])");
     const first = tops.find(([t]) => t.startsWith("export"))?.[1];
     const added = tops.find(([t]) => t === "// e2e")?.[1];
