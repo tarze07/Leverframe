@@ -4,32 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Leverframe</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        background: #23272e;
-        color: #8b919d;
-      }
-      #lf-start {
-        display: flex;
-        height: 100vh;
-        align-items: center;
-        justify-content: center;
-        font: 13px system-ui, sans-serif;
-        letter-spacing: 0.02em;
-      }
-    </style>
-    <script>
-      // The colors of the last theme (#115): the start screen matches the app (light themes too).
-      try {
-        const c = JSON.parse(localStorage.getItem("leverframe.startColors") || "null");
-        if (c && c.bg) document.documentElement.style.cssText = "background:" + c.bg + ";color:" + c.fg;
-      } catch {
-        /* defaults */
-      }
-    </script>
+    <!-- No inline <style>/<script> here: Tauri would add their hashes to the CSP, and the editor's styles would be refused. -->
+    <link rel="stylesheet" href="/start.css" />
+    <script src="/start.js"></script>
   </head>
   <body>
     <div id="root"><div id="lf-start" role="status">Uruchamianie Leverframe…</div></div>
