@@ -33,6 +33,12 @@ after(async () => {
 });
 
 describe("Leverframe", () => {
+  it("draws the interface instead of the start screen (#115)", async () => {
+    await app.waitFor("return !!document.querySelector('nav[aria-label=\"Activity bar\"]')", 15_000);
+    assert.equal(await app.exec("return document.getElementById('lf-start')"), null, "the start screen is gone");
+    assert.equal(await app.exec("return document.visibilityState"), "visible");
+  });
+
   it("starts a terminal that runs commands in the user's shell", async () => {
     await app.waitFor("return document.querySelectorAll('.xterm').length >= 1", 15_000);
     await app.click(".xterm-helper-textarea").catch(() => {});
@@ -757,4 +763,75 @@ describe("Leverframe", () => {
       rmSync(join(env.home, "claude-args.txt"), { force: true });
     }
   });
+  it("keeps tasks in an own project folder and an own global folder; moves them back (#114)", async () => {
+    const own = join(env.project, "docs", "zadania");
+    const globalDir = join(env.home, "zadania-globalne");
+    const setting = (key, value) =>
+      app.exec(`return window.__TAURI_INTERNALS__.invoke('settings_update', { key: arguments[0], value: arguments[1] }).then(() => true)`, [key, value]);
+    const create = async (title) => {
+      await app.waitFor("return !!document.querySelector('button[aria-label=\"Nowe zadanie…\"]:not([disabled])')", 20_000);
+      await app.exec(`document.querySelector('button[aria-label="Nowe zadanie…"]').click()`);
+      await app.waitFor("return !!document.querySelector('form[aria-label=\"Nowe zadanie\"] input')");
+      await app.exec(
+        `const i = document.querySelector('form[aria-label="Nowe zadanie"] input');
+         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[0]);
+         i.dispatchEvent(new Event('input', { bubbles: true }));`,
+        [title],
+      );
+      await app.exec(`document.querySelector('form[aria-label="Nowe zadanie"] button[type=submit]').click()`);
+      await app.waitFor(`return !!document.querySelector('li[aria-label$=" ${title}"]')`, 20_000);
+    };
+    const projectField = async (value) => {
+      await app.waitFor("return !!document.querySelector('input[aria-label=\"Folder zadań w projekcie\"]')", 20_000);
+      await app.exec(
+        `const i = document.querySelector('input[aria-label="Folder zadań w projekcie"]');
+         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[0]);
+         i.dispatchEvent(new Event('input', { bubbles: true }));
+         i.focus(); i.blur();`,
+        [value],
+      );
+    };
+    try {
+      // The project's folder, typed in the settings.
+      await showView("Ustawienia");
+      await projectField("docs/zadania");
+      await app.waitFor(`return document.querySelector('input[aria-label="Folder zadań w projekcie"]').value === 'docs/zadania'`);
+      await waitForSetting("tasksProjectDir", "docs/zadania");
+      await showView("Zadania");
+      await app.click('[aria-label="Lista zadań"] button', "Projekt");
+      await create("W nowym folderze");
+      assert.ok(existsSync(join(own, "1-w-nowym-folderze.md")), "in the own folder");
+
+      // The global folder anywhere.
+      await setting("tasksGlobalDir", globalDir);
+      await app.click('[aria-label="Lista zadań"] button', "Globalne");
+      await app.exec(`document.querySelector('aside[aria-label="Zadania"] button[aria-label="Odśwież"]').click()`);
+      await create("Globalne gdzie indziej");
+      assert.ok(existsSync(join(globalDir, "1-globalne-gdzie-indziej.md")), "in the own global folder");
+
+      // Back to the default folder: the task there moves along.
+      await showView("Ustawienia");
+      await projectField("");
+      await app.waitFor("return !!document.querySelector('[role=group][aria-label=\"Przenieść zadania?\"]')", 20_000);
+      await app.click('[role=group][aria-label="Przenieść zadania?"] button', "Przenieś");
+      await app.waitFor("return document.body.innerText.includes('Przeniesiono zadania: 1.')", 20_000);
+      assert.ok(existsSync(join(env.project, ".leverframe", "tasks", "1-w-nowym-folderze.md")), "moved back");
+      assert.equal(existsSync(join(own, "1-w-nowym-folderze.md")), false);
+    } finally {
+      await setting("tasksGlobalDir", "").catch(() => undefined);
+      await setting("tasksProjectDir", "").catch(() => undefined);
+      rmSync(join(env.project, "docs"), { recursive: true, force: true });
+      rmSync(join(env.project, ".leverframe"), { recursive: true, force: true });
+      rmSync(globalDir, { recursive: true, force: true });
+    }
+  });
 });
+
+/** Waits until settings.json has the value (the app saved it). */
+async function waitForSetting(key, value, timeout = 10_000) {
+  const file = join(env.config, "settings.json");
+  for (const end = Date.now() + timeout; Date.now() < end; await sleep(100)) {
+    if (JSON.parse(readFileSync(file, "utf8"))[key] === value) return;
+  }
+  assert.fail(`settings.json: ${key} is not ${JSON.stringify(value)}`);
+}

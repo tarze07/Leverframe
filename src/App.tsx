@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelImperativeHandle } from "react-resizable-panels";
 import { ActivityBar } from "./components/ActivityBar";
 import { BottomPanel } from "./components/BottomPanel";
@@ -51,6 +52,12 @@ export default function App() {
   useEffect(() => {
     void useProfilesStore.getState().load();
     void useSettingsStore.getState().load();
+  }, []);
+
+  // Start times (LEVERFRAME_TRACE_STARTUP=1, #115): the interface has drawn itself.
+  useEffect(() => {
+    if (!isTauri()) return;
+    requestAnimationFrame(() => void invoke("app_ready", { step: "pierwszy render" }).catch(() => undefined));
   }, []);
 
   // Tasks (#109): runs of agents are watched, the tasks to check are counted on the activity bar.

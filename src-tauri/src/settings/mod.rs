@@ -325,6 +325,23 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
             Ok(())
         }
         ("tasksPrompt", _) => Err("tasksPrompt: tekst do 2000 znaków".into()),
+        // The tasks' folders (#114).
+        ("tasksProjectDir", Value::String(s)) => crate::tasks::project_tasks_dir(Some(s)).map(drop),
+        ("tasksProjectDir", _) => {
+            Err("tasksProjectDir: ścieżka względna, np. .leverframe/tasks".into())
+        }
+        ("tasksGlobalDir", Value::String(s))
+            if s.trim().is_empty()
+                || (std::path::Path::new(s.trim()).is_absolute()
+                    && !s.chars().any(char::is_control)) =>
+        {
+            Ok(())
+        }
+        ("tasksGlobalDir", _) => {
+            Err("tasksGlobalDir: pełna ścieżka folderu albo pusty tekst (folder domyślny)".into())
+        }
+        ("tasksExcludeFromGit", Value::Bool(_)) => Ok(()),
+        ("tasksExcludeFromGit", _) => Err("tasksExcludeFromGit: true lub false".into()),
         ("acpConfirmCommands", _) => Err("acpConfirmCommands: true lub false".into()),
         ("autoSave", _) => Err("autoSave: \"off\", \"afterDelay\" lub \"onFocusChange\"".into()),
         // Path of the docker CLI; empty: `docker` from PATH.

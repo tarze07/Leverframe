@@ -264,7 +264,7 @@ pub fn resolve_request(
 // Tauri injects each managed service as its own argument.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub fn pty_spawn(
+pub async fn pty_spawn(
     manager: State<'_, PtyManager>,
     profiles: State<'_, ProfileService>,
     agents: State<'_, AgentService>,

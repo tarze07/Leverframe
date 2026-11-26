@@ -24,10 +24,48 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-/// Folder of the project's tasks, relative to the project folder.
+/// Folder of the project's tasks, relative to the project folder (by default; #114).
 pub const PROJECT_TASKS_DIR: &str = ".leverframe/tasks";
-/// What `.git/info/exclude` gets, relative to the repository's root.
-const EXCLUDED: &str = ".leverframe/";
+/// Settings (#114): the project's tasks folder (relative), the global one (absolute, empty:
+/// the app's data folder), and whether the project's folder stays out of git.
+pub const PROJECT_DIR_KEY: &str = "tasksProjectDir";
+pub const GLOBAL_DIR_KEY: &str = "tasksGlobalDir";
+pub const EXCLUDE_KEY: &str = "tasksExcludeFromGit";
+
+/// A project tasks folder as written in the settings, normalized to `a/b` (empty: the default).
+/// Relative, inside the project: no `..`, `.`, drive or leading `/`, no control characters.
+pub fn project_tasks_dir(setting: Option<&str>) -> Result<String, String> {
+    let text = setting.unwrap_or_default().trim().replace('\\', "/");
+    let text = text.trim_matches('/');
+    if text.is_empty() {
+        return Ok(PROJECT_TASKS_DIR.into());
+    }
+    let bad = setting
+        .unwrap_or_default()
+        .trim_start()
+        .starts_with(['/', '\\'])
+        || text.contains(':')
+        || text.chars().any(char::is_control)
+        || text
+            .split('/')
+            .any(|p| p.is_empty() || p == "." || p == ".." || p.trim() != p);
+    if bad {
+        return Err(format!(
+            "Folder zadań w projekcie: ścieżka względna wewnątrz projektu, np. {PROJECT_TASKS_DIR} albo docs/zadania (bez .. i bez ścieżki bezwzględnej): {text}"
+        ));
+    }
+    Ok(text.to_string())
+}
+
+/// What `.git/info/exclude` gets for a tasks folder (relative to the project): the whole
+/// `.leverframe/` for the default folder, else the folder itself.
+pub fn excluded_pattern(rel: &str) -> String {
+    if rel == PROJECT_TASKS_DIR {
+        ".leverframe/".into()
+    } else {
+        format!("{rel}/")
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -490,7 +528,9 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
 pub struct TaskDirs {
     /// The project folder (`None`: none chosen).
     pub project: Option<PathBuf>,
-    /// The global tasks' folder (in the app's data folder).
+    /// The tasks folder in the project, relative (`a/b`).
+    pub project_rel: String,
+    /// The global tasks' folder.
     pub global: PathBuf,
 }
 
@@ -502,7 +542,11 @@ impl TaskDirs {
             Scope::Project => self
                 .project
                 .as_ref()
-                .map(|p| p.join(".leverframe").join("tasks"))
+                .map(|p| {
+                    self.project_rel
+                        .split('/')
+                        .fold(p.clone(), |d, part| d.join(part))
+                })
                 .ok_or_else(|| "Najpierw otwórz folder projektu".to_string()),
         }
     }
@@ -649,6 +693,54 @@ pub fn move_task(
     Ok(parse_task(&text, &new_file, &target, to))
 }
 
+/// Moves every task of `from` into `to` (the scope's new folder, #114). A name taken there gets
+/// the next number; nothing is overwritten. Returns how many moved.
+pub fn move_all(from: &Path, to: &Path, scope: Scope) -> Result<usize, String> {
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    if same(from, to) {
+        return Ok(0);
+    }
+    let tasks = list(from, scope)?;
+    std::fs::create_dir_all(to).map_err(|e| format!("Nie można utworzyć {}: {e}", to.display()))?;
+    // Numbers taken there: a task keeps its number and name when both are free.
+    let mut used: std::collections::HashSet<u32> = list(to, scope)?.iter().map(|t| t.id).collect();
+    let mut moved = 0;
+    for task in tasks {
+        let path = from.join(&task.file);
+        let text = read(&path)?;
+        let (target, text, id) = if used.contains(&task.id) || to.join(&task.file).exists() {
+            let id = used.iter().max().copied().unwrap_or(0) + 1;
+            let mut doc = split(&text);
+            set(
+                doc.header.get_or_insert_with(Vec::new),
+                "id",
+                &id.to_string(),
+            );
+            (
+                to.join(format!("{id}-{}.md", slug(&task.title))),
+                join_doc(&doc),
+                id,
+            )
+        } else {
+            (to.join(&task.file), text, task.id)
+        };
+        used.insert(id);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, text.as_bytes()))
+            .map_err(|e| format!("Nie można utworzyć {}: {e}", target.display()))?;
+        std::fs::remove_file(&path)
+            .map_err(|e| format!("Nie można przenieść {}: {e}", path.display()))?;
+        moved += 1;
+    }
+    Ok(moved)
+}
+
 /// Deletes a task: to the system trash, or `permanently`.
 pub fn delete(dir: &Path, file: &str, permanently: bool) -> Result<(), String> {
     let path = task_path(dir, file)?;
@@ -674,10 +766,11 @@ fn git_dir(root: &Path) -> Option<PathBuf> {
     Some(common.unwrap_or(dir))
 }
 
-/// Makes git ignore `<project>/.leverframe/` through the repository's `.git/info/exclude` (the
-/// project may be a folder inside the repository). Nothing happens outside a repository or when
-/// the line is there. Returns the exclude file when it was changed.
-pub fn exclude_from_git(project: &Path) -> Result<Option<PathBuf>, String> {
+/// Makes git ignore the tasks folder `tasks` of the project (`.leverframe/` for the default one)
+/// through the repository's `.git/info/exclude` (the project may be a folder inside the
+/// repository). Nothing happens outside a repository or when the line is there. Returns the
+/// exclude file when it was changed.
+pub fn exclude_from_git(project: &Path, tasks: &str) -> Result<Option<PathBuf>, String> {
     let project = project
         .canonicalize()
         .unwrap_or_else(|_| project.to_path_buf());
@@ -693,7 +786,7 @@ pub fn exclude_from_git(project: &Path) -> Result<Option<PathBuf>, String> {
         pattern.push_str(&part.as_os_str().to_string_lossy());
         pattern.push('/');
     }
-    pattern.push_str(EXCLUDED);
+    pattern.push_str(&excluded_pattern(tasks));
     let file = git.join("info").join("exclude");
     let text = match std::fs::read_to_string(&file) {
         Ok(t) => t,

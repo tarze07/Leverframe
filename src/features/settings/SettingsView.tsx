@@ -4,6 +4,7 @@ import { DEFAULT_FONT_MONO, DEFAULT_FONT_SIZE, useUiStore, type PanelPosition } 
 import { systemFrame, useSettingsStore, type SettingKey } from "../../store/settings";
 import { isWindows } from "../terminal/keys";
 import { DEFAULT_TASK_PROMPT } from "../tasks/taskPrompt";
+import { TasksFoldersSettings } from "../tasks/TasksFolders";
 import { THEMES, themeById, type ThemeKind } from "../../theme/themes";
 import { isTauri, windowControls } from "../../lib/tauri";
 import { openFile } from "../../workbench/commands";
@@ -153,6 +154,7 @@ export function SettingsView() {
         </select>
       </div>
       <TasksPromptField value={tasksPrompt} onSave={(v) => void save("tasksPrompt", v)} />
+      <TasksFoldersSettings />
       <label className="flex items-start gap-2 text-xs text-lf-fg">
         <input
           type="checkbox"

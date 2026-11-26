@@ -97,11 +97,18 @@ printf 'LF_END\n'
     ))
 }
 
-/// The script writing `content` to `<dir>/.leverframe/tasks/<name>` (a task for an agent there,
-/// #108); prints the file's absolute path. In a git repository `/.leverframe/` goes to its
-/// `.git/info/exclude` (once).
-pub fn put_task_script(dir: &str, name: &str, content: &str) -> Result<String, String> {
+/// The script writing `content` to `<dir>/<tasks>/<name>` (a task for an agent there, #108;
+/// `tasks` is the project's tasks folder, relative, #114); prints the file's absolute path. With
+/// `exclude`, in a git repository the folder goes to its `.git/info/exclude` (once).
+pub fn put_task_script(
+    dir: &str,
+    tasks: &str,
+    name: &str,
+    content: &str,
+    exclude: bool,
+) -> Result<String, String> {
     check(dir, "Ścieżka")?;
+    let tasks = crate::tasks::project_tasks_dir(Some(tasks))?;
     if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
         return Err(format!("Nieprawidłowa nazwa pliku: {name}"));
     }
@@ -112,19 +119,27 @@ pub fn put_task_script(dir: &str, name: &str, content: &str) -> Result<String, S
         end.push('_');
     }
     let body = content.strip_suffix('\n').unwrap_or(content);
+    let pattern = format!("/{}", crate::tasks::excluded_pattern(&tasks));
+    let git = if exclude {
+        format!(
+            "if [ -d .git ]; then\n  grep -qxF {p} .git/info/exclude 2>/dev/null || {{ mkdir -p .git/info && printf '%s\\n' {p} >> .git/info/exclude; }}\nfi\n",
+            p = quote(&pattern)
+        )
+    } else {
+        String::new()
+    };
     Ok(format!(
         r#"{resolve}cd -- "$p" 2>/dev/null || {{ printf 'LF_ERR\tnot-found\t%s\n' "$p"; exit 0; }}
-mkdir -p .leverframe/tasks 2>/dev/null || {{ printf 'LF_ERR\tdenied\t%s\n' "$p/.leverframe/tasks"; exit 0; }}
-cat > .leverframe/tasks/{name} <<'{end}' || {{ printf 'LF_ERR\tdenied\t%s\n' "$p/.leverframe/tasks"; exit 0; }}
+t={tasks}
+mkdir -p -- "$t" 2>/dev/null || {{ printf 'LF_ERR\tdenied\t%s\n' "$p/$t"; exit 0; }}
+cat > "$t"/{name} <<'{end}' || {{ printf 'LF_ERR\tdenied\t%s\n' "$p/$t"; exit 0; }}
 {body}
 {end}
-if [ -d .git ]; then
-  grep -qx '/.leverframe/' .git/info/exclude 2>/dev/null || {{ mkdir -p .git/info && printf '%s\n' '/.leverframe/' >> .git/info/exclude; }}
-fi
-printf 'LF_PWD\t%s\n' "$(pwd)/.leverframe/tasks/"{name}
+{git}printf 'LF_PWD\t%s\n' "$(pwd)/$t/"{name}
 printf 'LF_END\n'
 "#,
         resolve = resolve_snippet(dir),
+        tasks = quote(&tasks),
         name = quote(name),
     ))
 }
@@ -154,9 +169,20 @@ pub fn parse_file(out: &str, who: &str) -> Result<String, String> {
     Err(format!("Brak odpowiedzi z {who}"))
 }
 
-/// Writes a task's text into `dir` on the profile's computer; its path there.
-pub fn put_task(profile: &Profile, dir: &str, name: &str, content: &str) -> Result<String, String> {
-    let out = run(profile, &put_task_script(dir, name, content)?)?;
+/// Writes a task's text into the tasks folder `tasks` under `dir` on the profile's computer;
+/// its path there.
+pub fn put_task(
+    profile: &Profile,
+    dir: &str,
+    tasks: &str,
+    name: &str,
+    content: &str,
+    exclude: bool,
+) -> Result<String, String> {
+    let out = run(
+        profile,
+        &put_task_script(dir, tasks, name, content, exclude)?,
+    )?;
     parse(&out, &profile.name).map(|d| d.path)
 }
 
@@ -362,7 +388,17 @@ mod tests {
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         let text = "---\nid: 1\n---\n# Zażółć 'cytat' $HOME `x`\nLF_TASK_END\nkoniec\n";
         let path = parse(
-            &sh(&put_task_script("~/sklep", "1-a.md", text).unwrap(), &home),
+            &sh(
+                &put_task_script(
+                    "~/sklep",
+                    crate::tasks::PROJECT_TASKS_DIR,
+                    "1-a.md",
+                    text,
+                    true,
+                )
+                .unwrap(),
+                &home,
+            ),
             "srv",
         )
         .unwrap()
@@ -372,7 +408,14 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // Again (a new run): overwritten; the exclude line once.
         sh(
-            &put_task_script("~/sklep", "1-a.md", "nowy").unwrap(),
+            &put_task_script(
+                "~/sklep",
+                crate::tasks::PROJECT_TASKS_DIR,
+                "1-a.md",
+                "nowy",
+                true,
+            )
+            .unwrap(),
             &home,
         );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "nowy\n");
@@ -386,17 +429,58 @@ mod tests {
         );
         // Not a repository: no .git made.
         std::fs::create_dir_all(home.join("zwykly")).unwrap();
-        sh(&put_task_script("~/zwykly", "2-b.md", "b").unwrap(), &home);
+        sh(
+            &put_task_script(
+                "~/zwykly",
+                crate::tasks::PROJECT_TASKS_DIR,
+                "2-b.md",
+                "b",
+                true,
+            )
+            .unwrap(),
+            &home,
+        );
         assert!(!home.join("zwykly/.git").exists());
         let err = parse_file(&sh(&cat_script("~/brak.md").unwrap(), &home), "srv").unwrap_err();
         assert!(err.contains("nie ma folderu"), "{err}");
         let err = parse(
-            &sh(&put_task_script("~/brak", "x.md", "x").unwrap(), &home),
+            &sh(
+                &put_task_script("~/brak", crate::tasks::PROJECT_TASKS_DIR, "x.md", "x", true)
+                    .unwrap(),
+                &home,
+            ),
             "srv",
         )
         .unwrap_err();
         assert!(err.contains("nie ma folderu"), "{err}");
-        assert!(put_task_script("~", "../x.md", "x").is_err());
+        assert!(
+            put_task_script("~", crate::tasks::PROJECT_TASKS_DIR, "../x.md", "x", true).is_err()
+        );
+        // An own tasks folder (#114), and without the exclude line.
+        std::fs::create_dir_all(home.join("inny/.git")).unwrap();
+        let path = parse(
+            &sh(
+                &put_task_script("~/inny", "docs/zadania", "3-c.md", "c", false).unwrap(),
+                &home,
+            ),
+            "srv",
+        )
+        .unwrap()
+        .path;
+        assert_eq!(
+            path,
+            home.join("inny/docs/zadania/3-c.md").to_string_lossy()
+        );
+        assert!(!home.join("inny/.git/info/exclude").exists());
+        sh(
+            &put_task_script("~/inny", "docs/zadania", "3-c.md", "c", true).unwrap(),
+            &home,
+        );
+        assert_eq!(
+            std::fs::read_to_string(home.join("inny/.git/info/exclude")).unwrap(),
+            "/docs/zadania/\n"
+        );
+        assert!(put_task_script("~", "../poza", "x.md", "x", true).is_err());
         let _ = std::fs::remove_dir_all(home);
     }
 

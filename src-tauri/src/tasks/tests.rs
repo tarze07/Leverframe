@@ -173,7 +173,7 @@ fn keeps_the_tasks_folder_out_of_git_once() {
     // Not a repository: nothing.
     let plain = root.join("plain");
     std::fs::create_dir_all(&plain).unwrap();
-    assert_eq!(exclude_from_git(&plain).unwrap(), None);
+    assert_eq!(exclude_from_git(&plain, PROJECT_TASKS_DIR).unwrap(), None);
 
     let repo = root.join("repo");
     std::fs::create_dir_all(repo.join(".git").join("info")).unwrap();
@@ -182,8 +182,8 @@ fn keeps_the_tasks_folder_out_of_git_once() {
         "# git ls-files --others\n*.log",
     )
     .unwrap();
-    let file = exclude_from_git(&repo).unwrap().unwrap();
-    assert_eq!(exclude_from_git(&repo).unwrap(), None);
+    let file = exclude_from_git(&repo, PROJECT_TASKS_DIR).unwrap().unwrap();
+    assert_eq!(exclude_from_git(&repo, PROJECT_TASKS_DIR).unwrap(), None);
     let text = std::fs::read_to_string(&file).unwrap();
     assert!(
         text.starts_with("# git ls-files --others\n*.log\n# Zadania"),
@@ -195,13 +195,13 @@ fn keeps_the_tasks_folder_out_of_git_once() {
     // A project inside the repository; a repository without `info/`.
     let sub = repo.join("apps").join("web");
     std::fs::create_dir_all(&sub).unwrap();
-    exclude_from_git(&sub).unwrap().unwrap();
+    exclude_from_git(&sub, PROJECT_TASKS_DIR).unwrap().unwrap();
     assert!(std::fs::read_to_string(&file)
         .unwrap()
         .contains("\n/apps/web/.leverframe/\n"));
     let bare = root.join("bare");
     std::fs::create_dir_all(bare.join(".git")).unwrap();
-    exclude_from_git(&bare).unwrap().unwrap();
+    exclude_from_git(&bare, PROJECT_TASKS_DIR).unwrap().unwrap();
     assert!(bare.join(".git/info/exclude").is_file());
 
     // A worktree: `.git` is a file; the common folder's exclude is used.
@@ -211,7 +211,7 @@ fn keeps_the_tasks_folder_out_of_git_once() {
     std::fs::create_dir_all(&wt).unwrap();
     std::fs::write(wt_git.join("commondir"), "../..\n").unwrap();
     std::fs::write(wt.join(".git"), format!("gitdir: {}\n", wt_git.display())).unwrap();
-    exclude_from_git(&wt).unwrap().unwrap();
+    exclude_from_git(&wt, PROJECT_TASKS_DIR).unwrap().unwrap();
     let common = std::fs::read_to_string(wt_git.join("../../info/exclude")).unwrap();
     assert_eq!(common.lines().filter(|l| *l == "/.leverframe/").count(), 1);
     let _ = std::fs::remove_dir_all(root);
@@ -289,4 +289,77 @@ fn notes_runs_in_the_header_and_reads_them_back() {
     assert_eq!(TaskRun::parse("  - zwykły punkt"), None);
     assert_eq!(TaskRun::parse("  - {agent: \"x\"}"), None);
     let _ = std::fs::remove_dir_all(d);
+}
+
+#[test]
+fn own_tasks_folders_from_the_settings() {
+    assert_eq!(project_tasks_dir(None).unwrap(), PROJECT_TASKS_DIR);
+    assert_eq!(project_tasks_dir(Some("  ")).unwrap(), PROJECT_TASKS_DIR);
+    assert_eq!(
+        project_tasks_dir(Some("docs\\zadania/")).unwrap(),
+        "docs/zadania"
+    );
+    assert_eq!(project_tasks_dir(Some(".zadania")).unwrap(), ".zadania");
+    for bad in [
+        "/etc", "\\x", "../poza", "a/../b", "a/./b", "C:/x", "a//b", "a\nb", " a /b",
+    ] {
+        assert!(project_tasks_dir(Some(bad)).is_err(), "{bad:?}");
+    }
+    assert_eq!(excluded_pattern(PROJECT_TASKS_DIR), ".leverframe/");
+    assert_eq!(excluded_pattern("docs/zadania"), "docs/zadania/");
+    let dirs = TaskDirs {
+        project: Some(PathBuf::from("/p")),
+        project_rel: "docs/zadania".into(),
+        global: PathBuf::from("/g"),
+    };
+    assert_eq!(
+        dirs.dir(Scope::Project).unwrap(),
+        PathBuf::from("/p/docs/zadania")
+    );
+    assert_eq!(dirs.dir(Scope::Global).unwrap(), PathBuf::from("/g"));
+
+    // An own folder goes to the exclude file by itself.
+    let root = temp("own-git");
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    let file = exclude_from_git(&root, "docs/zadania").unwrap().unwrap();
+    assert!(std::fs::read_to_string(file)
+        .unwrap()
+        .contains("\n/docs/zadania/\n"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn moves_all_tasks_to_a_new_folder_without_overwriting() {
+    let root = temp("move-all");
+    let old = root.join("stary");
+    let new = root.join("nowy");
+    create(&old, Scope::Project, "Pierwsze").unwrap();
+    create(&old, Scope::Project, "Drugie").unwrap();
+    std::fs::write(old.join("notatka.txt"), "zostaje").unwrap();
+    // The new folder has a task of the same name already.
+    create(&new, Scope::Project, "Inne").unwrap();
+    std::fs::rename(new.join("1-inne.md"), new.join("1-pierwsze.md")).unwrap();
+    assert_eq!(move_all(&old, &new, Scope::Project).unwrap(), 2);
+    let names: Vec<String> = list(&new, Scope::Project)
+        .unwrap()
+        .into_iter()
+        .map(|t| format!("{} {}", t.file, t.title))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "1-pierwsze.md Inne",
+            "2-pierwsze.md Pierwsze",
+            "3-drugie.md Drugie"
+        ]
+    );
+    assert!(old.join("notatka.txt").exists());
+    assert!(list(&old, Scope::Project).unwrap().is_empty());
+    // The same folder, or an empty one: nothing.
+    assert_eq!(move_all(&new, &new, Scope::Project).unwrap(), 0);
+    assert_eq!(
+        move_all(&root.join("brak"), &new, Scope::Project).unwrap(),
+        0
+    );
+    let _ = std::fs::remove_dir_all(root);
 }
