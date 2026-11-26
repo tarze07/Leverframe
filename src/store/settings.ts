@@ -6,7 +6,7 @@ import { useUiStore } from "./ui";
 /** A theme id (see theme/themes.ts) or "system". */
 export type ThemeSetting = string;
 
-export type SettingKey = "theme" | "darkTheme" | "lightTheme" | "fontFamily" | "fontSize" | "keybindings" | "autoSave" | "acpConfirmCommands" | "dockerPath" | "windowFrame" | "tasksPrompt";
+export type SettingKey = "theme" | "darkTheme" | "lightTheme" | "fontFamily" | "fontSize" | "keybindings" | "autoSave" | "acpConfirmCommands" | "dockerPath" | "windowFrame" | "tasksPrompt" | "tasksProjectDir" | "tasksGlobalDir" | "tasksExcludeFromGit";
 
 export interface SettingsSnapshot {
   path: string;

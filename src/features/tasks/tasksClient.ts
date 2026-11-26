@@ -55,4 +55,6 @@ export const tasksClient = {
   copyTo: (scope: TaskScope, file: string, profileId: string, dir: string) =>
     invoke<string>("tasks_copy_to", { scope, file, profileId, dir }),
   readRemote: (profileId: string, path: string) => invoke<string>("tasks_read_remote", { profileId, path }),
+  /** Moves the tasks of the scope's former folder `from` into its folder now; how many moved. */
+  adopt: (scope: TaskScope, from: string) => invoke<number>("tasks_adopt", { scope, from }),
 };

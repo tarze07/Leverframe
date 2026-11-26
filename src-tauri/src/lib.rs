@@ -9,6 +9,7 @@ pub mod profiles;
 pub mod pty;
 pub mod sessions;
 pub mod settings;
+pub mod startup;
 pub mod tasks;
 #[cfg(test)]
 mod test_support;
@@ -17,6 +18,8 @@ use tauri::{Emitter, Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    startup::begin();
+    startup::mark("proces");
     // Agents installed into the user's PATH after login are found too (before any thread starts).
     #[cfg(windows)]
     envpath::complete_windows_path();
@@ -28,6 +31,7 @@ pub fn run() {
         .manage(acp::AcpService::default())
         .manage(docker::DockerJobs::default())
         .setup(|app| {
+            startup::mark("setup");
             let config_dir = app.path().app_config_dir()?;
             app.manage(profiles::ProfileService::new(&config_dir));
             app.manage(agents::AgentService::new(&config_dir));
@@ -55,10 +59,19 @@ pub fn run() {
             );
             app.manage(watcher);
             app.manage(logs);
+            // Profiles (WSL, ~/.ssh/config, Docker containers – also on an SSH host) are detected
+            // now, in the background: the first terminal does not wait for them.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let n = handle.state::<profiles::ProfileService>().all().len();
+                startup::mark(&format!("profile wykryte ({n})"));
+            });
+            startup::mark("setup gotowy");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             settings::app_info,
+            startup::app_ready,
             settings::settings_project_dir,
             settings::settings_set_project_dir,
             settings::settings_recent_project_dirs,
@@ -102,6 +115,8 @@ pub fn run() {
             tasks::commands::tasks_add_run,
             tasks::commands::tasks_copy_to,
             tasks::commands::tasks_read_remote,
+            tasks::commands::tasks_adopt,
+            tasks::commands::tasks_open_dir,
             profiles::commands::profiles_list,
             profiles::commands::profiles_refresh,
             profiles::commands::profile_save,

@@ -131,7 +131,7 @@ pub async fn docker_inspect(
 
 /// What creating the container will do: `docker run` and warnings (shown before it runs).
 #[tauri::command]
-pub fn docker_create_plan(
+pub async fn docker_create_plan(
     profiles: State<'_, ProfileService>,
     mut spec: ContainerSpec,
 ) -> Result<CreatePlan, String> {
@@ -229,7 +229,7 @@ fn start_job(
 
 /// Pulls an image; progress and end through `on_event`. Returns the job id (for `docker_cancel`).
 #[tauri::command]
-pub fn docker_pull(
+pub async fn docker_pull(
     profiles: State<'_, ProfileService>,
     jobs: State<'_, DockerJobs>,
     image: String,
@@ -240,7 +240,7 @@ pub fn docker_pull(
 
 /// Builds an image from a folder with a Dockerfile.
 #[tauri::command]
-pub fn docker_build(
+pub async fn docker_build(
     profiles: State<'_, ProfileService>,
     jobs: State<'_, DockerJobs>,
     dir: String,
@@ -271,7 +271,7 @@ pub const LOCAL_FOLDER_OVER_SSH: &str = "Docker na serwerze jest używany przez 
 /// Builds the image with agents from the `Dockerfile` shipped with the app. The Dockerfile goes
 /// on standard input (`docker build -`, it needs no other files), so it also works through ssh.
 #[tauri::command]
-pub fn docker_build_agents_image(
+pub async fn docker_build_agents_image(
     profiles: State<'_, ProfileService>,
     jobs: State<'_, DockerJobs>,
     on_event: Channel<JobEvent>,
@@ -287,7 +287,7 @@ pub fn docker_build_agents_image(
 
 /// Follows a container's logs until `docker_cancel`.
 #[tauri::command]
-pub fn docker_logs(
+pub async fn docker_logs(
     profiles: State<'_, ProfileService>,
     jobs: State<'_, DockerJobs>,
     container: String,
@@ -396,7 +396,7 @@ pub struct DockerSources {
 }
 
 #[tauri::command]
-pub fn docker_sources(profiles: State<'_, ProfileService>) -> DockerSources {
+pub async fn docker_sources(profiles: State<'_, ProfileService>) -> Result<DockerSources, String> {
     let settings = profiles.settings();
     let mut list = sources(&profiles.all());
     let transport = transport(settings);
@@ -406,18 +406,18 @@ pub fn docker_sources(profiles: State<'_, ProfileService>) -> DockerSources {
             s.warning = None;
         }
     }
-    DockerSources {
+    Ok(DockerSources {
         sources: list,
         current: source_id(settings),
         mode: ssh_mode(settings),
         local_client: super::remote::local_client_available(docker(settings).program()),
         transport,
-    }
+    })
 }
 
 /// Sets how the Docker of SSH hosts is reached: `auto`, `client` or `ssh`.
 #[tauri::command]
-pub fn docker_set_ssh_mode(
+pub async fn docker_set_ssh_mode(
     profiles: State<'_, ProfileService>,
     mode: String,
 ) -> Result<DockerSources, String> {
@@ -427,13 +427,13 @@ pub fn docker_set_ssh_mode(
     )?;
     // Profiles of containers on the host change their command.
     profiles.refresh();
-    Ok(docker_sources(profiles))
+    docker_sources(profiles).await
 }
 
 /// Chooses the Docker of the "Kontenery" view: an SSH profile's id, or `None` for this machine.
 /// Containers made for Leverframe there become profiles.
 #[tauri::command]
-pub fn docker_set_source(
+pub async fn docker_set_source(
     profiles: State<'_, ProfileService>,
     id: Option<String>,
 ) -> Result<DockerSources, String> {
@@ -447,5 +447,5 @@ pub fn docker_set_source(
     profiles
         .settings()
         .set(super::remote::DOCKER_SOURCE_KEY, value)?;
-    Ok(docker_sources(profiles))
+    docker_sources(profiles).await
 }

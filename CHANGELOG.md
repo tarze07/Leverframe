@@ -4,6 +4,12 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Własne foldery zadań** ([#114](https://github.com/tarze07/Leverframe/issues/114)): w Ustawieniach „Zadania: folder w projekcie” (`tasksProjectDir`, ścieżka względna, domyślnie `.leverframe/tasks`) i „Zadania: folder zadań globalnych” (`tasksGlobalDir`, dowolny folder, np. w OneDrive). Zmiana folderu z zadaniami pyta, czy je przenieść (bez nadpisywania; zajęty numer dostaje kolejny). Do `.git/info/exclude` trafia ustawiony folder (opcja „Zadania projektu poza repozytorium”, `tasksExcludeFromGit`); kopie na serwerze SSH i w kontenerze idą do folderu o tej samej nazwie. „Otwórz folder zadań” w widoku „Zadania”.
+
+### Naprawione
+- **Pusty ekran przez kilka sekund przy uruchomieniu** ([#115](https://github.com/tarze07/Leverframe/issues/115)): pierwszy terminal uruchamiał się w wątku okna i czekał na wykrycie profili (WSL, `~/.ssh/config`, kontenery Docker – także na serwerze SSH), więc okno nie mogło się narysować (np. 4,3 s przy wolnym Dockerze). Terminal i polecenia Dockera, które wykrywają profile, działają teraz w tle, a profile są wykrywane od razu przy starcie, równolegle z wczytywaniem interfejsu (przy wolnym Dockerze interfejs jest po ~0,6–1,3 s). Do czasu narysowania interfejsu okno pokazuje „Uruchamianie Leverframe…” w kolorach ostatniego motywu zamiast pustej strony. `LEVERFRAME_TRACE_STARTUP=1` wypisuje czasy kolejnych etapów startu.
+
 ## [0.13.0] – 2026-11-25
 
 ### Dodane

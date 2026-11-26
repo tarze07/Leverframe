@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Placeholder } from "../../components/Placeholder";
 import { isTauri } from "../../lib/tauri";
@@ -161,6 +162,7 @@ export function TasksView() {
         </span>
         <ToolbarButton icon="add" label="Nowe zadanie…" disabled={noProject} onClick={() => (setCreating(true), setError(null))} />
         <ToolbarButton icon="refresh" label="Odśwież" disabled={noProject} onClick={() => void reload()} />
+        <ToolbarButton icon="folder-opened" label="Otwórz folder zadań" disabled={noProject} onClick={() => void revealTasksFolder(scope).catch((e: unknown) => setError(errorMessage(e)))} />
       </div>
 
       {noProject ? (
@@ -409,4 +411,9 @@ function ToolbarButton({ icon, label, onClick, disabled }: { icon: string; label
       <span className={`codicon codicon-${icon}`} aria-hidden />
     </button>
   );
+}
+
+/** Shows the folder of a list's tasks in the system's file manager (made when missing). */
+function revealTasksFolder(scope: TaskScope) {
+  return invoke<string>("tasks_open_dir", { scope });
 }
