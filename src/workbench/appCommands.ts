@@ -9,6 +9,7 @@ import { useUiStore, type ViewId } from "../store/ui";
 import { THEMES, themeById } from "../theme/themes";
 import { currentEditor, saveAllEditors } from "../store/editor";
 import { dockRegistry } from "./docks";
+import { copyPath, type PathKind } from "../features/files/copyPath";
 import { closeActiveTerminal, openAgent, openAgentChat, openFile, openProfile, openTerminal, toggleTerminalPanel } from "./commands";
 
 export interface AppCommand {
@@ -46,6 +47,12 @@ function setTheme(id: string) {
   })();
 }
 
+/** Copies the path of the file in the active editor (#121). */
+function copyActivePath(kind: PathKind) {
+  const entry = currentEditor(dockRegistry.get("main")?.activePanel?.id)?.[1];
+  if (entry) void copyPath(kind, entry.path).catch(() => undefined);
+}
+
 const showView = (view: ViewId) => {
   const ui = useUiStore.getState();
   if (ui.activeView !== view || !ui.sidebarVisible) ui.selectView(view);
@@ -65,6 +72,8 @@ export function allCommands(): AppCommand[] {
       run: () => void currentEditor(dockRegistry.get("main")?.activePanel?.id)?.[1].save(),
     },
     { id: "files.saveAll", title: "Zapisz wszystkie pliki", category: "Pliki", run: () => void saveAllEditors() },
+    { id: "files.copyPath", title: "Pliki: kopiuj ścieżkę aktywnego pliku", category: "Pliki", run: () => copyActivePath("absolute") },
+    { id: "files.copyRelativePath", title: "Pliki: kopiuj ścieżkę względną aktywnego pliku", category: "Pliki", run: () => copyActivePath("relative") },
     {
       id: "markdown.preview",
       title: "Markdown: pokaż / ukryj podgląd",

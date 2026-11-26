@@ -8,6 +8,7 @@ import { useUiStore } from "../../store/ui";
 import { closeEditorsUnder, openFile } from "../../workbench/commands";
 import { folderName } from "../agents/agentsClient";
 import { errorMessage, fsClient, type DirEntry } from "../editor/fsClient";
+import { copyPath, copyShortcut, PATH_LABELS, type PathKind } from "./copyPath";
 
 type Children = Record<string, DirEntry[] | "loading" | { error: string }>;
 
@@ -26,6 +27,14 @@ export function FilesView() {
   const [creating, setCreating] = useState<"file" | "dir" | null>(null);
   const [deleting, setDeleting] = useState<DirEntry | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The menu of a file or folder (#121), and what was copied.
+  const [menu, setMenu] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => {
     void load();
@@ -140,6 +149,15 @@ export function FilesView() {
     }
   };
 
+  const copy = (kind: PathKind, path: string) => {
+    setMenu(null);
+    setActionError(null);
+    copyPath(kind, path).then(
+      (text) => setNotice(`Skopiowano: ${text}`),
+      (e: unknown) => setActionError(`Nie można skopiować do schowka: ${errorMessage(e)}`),
+    );
+  };
+
   const remove = async (entry: DirEntry, permanently: boolean) => {
     setActionError(null);
     try {
@@ -184,6 +202,14 @@ export function FilesView() {
             <span className="codicon codicon-folder-opened text-lf-muted" aria-hidden />
             Otwórz folder…
           </button>
+          <button
+            type="button"
+            onClick={() => (setFolderMenu(false), copy("absolute", projectDir))}
+            className="flex items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs text-lf-fg hover:bg-lf-hover"
+          >
+            <span className="codicon codicon-copy text-lf-muted" aria-hidden />
+            Kopiuj ścieżkę folderu projektu
+          </button>
           {recentDirs.some((d) => d !== projectDir) && (
             <>
               <span className="px-1.5 pt-1 text-[11px] text-lf-muted">Ostatnio otwierane</span>
@@ -206,6 +232,11 @@ export function FilesView() {
           {actionError}
         </p>
       )}
+      {notice && (
+        <p role="status" className="truncate px-3 pb-1 text-[11px] text-lf-muted" title={notice}>
+          {notice}
+        </p>
+      )}
       <Tree
         dir={projectDir}
         depth={0}
@@ -214,9 +245,13 @@ export function FilesView() {
         toggle={toggle}
         selected={target}
         deleting={deleting}
-        onDelete={(e) => (setDeleting(e), setActionError(null))}
+        onDelete={(e) => (setDeleting(e), setActionError(null), setMenu(null))}
         onConfirmDelete={(e, permanently) => void remove(e, permanently)}
         onCancelDelete={() => setDeleting(null)}
+        menu={menu}
+        onMenu={(path) => (setMenu(path), setDeleting(null))}
+        onCopy={copy}
+        onCreateIn={(dir, kind) => (setMenu(null), setSelected(dir), setCreating(kind), setActionError(null))}
       />
     </div>
   );
@@ -234,6 +269,11 @@ interface TreeProps {
   onDelete: (e: DirEntry) => void;
   onConfirmDelete: (e: DirEntry, permanently: boolean) => void;
   onCancelDelete: () => void;
+  /** The entry whose menu is open (its path). */
+  menu: string | null;
+  onMenu: (path: string | null) => void;
+  onCopy: (kind: PathKind, path: string) => void;
+  onCreateIn: (dir: string, kind: "file" | "dir") => void;
 }
 
 function Tree(props: TreeProps) {
@@ -248,10 +288,23 @@ function Tree(props: TreeProps) {
         const open = props.expanded.has(e.path);
         return (
           <li key={e.path} role="treeitem" aria-expanded={e.isDir ? open : undefined} aria-label={e.name}>
-            <div className={`group flex items-center hover:bg-lf-hover ${e.isDir && props.selected === e.path ? "bg-lf-hover/60" : ""}`}>
+            <div
+              className={`group flex items-center hover:bg-lf-hover ${e.isDir && props.selected === e.path ? "bg-lf-hover/60" : ""}`}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                props.onMenu(e.path);
+              }}
+            >
               <button
                 type="button"
                 onClick={() => (e.isDir ? props.toggle(e.path) : openFile(e.path))}
+                onKeyDown={(ev) => {
+                  const kind = copyShortcut(ev);
+                  if (kind) {
+                    ev.preventDefault();
+                    props.onCopy(kind, e.path);
+                  }
+                }}
                 title={e.path}
                 className="flex min-w-0 flex-1 items-center gap-1 py-0.5 pr-2 text-left text-[13px] text-lf-fg"
                 style={pad}
@@ -265,6 +318,16 @@ function Tree(props: TreeProps) {
               </button>
               <button
                 type="button"
+                title="Więcej"
+                aria-label={`Więcej: ${e.name}`}
+                aria-expanded={props.menu === e.path}
+                onClick={() => props.onMenu(props.menu === e.path ? null : e.path)}
+                className="shrink-0 rounded p-0.5 text-lf-muted opacity-0 hover:text-lf-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+              >
+                <span className="codicon codicon-kebab-vertical" aria-hidden />
+              </button>
+              <button
+                type="button"
                 title={`Usuń ${e.name}`}
                 aria-label={`Usuń ${e.name}`}
                 onClick={() => props.onDelete(e)}
@@ -273,6 +336,7 @@ function Tree(props: TreeProps) {
                 <span className="codicon codicon-trash" aria-hidden />
               </button>
             </div>
+            {props.menu === e.path && <EntryMenu entry={e} pad={pad} {...props} />}
             {props.deleting?.path === e.path && (
               <div role="group" aria-label={`Usuwanie ${e.name}`} className="flex flex-wrap items-center gap-1 py-1 pr-2 text-[11px]" style={pad}>
                 <span className="text-lf-fg">{e.isDir ? `Usunąć folder ${e.name} z zawartością?` : `Usunąć ${e.name}?`}</span>
@@ -292,6 +356,48 @@ function Tree(props: TreeProps) {
         );
       })}
     </ul>
+  );
+}
+
+/** The menu of a file or folder (#121): copying its path or name, new entries in a folder, delete. */
+function EntryMenu(props: TreeProps & { entry: DirEntry; pad: { paddingLeft: number } }) {
+  const e = props.entry;
+  const item = "flex w-full items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs text-lf-fg hover:bg-lf-hover";
+  return (
+    <div
+      role="menu"
+      aria-label={`${e.isDir ? "Folder" : "Plik"} ${e.name}`}
+      className="mb-1 mr-2 flex flex-col rounded border border-lf-border bg-lf-editor p-1"
+      style={{ marginLeft: props.pad.paddingLeft }}
+      onKeyDown={(ev) => ev.key === "Escape" && props.onMenu(null)}
+    >
+      {(Object.keys(PATH_LABELS) as PathKind[]).map((kind) => (
+        <button key={kind} type="button" role="menuitem" onClick={() => props.onCopy(kind, e.path)} className={item}>
+          <span className="codicon codicon-copy text-lf-muted" aria-hidden />
+          {PATH_LABELS[kind]}
+          {kind !== "name" && <span className="ml-auto pl-2 text-[10px] text-lf-subtle">{kind === "absolute" ? "Shift+Alt+C" : "Ctrl+Shift+Alt+C"}</span>}
+        </button>
+      ))}
+      {e.isDir && (
+        <>
+          <button type="button" role="menuitem" onClick={() => props.onCreateIn(e.path, "file")} className={item}>
+            <span className="codicon codicon-new-file text-lf-muted" aria-hidden />
+            Nowy plik tutaj…
+          </button>
+          <button type="button" role="menuitem" onClick={() => props.onCreateIn(e.path, "dir")} className={item}>
+            <span className="codicon codicon-new-folder text-lf-muted" aria-hidden />
+            Nowy folder tutaj…
+          </button>
+        </>
+      )}
+      <button type="button" role="menuitem" onClick={() => props.onDelete(e)} className={`${item} text-lf-danger`}>
+        <span className="codicon codicon-trash" aria-hidden />
+        Usuń…
+      </button>
+      <button type="button" role="menuitem" onClick={() => props.onMenu(null)} className={`${item} text-lf-muted`}>
+        Anuluj
+      </button>
+    </div>
   );
 }
 

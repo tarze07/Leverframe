@@ -253,6 +253,44 @@ describe("Leverframe", () => {
     }
   });
 
+  it("copies a file's path, relative path and name from the tree, with a shortcut and from the palette (#121)", async () => {
+    const clipboard = () => app.exec("return window.__TAURI_INTERNALS__.invoke('plugin:clipboard-manager|read_text')");
+    const waitClipboard = async (text) => {
+      for (let i = 0; i < 50 && (await clipboard()) !== text; i++) await sleep(100);
+      assert.equal(await clipboard(), text);
+    };
+    const item = (name) => `[role=treeitem][aria-label="${name}"]`;
+    await showView("Pliki");
+    await app.waitFor(`return !!document.querySelector('${item("README.md")}')`, 20_000);
+
+    // The menu of a file: right button.
+    await app.exec(`document.querySelector('${item("README.md")} > div').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))`);
+    await app.waitFor("return !!document.querySelector('[role=menu][aria-label=\"Plik README.md\"]')");
+    await app.click('[role=menu][aria-label="Plik README.md"] [role=menuitem]', "Kopiuj ścieżkę względną");
+    await waitClipboard("README.md");
+    await app.waitFor("return document.body.innerText.includes('Skopiowano: README.md')");
+    await app.exec(`document.querySelector('${item("README.md")} button[aria-label="Więcej: README.md"]').click()`);
+    await app.click('[role=menu][aria-label="Plik README.md"] [role=menuitem]', "Kopiuj ścieżkę");
+    await waitClipboard(join(env.project, "README.md"));
+
+    // A folder with the shortcut of VS Code (Ctrl+Shift+Alt+C: relative).
+    await app.exec(`document.querySelector('${item("src")} button').focus()`);
+    await app.chord(KEY.ctrl, KEY.shift, KEY.alt, "c");
+    await waitClipboard("src");
+
+    // The active editor's file from the palette.
+    await app.click(`${item("src")} button`);
+    await app.waitFor(`return !!document.querySelector('${item("payments.ts")}')`);
+    await app.click(`${item("payments.ts")} button`);
+    await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.includes('payments.ts'))", 20_000);
+    await app.chord(KEY.ctrl, KEY.shift, "p");
+    await app.waitFor("return !!document.querySelector('[cmdk-input]')");
+    await app.type("kopiuj ścieżkę względną aktywnego");
+    await sleep(200);
+    await app.keys([{ type: "keyDown", value: KEY.enter }, { type: "keyUp", value: KEY.enter }]);
+    await waitClipboard(join("src", "payments.ts"));
+  });
+
   it("saves a Markdown file with the toolbar button and shows its preview", async () => {
     const bar = `[...document.querySelectorAll('[aria-label="Pasek edytora"]')].find(b => b.querySelector('span[title$="README.md"]'))`;
     await showView("Pliki");
