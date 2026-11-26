@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Naprawione
+- **Edytor bez kolorowania składni, z liniami rysowanymi jedna na drugiej** (regresja 0.14.0): ekran startowy z #115 był wbudowanym `<style>`/`<script>` w `index.html`; Tauri dopisał ich skróty do CSP, a przeglądarka przy skrótach ignoruje `'unsafe-inline'` – odrzucała więc style, które edytor (Monaco) dodaje w trakcie pracy (kolory, układ linii, kursor). Ekran startowy jest teraz w plikach `start.css` i `start.js`; test E2E sprawdza kolory składni i położenie nowej linii.
+
 ## [0.14.0] – 2026-11-26
 
 ### Dodane

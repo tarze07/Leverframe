@@ -1,0 +1,17 @@
+/* The start screen (#115), before the app has loaded: in a file, not inline – an inline style or
+   script in index.html adds its hash to the CSP, and then the editor's own styles are refused. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #23272e;
+  color: #8b919d;
+}
+#lf-start {
+  display: flex;
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+  font: 13px system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}

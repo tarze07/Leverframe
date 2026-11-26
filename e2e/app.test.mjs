@@ -111,8 +111,17 @@ describe("Leverframe", () => {
     await app.click('[role=treeitem][aria-label="payments.ts"] button');
     await app.waitFor("return document.querySelector('.view-line')?.innerText.includes('total')", 20_000);
     await app.chord(KEY.ctrl, KEY.end);
-    await app.type("\n// e2e");
+    await app.type(`${KEY.enter}// e2e`);
     await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.includes('● payments.ts'))");
+    // The editor's own styles apply (a CSP with hashes refused them: no colors, lines drawn over
+    // each other): tokens in several colors, the new line under the others.
+    const colors = await app.exec("return new Set([...document.querySelectorAll('.view-line span span')].map(s => getComputedStyle(s).color)).size");
+    assert.ok(colors >= 3, `syntax colors: ${colors}`);
+    await app.waitFor("return [...document.querySelectorAll('.line-numbers')].some(n => n.textContent.trim() === '3')");
+    const tops = await app.exec("return [...document.querySelectorAll('.view-line')].map(l => [l.innerText.replace(/\\u00a0/g, ' ').trim(), l.getBoundingClientRect().top])");
+    const first = tops.find(([t]) => t.startsWith("export"))?.[1];
+    const added = tops.find(([t]) => t === "// e2e")?.[1];
+    assert.ok(first !== undefined && added > first + 10, `the new line is drawn under the first one: ${JSON.stringify(tops)}`);
     await app.chord(KEY.ctrl, "s");
     await app.waitFor("return [...document.querySelectorAll('.dv-tab')].some(t => t.innerText.trim() === 'payments.ts')");
     assert.match(readFileSync(join(env.project, "src", "payments.ts"), "utf8"), /\/\/ e2e$/);
