@@ -6,6 +6,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("../../lib/tauri", () => ({ isTauri: () => true }));
 const openDialog = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (...a: unknown[]) => openDialog(...a) }));
+const writeText = vi.fn<(t: string) => Promise<void>>(async () => undefined);
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: (t: string) => writeText(t) }));
 const openFile = vi.fn();
 const closeEditorsUnder = vi.fn();
 vi.mock("../../workbench/commands", () => ({
@@ -155,5 +157,50 @@ describe("FilesView", () => {
     render(<FilesView />);
     fireEvent.click(within(screen.getByRole("list", { name: "Ostatnio otwierane foldery" })).getByText("blog"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("settings_set_project_dir", { path: "/home/me/blog" }));
+  });
+
+  it("copies the path, the relative path and the name from the menu and with shortcuts (#121)", async () => {
+    writeText.mockClear();
+    render(<FilesView />);
+    const src = await screen.findByRole("treeitem", { name: "src" });
+    fireEvent.click(within(src).getByText("src"));
+    const main = await screen.findByRole("treeitem", { name: "main.rs" });
+
+    fireEvent.contextMenu(within(main).getByText("main.rs"));
+    const menu = screen.getByRole("menu", { name: "Plik main.rs" });
+    expect(within(menu).queryByText("Nowy plik tutaj…")).toBeNull();
+    fireEvent.click(within(menu).getByText("Kopiuj ścieżkę względną"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("src/main.rs"));
+    expect(await screen.findByRole("status")).toHaveTextContent("Skopiowano: src/main.rs");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.click(within(main).getByLabelText("Więcej: main.rs"));
+    fireEvent.click(screen.getByText("Kopiuj nazwę"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("main.rs"));
+
+    // Shift+Alt+C on the entry: the path; with Ctrl: the relative one.
+    const button = within(main).getByText("main.rs").closest("button")!;
+    fireEvent.keyDown(button, { code: "KeyC", key: "Ç", shiftKey: true, altKey: true });
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("/p/src/main.rs"));
+    fireEvent.keyDown(button, { code: "KeyC", key: "C", shiftKey: true, altKey: true, ctrlKey: true });
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("src/main.rs"));
+
+    // A folder: also new entries in it; and the project folder itself.
+    fireEvent.contextMenu(within(src).getAllByText("src")[0]);
+    const folder = screen.getByRole("menu", { name: "Folder src" });
+    fireEvent.click(within(folder).getByText("Nowy plik tutaj…"));
+    expect(screen.getByRole("form", { name: "Nowy plik w src" })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Zmień folder projektu"));
+    fireEvent.click(screen.getByText("Kopiuj ścieżkę folderu projektu"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("/p"));
+  });
+
+  it("says when the clipboard refuses (#121)", async () => {
+    writeText.mockRejectedValueOnce("brak dostępu");
+    render(<FilesView />);
+    const readme = await screen.findByRole("treeitem", { name: "README.md" });
+    fireEvent.click(within(readme).getByLabelText("Więcej: README.md"));
+    fireEvent.click(screen.getByText("Kopiuj ścieżkę"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Nie można skopiować do schowka: brak dostępu");
   });
 });

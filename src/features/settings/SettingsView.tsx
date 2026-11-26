@@ -52,11 +52,13 @@ export function SettingsView() {
   const lightId = useId();
   const positionId = useId();
   const autoSaveId = useId();
+  const separatorId = useId();
   const dockerId = useId();
   const frameId = useId();
   const windowFrame = useSettingsStore((s) => (systemFrame(s.values.windowFrame, isWindows()) ? "system" : "custom"));
   const dockerPath = useSettingsStore((s) => (typeof s.values.dockerPath === "string" ? s.values.dockerPath : ""));
   const autoSave = useSettingsStore((s) => (typeof s.values.autoSave === "string" ? s.values.autoSave : "off"));
+  const separator = useSettingsStore((s) => (s.values.relativePathSeparator === "/" ? "/" : "auto"));
   const confirmCommands = useSettingsStore((s) => s.values.acpConfirmCommands !== false);
   const tasksPrompt = useSettingsStore((s) => (typeof s.values.tasksPrompt === "string" ? s.values.tasksPrompt : ""));
 
@@ -151,6 +153,15 @@ export function SettingsView() {
               {a.label}
             </option>
           ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={separatorId} className="text-xs font-semibold text-lf-fg">
+          Kopiowane ścieżki względne
+        </label>
+        <select id={separatorId} value={separator} onChange={(e) => void save("relativePathSeparator", e.target.value)} className={inputClass}>
+          <option value="auto">Separator systemu (na Windows \)</option>
+          <option value="/">Zawsze / (Git Bash, WSL, agenci)</option>
         </select>
       </div>
       <TasksPromptField value={tasksPrompt} onSave={(v) => void save("tasksPrompt", v)} />

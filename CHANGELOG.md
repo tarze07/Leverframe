@@ -4,6 +4,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numer
 
 ## [Unreleased]
 
+### Dodane
+- **Kopiowanie ścieżki i nazwy pliku z drzewa plików** ([#121](https://github.com/tarze07/Leverframe/issues/121)): menu pliku lub folderu (prawy przycisk albo ⋮) z „Kopiuj ścieżkę”, „Kopiuj ścieżkę względną” (względem folderu projektu) i „Kopiuj nazwę” oraz – dla folderów – „Nowy plik / Nowy folder tutaj…” i „Usuń…”; skróty Shift+Alt+C i Ctrl+Shift+Alt+C jak w VS Code; przyciski kopiowania ścieżki na pasku edytora, polecenia w palecie i „Kopiuj ścieżkę folderu projektu”. Potwierdzenie „Skopiowano: …”. Separator ścieżek względnych w Ustawieniach (`relativePathSeparator`: systemowy albo `/`).
+
 ## [0.14.1] – 2026-11-26
 
 ### Naprawione

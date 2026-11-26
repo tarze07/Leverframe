@@ -3,6 +3,9 @@ import { notifyFilesChanged } from "../../lib/fileEvents";
 import type { IDockviewPanelProps } from "dockview-react";
 import { isMarkdownPath, useEditorStore, type EditorView } from "../../store/editor";
 import { useSettingsStore } from "../../store/settings";
+import { useAgentsStore } from "../../store/agents";
+import { CopyButton } from "../../components/CopyButton";
+import { pathText } from "../files/copyPath";
 import { useUiStore } from "../../store/ui";
 import { baseName, errorMessage, fsClient, isConflict } from "./fsClient";
 import { applyEditorTheme, editorThemeName, ensureTheme, languageForPath, monaco } from "./monacoSetup";
@@ -267,6 +270,8 @@ export default function MonacoEditor({ api, params }: IDockviewPanelProps<Editor
         <span className="min-w-0 flex-1 truncate text-[11px] text-lf-subtle" title={path}>
           {path}
         </span>
+        <CopyButton label="Kopiuj ścieżkę" text={() => path} />
+        <CopyButton label="Kopiuj ścieżkę względną" text={() => pathText("relative", path, useAgentsStore.getState().projectDir, useSettingsStore.getState().values.relativePathSeparator === "/" ? "/" : "auto")} />
         {dirty && <span className="shrink-0 text-[11px] text-lf-muted">Niezapisane zmiany</span>}
         <button
           type="button"

@@ -42,6 +42,8 @@ Nad każdym plikiem jest pasek z jego ścieżką, informacją o niezapisanych zm
 
 Folder projektu zmienisz w panelu „Pliki”, klikając jego nazwę na górze: menu ma **Otwórz folder…** (okno wyboru) i listę ostatnio otwieranych folderów. W panelu „Pliki” przyciski **Nowy plik…** i **Nowy folder…** tworzą je w ostatnio klikniętym folderze (nazwa może zawierać `/`, np. `src/nowy.ts` – brakujące foldery powstaną po drodze); nowy plik od razu otwiera się w edytorze. Ikona kosza przy pliku lub folderze (po najechaniu) usuwa go po potwierdzeniu – **do kosza systemowego** albo **na stałe**; usuwać można tylko wewnątrz folderu projektu, a otwarte edytory usuniętych plików się zamykają.
 
+**Kopiowanie ścieżek:** menu pliku lub folderu w drzewie (prawy przycisk albo ⋮) ma **Kopiuj ścieżkę** (pełną), **Kopiuj ścieżkę względną** (względem folderu projektu, np. `src/app.ts`) i **Kopiuj nazwę**, a dla folderów też „Nowy plik / Nowy folder tutaj…” i „Usuń…”. Skróty jak w VS Code, gdy zaznaczony jest element drzewa: Shift+Alt+C – ścieżka, Ctrl+Shift+Alt+C – ścieżka względna. Ścieżkę aktywnego pliku skopiujesz też przyciskami na pasku edytora i z palety poleceń („Pliki: kopiuj ścieżkę…”), a ścieżkę folderu projektu – z menu jego nazwy. Na Windows ścieżka względna ma domyślnie `\`; „Kopiowane ścieżki względne” w Ustawieniach (`relativePathSeparator`: `"auto"` albo `"/"`) zmienia to na `/` (Git Bash, WSL, agenci).
+
 Pliki Markdown (`.md`) mają trzy widoki, przełączane na pasku: sam tekst, tekst z podglądem obok i sam podgląd. Podgląd pokazuje obrazki z dysku (ścieżki względem pliku) i z internetu; linki do stron otwierają się w przeglądarce, a linki do innych plików – w edytorze.
 
 ## Agenci

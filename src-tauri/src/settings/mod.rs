@@ -341,6 +341,9 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
             Err("tasksGlobalDir: pełna ścieżka folderu albo pusty tekst (folder domyślny)".into())
         }
         ("tasksExcludeFromGit", Value::Bool(_)) => Ok(()),
+        // Paths copied relative to the project (#121): the system's separator, or always `/`.
+        ("relativePathSeparator", Value::String(s)) if s == "auto" || s == "/" => Ok(()),
+        ("relativePathSeparator", _) => Err("relativePathSeparator: \"auto\" albo \"/\"".into()),
         ("tasksExcludeFromGit", _) => Err("tasksExcludeFromGit: true lub false".into()),
         ("acpConfirmCommands", _) => Err("acpConfirmCommands: true lub false".into()),
         ("autoSave", _) => Err("autoSave: \"off\", \"afterDelay\" lub \"onFocusChange\"".into()),
